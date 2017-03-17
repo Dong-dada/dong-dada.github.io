@@ -24,6 +24,7 @@ github_username:  dong-dada
 # Build settings
 markdown: kramdown
 theme: minima
+favicon: favicon.ico
 gems:
   - jekyll-feed
 exclude:
