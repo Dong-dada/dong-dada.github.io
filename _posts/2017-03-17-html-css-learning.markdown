@@ -110,6 +110,217 @@ head 和 body 标签下还会有子标签，例如 head 标签下的 title 标�
 
 ## CSS 基础知识
 
+CSS 用于对 html 中的标签进行修饰。例如下面的代码：
 
+{% highlight html %}
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>CSS样式的优势</title>
+        <style type="text/css">
+            span{
+            font-size:20px; /*设置文字字号*/
+            font-weight:bold; /*设置为粗体*/
+            color:blue; /*设置文字为蓝色*/
+            }
+        </style>
+    </head>
+    <body>
+        <p>慕课网，<span>超酷的互联网</span>、IT技术免费学习平台，创新的网络一站式学习、实践体验；<span>服务及时贴心</span>，内容专业、<span>有趣易学</span>。专注服务互联网工程师快速成为技术高手！</p>
+    </body>
+</html>
+{% endhighlight %}
+
+上述 CSS 代码将导致该 html 中所有 `<span>` 标签包裹的内容都变为蓝色，字号设置为 20，并加粗文字。
+
+### CSS 代码的结构
+
+![CSS 代码结构]({{ site.url }}/asset/52fde5c30001b0fe03030117.jpg)
+
+**选择符：** 指网页中要应用样式规则的元素，上图中将会把所有 `<p>` 元素中的文字设定为蓝色。
+
+**声明：** 在 `{}` 之间的内容就是声明，多条声明之间用分号 `;` 分隔。可以用 `/* */` 的方式为声明填写注释。
+
+CSS 代码不一定要写在 `<head>` 中，也可以写在别的地方：
+- 内联式：把 css 代码直接写在标签中，形如： `<p style="color:red; font-size:12px">这是一个段落</p>` ；
+- 嵌入式：也就是本章开头所介绍的将 CSS 代码写在 `<head>` 标签下的做法；
+- 外部式：写在单独的一个文件中：
+
+以下是外部式写法的一个例子：
+
+{% highlight HTML %}
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>外部式css样式</title>
+        <!-- 指定 css 文件 -->
+        <link href="style.css" rel="stylesheet" type="text/css" />
+    </head>
+    <body>
+        <p>慕课网，<span>超酷的互联网</span>、IT技术免费学习平台，创新的网络一站式学习、实践体验；<span>服务及时贴心</span>，内容专业、<span>有趣易学</span>。专注服务互联网工程师快速成为技术高手！</p>
+    </body>
+</html>
+{% endhighlight %}
+
+{% highlight css %}
+/* style.css 文件 */
+span{
+   color:red;  
+}
+{% endhighlight %}
+
+注意 `<link href="style.css" rel="stylesheet" type="text/css" />` 这行 HTML 代码，其中 href 属性指定了 css 文件的位置，rel 和 type 属性是固定写法。
+
+这里有一个问题，如果我们在一个 HTML 里同时使用了这三种写法来修饰相同的元素，会按照那种写法为准？答案是根据优先级决定，默认情况下 **内联式 > 嵌入式 > 外部式**；
+
+之所以说是默认情况，主要有两种意外：
+- 如果外部式的 `<link>` 标签存在于嵌入式的 `<style>` 标签后面，那么 `<link>` 的优先级会大于 `<style>`，不过实际工程中一般都会先写 `<link>`；
+- CSS 有权值的概念，这会在之后介绍；
+
+### 选择器
+
+之前我们介绍的选择器只是标签选择器，它的优势在于可以一次性设置所有同类型标签的样式，其实选择器不只它一种：
+- 标签选择器：设置所有同类型标签的样式；
+- 类选择器：设置指定类标签的样式；
+- ID 选择器：设置指定 id 标签的样式，id 在整个 HTML 中是唯一的，但 class 可以指定到多个标签上；
+- 子选择器：可以选择指定标签的 **第一代** 子元素；
+- 包含选择器：可以选择指定标签的 **所有** 子元素；
+- 通用选择器：可以选择所有标签；
+
+#### 类选择器
+
+类选择器设置的是某个类的效果，这些类需要提前设置到标签上面：
+
+{% highlight HTML %}
+<span class="address">挪威国布宜诺斯艾利斯市</span>
+{% endhighlight %}
+
+设置了类之后，就可以在 css 代码中为 address 这个类来设定样式了：
+
+{% highlight CSS %}
+.address {
+    color:red;
+    font-size:14px;
+}
+{% endhighlight %}
+
+如此一来，所有设置了 address 类的元素都会被设为红色；
+
+#### ID 选择器
+
+ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很像，不同之处在于 id 在整个 HTML 文件中是唯一的，而 class 则可以设定到多个标签上；
+
+{% highlight HTML %}
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>认识html标签</title>
+        <style type="text/css">
+        #stress{
+            color:red;
+        }
+        </style>
+    </head>
+    <body>
+        <h1>勇气</h1>
+        <p>三年级时，我还是一个<span id="stress">胆小如鼠</span>的小女孩，上课从来不敢回答老师提出的问题，生怕回答错了老师会批评我。就一直没有这个勇气来回答老师提出的问题。学校举办的活动我也没勇气参加。</p>
+    </body>
+</html>
+{% endhighlight %}
+
+写法上的不同之处在于标签的属性是 id 而不是 class, 同时 css 里选择器的格式是 `#选择器` 而不是 `.选择器`；
+
+类选择器 和 ID 选择器还有一个不同在于，你可以为同一个标签设置多个类，但不能设置多个 id:
+
+{% highlight HTML %}
+.stress{
+    color:red;
+}
+.bigsize{
+    font-size:25px;
+}
+<p>到了<span class="stress bigsize">三年级</span>下学期时，我们班上了一节公开课...</p>
+{% endhighlight %}
+
+上面代码中为 `<span>` 标签设置了两个类 stress, bigsize;
+
+#### 子选择器
+
+选择指定标签下的第一代子元素；
+
+语法形如 `.food>li{border:1px solid red;}`， `.food>li` 将 food 类下所有的 第一代 li 子元素设置为红色边框；
+
+#### 包含选择器
+
+选择指定标签下的所有子元素(不只第一代)；
+
+语法形如 `.food li{border:1px solid red;}`, `.food li` 将 food 类下所有 li 元素设置为红色边框；
+
+与子选择器的不同之处在于使用空格而非 `>` 符号来选择；
+
+{% highlight HTML %}
+<!DOCTYPE HTML>
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>后代选择器</title>
+        <style type="text/css">
+            .food li{
+                border:1px solid red;/*添加边框样式（粗细为1px， 颜色为红色的实线）*/	
+            }
+        </style>
+    </head>
+    <body>
+        <ul class="food">
+            <li>水果
+                <ul>
+                    <li>香蕉</li>
+                    <li>苹果</li>
+                    <li>梨</li>
+                </ul>
+            </li>
+            <li>蔬菜
+                <ul>
+                    <li>白菜</li>
+                    <li>油菜</li>
+                    <li>卷心菜</li>
+                </ul>
+            </li>
+        </ul>
+    </body>
+</html>
+{% endhighlight %}
+
+在上述例子中，如果使用的是子选择器，则之后 food 类下第一代子元素 `<li>水果</li>` 和 `<li>蔬菜</li>` 会被选择，而使用后代选择器则将选择 food 类下所有的 `li` 元素；
+
+#### 通用选择器
+
+通用选择器的功能非常粗暴，它直接选择所有元素：
+
+语法形如 `* { color:red; }`;
+
+#### 伪类选择符
+
+这种选择符可以为标签的某种状态设置样式，比如 `a:hover { color:red; font-size:20px; }` 会设置 `<a>` 标签 hover 时超链接的样式；
+
+目前浏览器兼容最通用的是 `a:hover` 这种伪类选择器，像 `p:hover` 原理上也是可以的，但浏览器支持并不完善；
+
+#### 分组选择符
+
+你可以把多个选择器合在一起写：
+
+{% highlight CSS %}
+h1,span{color:red;}
+{% endhighlight %}
+
+上述代码等价于：
+
+{% highlight CSS %}
+h1{color:red;}
+span{color:red;}
+{% endhighlight %}
 
 
