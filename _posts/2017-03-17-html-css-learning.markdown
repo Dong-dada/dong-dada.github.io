@@ -408,3 +408,81 @@ CSS 中用于文字排版的属性有：
 - word-spacing : 每个英文单词之间的距离，例如 `p {word-spacing:50px;}`；
 - text-align : 设定 **块状元素** 中文本、图片的对齐形式，可以为 left, center, right, 例如 `h1 {text-aligh:center;}` 将使标题居中；块状元素的定义将在之后讲解。
 
+### CSS 盒模型
+
+#### HTML 元素分类
+
+在 HTML 中，元素大致分为三种类型：
+- 块状元素，包括： `<div>, <p>, <h1>...<h6>, <ol>, <ul>, <dl>, <table>, <address>, <blockquote>, <form>`
+- 内联元素(又叫行内元素)，包括：`<a>, <span>, <br>, <i>, <em>, <strong>, <label>, <q>, <var>, <cite>, <code>`
+- 内联块状元素，包括：`<img>, <input>`
+
+块状元素的特点：
+1. 每个块级元素都从新的一行开始，并且其后的元素也另起一行，换句话说，块级元素独占一行；
+2. 元素的宽、高、行高、顶和底边距都可以设置；
+3. 元素宽度在不设置的情况下，是它父容器宽度的 100%；
+
+注意：**可以用 CSS 将内联元素设置为块元素** 形如：`a {display:block;}`;
+
+内联元素的特点：
+1. 和其它元素都在同一行上；
+2. 元素的高度、宽度以及顶部和底部边距不可以设置；
+3. 元素的宽度就是它包含的文字或图片的宽度，不可改变；
+
+注意：**可以用 CSS 将块元素设置为内联元素** 形如： `div {display:inline;}`;
+
+内联块状元素的特点：
+1. 和其它元素都在同一行上；
+2. 元素的高度、宽度、行高、以及顶和底边距都可以设置；
+
+注意：**可以用 CSs 将块元素或内联元素设置为内联块状元素** 形如： `div {display:inline-block;}`;
+
+#### 盒模型
+
+盒模型也就是 margin, pandding, border 这套玩意儿，这里就不细说了，很容易理解的；
+
+需要注意的是盒模型只适用于 块级元素，例如 div,p,h1,table,form 这些；
+
+下面逐个介绍盒模型的每个属性可以应用哪些 CSS 样式：
+
+border:
+- border-width: 边框宽度，以 px 为单位；
+- border-style: 样式，常见的有 dashed(虚线), dotted(点线), solid(实线)；
+- border-color: 颜色，可以是 red,green 等内置颜色，也可以是 16 进制颜色值例如 #888；
+
+这些样式可以简化为形如 `div {border:2px solid #123;}` 的形式，等价于 `div {border-width:2px; border-style:solid; border-color:#123;}`
+
+CSS 还允许只设置某条边的样式，形如 `div {border-top:1px solid red;}`
+
+注意：CSS 里有宽高的属性 width,height, **这两个属性是不包括 margin,pandding,border 的，它表示的是内容物的宽度**。一个元素所占的尺寸，需要通过 width/height + margin, border, padding 来计算得出。
+
+pandding:
+- pandding 只能应用边框宽度这一个属性，同 border 一样，它也可以各自定义每一条边的宽度，并且它可以简写为 `div {pandding:10px 20px 30px 40px;}`。
+
+margin:
+- margin 只能应用边框宽度这一个属性，它也可以定义每一条边的宽度，并且它可以简写为 `div {margin:10px 20px 30px 40px;}`;
+
+### 布局模型
+
+在网页中，有三种布局模型：
+1. flow 流动模型；
+2. float 浮动模型；
+3. layer 层模型；
+
+下面逐个介绍这三种布局模型：
+
+flow:
+- 流动模型是默认的模型，这种模型非常简单：每个块状元素都各自独占一行，从上到下排列，每个内联元素都在当前行上，从左到右排列；
+
+float:
+- 我们可以使用 CSS 代码将任何元素定义为浮动，形如：`div {float:left;}`, 这一操作会导致 div 不再独占一行，而是浮动起来，让其他元素可以跟他这个 div 后面；
+- float 还可以定义为 `float:right` 这样后面的其他元素会跟在这个 div 左侧排列；
+
+layer:
+- 层模型有三种形式：
+    - position:absolute 绝对定位；
+    - position:relative 相对定位；
+    - position:fixed 固定定位；
+
+
+
