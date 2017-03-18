@@ -323,4 +323,88 @@ h1{color:red;}
 span{color:red;}
 {% endhighlight %}
 
+### CSS 的继承、层叠、和特殊性
+
+#### CSS 的继承
+
+CSS 的某些样式是有继承性的，这里继承的意思是说这个样式不仅会应用到选择的元素上，还会应用到它的子元素上。比如下面的代码中，CSS 的颜色样式不仅会应用到 p 标签，它的子标签 span 也会应用：
+
+{% highlight CSS %}
+p {
+    color:red;
+    border: 1px solid green;
+}
+
+<p>哈哈哈哈<span>呵呵呵呵</span></p>
+{% endhighlight %}
+
+但有些 CSS 样式并不具有继承性，例如上述例子中的 border 属性，不会被 span 标签所继承。
+
+#### CSS 的权值
+
+如果我们为同一个标签设置了不同的 CSS 样式代码。这种时候会采用哪一个呢？
+
+{% highlight CSS %}
+p { color:red; }
+.first { color:green; }
+
+<p class="first">哈哈哈哈<span>呵呵呵呵</span></p>
+{% endhighlight %}
+
+答案是会采用 `.first` 样式，这是因为 CSS 样式代码是有权值的，同时出现的情况下会使用权值高的那一个。
+
+权值的规则为：标签的权值为 1, 类选择器的权值为 10, ID 选择器的权值为 100. 例如下面的代码：
+
+{% highlight CSS %}
+p {color:red;} /* 权值为 1 */
+p span{color:green;} /* 权值为 1+1=2 */
+.warning{color:blue;} /* 权值为 10 */
+p span.warning{color:white;} /* 权值为 1+1+10=12 */
+#footer .note p{color:black} /* 权值为 100+10+1=111 */
+{% endhighlight %}
+
+可以看到使用包含选择器时权值需要相加。
+
+#### CSS 的层叠
+
+如果有相同权值的 CSS 作用到同一个元素上，这时候会采用哪一个呢？
+
+{% highlight CSS %}
+p {color:red;}
+p {color:green;}
+{% endhighlight %}
+
+答案是会采用后一个，层叠的意思就是说当有相同权值的 CSS 作用在同一个元素上时，会采用后一个覆盖前一个的样式，也就是说，会采用最后一个 CSS 样式来装饰元素。
+
+这也就解释了之前所说的不同 CSS 优先级的顺序为什么是 内联式>嵌入式>外部式；其实只是后面的属性覆盖了前面而已；
+
+#### !important 标识符
+
+有的时候我们希望某个 CSS 样式无法被其他人覆盖，也不会因为权值或者用户的设置而被修改。这时候可以使用 `!important` 标识符来修饰这个样式：
+
+{% highlight HTML %}
+p {color:red!important;}
+p.first {color:green;}
+
+<p class="first">哈哈哈啊</p>
+{% endhighlight %}
+
+这时候虽然 p.first 的样式权值比较高，并且位于 p 样式的后面，但仍然会使用红色样式，因为这个样式被指定为 important.
+
+另外还有一点需要说明，用户可以自己修改网页的样式，比如调大字号等，一般情况下 **用户自己设置的样式>网页中指定的样式>浏览器默认的样式**，但 important 样式比这些级别都要高。
+
+### CSS 格式化排版
+
+CSS 中用于文字排版的属性有：
+- font-family : 字体；
+- font-size : 字号，以 px 为单位；
+- color : 颜色，可以使用 red,green 等默认颜色，也可以使用 #666 这样的色值；
+- font-weight : 字体粗细，可以设置为 normal, bold, bolder, lighter
+- font-style : 可以设置 normal, italic(斜体), oblique(倾斜);
+- text-decoration : 可以设置文本上的线，包括 none, underline(下划线), overline(上划线), line-through(删除线), blink(文本闪烁)；
+- text-indent : 设置文字行首的空白，例如 `p { text-indent:2em; }` 表示每个段落行首都留两个字的空白，其中 2em 表示两个字的宽度；
+- line-height : 行间距，例如 `p {line-height:1.5em; }` 表示段落中每行之间的距离是 1.5 个字的高度；
+- letter-spacing : 每个字母或中文字之间的距离，例如 `p {letter-spacing:50px;}`；
+- word-spacing : 每个英文单词之间的距离，例如 `p {word-spacing:50px;}`；
+- text-align : 设定 **块状元素** 中文本、图片的对齐形式，可以为 left, center, right, 例如 `h1 {text-aligh:center;}` 将使标题居中；块状元素的定义将在之后讲解。
 
