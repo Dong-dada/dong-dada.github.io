@@ -402,7 +402,7 @@ CSS 中用于文字排版的属性有：
 - font-family : 字体；
 - font-size : 字号，以 px 为单位；
 - color : 颜色，可以使用 red,green 等默认颜色，也可以使用 #666 这样的色值；
-- font-weight : 字体粗细，可以设置为 normal, bold, bolder, lighter
+- font-weight : 字体粗细，可以设置为 normal, bold, border, lighter
 - font-style : 可以设置 normal, italic(斜体), oblique(倾斜);
 - text-decoration : 可以设置文本上的线，包括 none, underline(下划线), overline(上划线), line-through(删除线), blink(文本闪烁)；
 - text-indent : 设置文字行首的空白，例如 `p { text-indent:2em; }` 表示每个段落行首都留两个字的空白，其中 2em 表示两个字的宽度；
@@ -460,7 +460,7 @@ CSS 还允许只设置某条边的样式，形如 `div {border-top:1px solid red
 注意：CSS 里有宽高的属性 width,height, **这两个属性是不包括 margin,pandding,border 的，它表示的是内容物的宽度**。一个元素所占的尺寸，需要通过 width/height + margin, border, padding 来计算得出。
 
 pandding:
-- pandding 只能应用边框宽度这一个属性，同 border 一样，它也可以各自定义每一条边的宽度，并且它可以简写为 `div {pandding:10px 20px 30px 40px;}`。
+- pandding 只能应用边框宽度这一个属性，同 border 一样，它也可以各自定义每一条边的宽度，并且它可以简写为 `div {pandding:10px 20px 30px 40px;}`，需要注意的 **边的顺序并不是 ltrb 而是 trbl 是从 t 开始顺时针排列的**。
 
 margin:
 - margin 只能应用边框宽度这一个属性，它也可以定义每一条边的宽度，并且它可以简写为 `div {margin:10px 20px 30px 40px;}`;
@@ -478,14 +478,136 @@ flow:
 - 流动模型是默认的模型，这种模型非常简单：每个块状元素都各自独占一行，从上到下排列，每个内联元素都在当前行上，从左到右排列；
 
 float:
-- 我们可以使用 CSS 代码将任何元素定义为浮动，形如：`div {float:left;}`, 这一操作会导致 div 不再独占一行，而是浮动起来，让其他元素可以跟他这个 div 后面；
+- 我们可以使用 CSS 代码将任何元素定义为浮动，形如：`div {float:left;}`, 这一操作会导致 div 不再独占一行，而是浮动起来，让其他元素可以跟在这个 div 后面；
 - float 还可以定义为 `float:right` 这样后面的其他元素会跟在这个 div 左侧排列；
+- float 属性可以实现文本环绕图片的效果；
 
 layer:
 - 层模型有三种形式：
-    - position:absolute 绝对定位；
-    - position:relative 相对定位；
-    - position:fixed 固定定位；
+    - position:absolute 绝对定位。这种方式会把对应的元素从文档流中拖出来，它的位置不再是从上到下或从左到右，而是一个相对于父元素的位置，同时由于它已经脱离了原来的文档流，就相当于它不存在了一样，它随后的元素会替代它之前的位置；
+    - position:relative 相对定位。这种方式 **不会** 把对应的元素从文档流中拖出来，它的新位置是相对于原位置的偏移，但原位置上还残留了一个虚像，它随后的元素会跟着它之前的位置进行从上到下或从左到右的排列。
+    - position:fixed 固定定位。这种方式与 absolute 方式类似，它也会把对应的元素从文档流中拖出来，所不同的是，**它的位置是相对于整个页面窗口的**，即使滚动条滚动，它的位置也不会发生改变。
+
+下面我们看一下 layer 模型下三种形式的具体代码和效果：
+
+下面是绝对定位的效果：
+![absolute 绝对定位的效果]({{ site.url }}/asset/css-layer-absolute.png)
+
+下面是相对定位的效果：
+![relative 相对定位的效果]({{ site.url }}/asset/css-layer-relative.png)
+
+下面是固定定位的效果：
+![fixed 固定定位的效果]({{ site.url }}/asset/css-layer-fixed.png)
+
+另外，上述几种形式是可以混用的，从而实现复杂的页面效果。但需要注意的是, absolute 默认情况下是相对于 HTML 最外层 body 的位置，如果你希望它能够相对于其他元素来设定位置，那么你需要把父元素设定上 `position:relative` 样式：
+
+{% highlight HTML %}
+<div id="box1" style="position:relative; border:1px solid red; width:100px; height:100px" >
+    <div id="box2" style="position:absolute; left:10px; top:20px; border:1px solid green; width:100px; height:100px"></div>
+</div>
+{% endhighlight %}
+
+这样就可以实现 box2 相对于父元素 box1 的左上角偏移一定距离的效果了。
+
+需要注意的是，如果元素有多个层级，那么子元素在这是 absolute 位置时，所对应的参照物，是它前辈元素中最近的那个具有 relative 样式的元素。例如下面的代码：
+
+{% highlight HTML %}
+<div id="box1" style="position:relative;">
+    <div id="box2">
+        <div id="box3" style="position:absolute;"></div>
+    </div>
+</div>
+{% endhighlight %}
+
+由于 box2 没有设置 relative 样式，因此 box3 的参照物是设置了 relative 的 box1.
+
+
+### CSS 中的单位和值
+
+#### 颜色值
+
+CSS 中设置颜色值有如下几种方法：
+- 内置颜色：形如 `p{color:red;}`;
+- RGB 颜色：形如 `p{color:rgb(123,233,100);}` 其中的数字是 0~255，也可以是百分数，形如：`p{color:rgb(1%, 50%, 40%);}`；
+- 十六进制颜色：形如 `p{color:#00ffff;}`
+
+下面是颜色表，可以方便地选取颜色：
+
+![RGB 颜色表]({{ site.url }}/asset/css-color-table.jpg)
+
+#### 长度值
+
+CSS 中设置元素或文字长度常用的单位有以下几种：
+- px: 像素，CSS 假设 90 像素 = 1 英寸；
+- em: 代表了本元素的 font-size 值，比如 `p {font-size:12px; text-indent:2em; }` 设定了 font-size 是 12px, 那么 1em=12px. 如果你直接把 em 设定到了 font-size 上，那么 em 是以父元素的 font-size 为准的；
+- 百分比: 这个比较难懂，不确定到底是父元素的百分比，还是本元素的百分比；
+
+### CSS 中的居中
+
+居中又分为水品居中和垂直居中。
+
+#### 水平居中
+
+水平居中是一个很常见的需求，这里我们需要分两种情况来讨论。一种是行内元素，另一种是块状元素。
+
+对于行内元素(a, img) 而言，由于它自身的宽高都是固定的，所以你需要对他的父元素设定 `text-align:center` 样式来达到本身居中的效果：
+
+{% highlight HTML %}
+<div style="text-align:center">
+    <a href="http://www.baidu.com">点这里</a>
+</div>
+{% endhighlight %}
+
+对于块状元素(div, table) 而言，有以下方法可以做到水平居中：
+
+比较简单的一种方法是给块状元素设定一个固定的长度，然后设置它的水平方向上的 margin 为 auto, 形如：`<div style="width=200; margin:20px auto;"></div>`。由于水平方向上的 margin 是自动调节的，这时候块状元素会自动居中。这种方法的原理在于给块状元素一个固定的宽度，剩下的 margin 由它自己来适应；
+
+上述方法对于某些宽度不确定的块状元素就不适应了。默认情况下块状元素会占领一整行的宽度，这时候即使设定了 `margin:0 auto` 也不会实现居中效果。我们称这种没有设定具体 width 的块状元素为 不定宽块状元素。
+
+对于不定宽块状元素而言，有以下方法可以实现水平居中效果：
+- 我们可以用一个 table 标签来包裹目标标签，然后对 table 标签进行 `margin:0 auto` 设定来完成水平居中的效果。其原理是 table 标签具有长度自适应的特性，它的宽度不会延展为父 body 的宽度，而是与内容的大小保持一致。这样就可以设置 `margin:0 auto` 了，形如 `<table style="margin:0 auto;><tbody><tr><td> <div>设置居中</div> </tbody></table>`。
+- 将元素的 `display` 属性修改为 `inline`，接着就可以像行内属性一样为它的父元素设置 `text-align:center` 来实现自身居中的效果了。
+
+
+## Tips
+
+### CSS 中的代码简写
+
+我们之前介绍盒模型的时候已经说过 margin,border,padding 都可以写成简写形式，书写的顺序是 trbl 也就是顺时针从 t 开始数；需要注意的是，如果 l 和 r 一样，t 和 b 一样，那么可以进一步缩写成只有两个数字，例如 `p p{margin:10px 20px 10px 20px;}` 可以简写成 `p{margin:10px 20px;}`
+
+此外我们一般用 `#123456` 这样的颜色值来表示 RGB 色彩，如果每两位的数字一样，可以简写为一个，例如 `#112233` 可以简写为 `#123` ；
+
+我们之前介绍了许多设置字体的代码，例如：
+
+{% highlight CSS %}
+body{
+    font-style:italic;
+    font-variant:small-caps; 
+    font-weight:bold; 
+    font-size:12px; 
+    line-height:1.5em; 
+    font-family:"宋体",sans-serif;
+}
+{% endhighlight %}
+
+上述代码可以简写为：
+
+{% highlight CSS %}
+body{
+    font:italic  small-caps  bold  12px/1.5em  "宋体",sans-serif;
+}
+{% endhighlight %}
+
+需要注意的是 `font-size` 和 `line-height` 之间要用 `/` 而不是空格来分隔；
+
+上述一些属性我们可以省略，一般中文网站会写为如下形式：
+
+{% highlight CSS %}
+body{
+    font:12px/1.5em  "宋体",sans-serif;
+}
+{% endhighlight %}
+
 
 
 
