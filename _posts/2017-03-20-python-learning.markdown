@@ -504,3 +504,197 @@ def fact_iter(num, product):
 ```
 
 上述代码符合尾递归的定义方法，可惜的是 python 的解释器没有对尾递归做出优化，也会导致栈溢出；
+
+
+## 高级特性
+
+### 切片
+
+取 list 或 tuple 中一部分元素是一个非常常见的操作。比如一个 list 如下：
+
+```py
+students = ['Machael', 'Sarah', 'Tracy', 'Bob', 'Jack']
+```
+
+你想取其中的前三个元素，该怎么取呢？很直观可以想到使用 `for...in ` 循环来取。但这样代码有点多。
+
+python 提供了 slice 操作符，能大大简化这种操作。例如：
+
+```
+# 取前三个元素
+somebody = students[0:3]
+
+# 从索引 1 开始，取到索引 3 (4-1)
+somebody = students[1:4]
+
+# 如果第一个索引是 0，可以省略，例如取前 5 个元素
+somebody = student[:5]
+
+# 取倒数两个元素
+somebody = students[-2:]
+
+# 还支持每隔 n 隔取一个
+somebody = students[::5]
+
+# 取所有元素，相当于复制
+somebody = students[:]
+
+# 字符串也可是使用切片操作
+sub_str = 'ABCDEFG'[:3]
+sub_str = 'ABCDEFG'[::2]
+```
+
+### 迭代
+
+迭代 dict 时，默认迭代的是 key, 可以通过 itervalues, iteritems 来获取 value:
+
+```py
+for key in d:
+    print key
+
+for value in d.itervalues():
+    print value
+
+for key, value in d.iteritems():
+    print key value
+```
+
+在 python 中，只要一个对象是可迭代对象，就可以用 `for...in` 的方式进行迭代。
+
+```py
+# string 也是可迭代对象
+str = 'ABC'
+for ch in str:
+    print ch
+```
+
+要判断一个对象是否可迭代，可以通过 collections 模块的 Iterable 类型来判断：
+
+```py
+from collection import Iterable
+
+if isinstance('abc', Iterable) :
+    # ...
+```
+
+### 列表生成式
+
+之前我们提过，使用 range 方法可以生成整数序列：
+
+```py
+# 生成 1~10 整数序列
+numbers = range(1, 11)
+```
+
+基于 range 方法，列表生成式可以生成更加复杂的序列：
+
+```py
+# 生成 1*1, 2*2, 3*3 ... 10*10 list
+[x*x for x in range(1, 11)]
+```
+
+把要生成的元素 x*x 放到前面，后面跟 for 循环，就可以把 list 生成出来，非常方便。
+
+上述方法还可以嵌套使用，生成全排列：
+
+```py
+# 生成 ABC/ABC 的全排列
+print [m + n for m in 'ABC' for n in 'ABC']
+# ['AX', 'AY', 'AZ', 'BX', 'BY', 'BZ', 'CX', 'CY', 'CZ']
+```
+
+运用列表生成式，可以写出非常简洁的代码。例如：
+
+```py
+# 列出当前目录下所有文件和文件名
+import os
+file_names = [dir for dir in os.listdir('.')]
+```
+
+列表生成式还可以利用 for 循环可以遍历 key,value 的特点，把 dict 中的 key,value 都记录到 list 中：
+
+```py
+d = {'x': 'A', 'y': 'B', 'z': 'C' }
+print [k + '=' + v for k, v in d.iteritems()]
+# ['y=B', 'x=A', 'z=C']
+```
+
+下述代码把 list 中所有字符串变成小写
+
+```py
+L = ['Hello', 'World', 'IBM', 'Apple']
+print [s.lower() for s in L]
+# ['hello', 'world', 'ibm', 'apple']
+```
+
+### 生成器
+
+之前的列表生成器，生成的是整个列表，有可能我们暂时需要的仅仅是列表的前面几个元素，后面的用到了再生成可以节约内存。python 提供了生成器这项功能，可以逐个生成，避免一次性生成所有元素：
+
+```py
+# 只需要把之前的 [] 换成 (), 就能变成生成器：
+generator = (x*x for x in range(1, 11))
+
+# 通过 next 生成下一个结果
+print generator.next()
+# 0
+```
+
+生成器可以使用 `for...in` 来迭代：
+
+```py
+for num in generator:
+    print num
+```
+
+抽象点说，生成器保存的是一种算法，每次调用 next, 就会返回下一个元素的值，没有更多元素时，抛出 StopIteration 错误。
+
+如果推算的方式比较复杂，使用列表生成式的循环方式写不出来的话，我们可以自己来定义一个生成式，例如下面的代码定义了一个斐波那契数列生成式：
+
+```py
+def fib(max):
+    n, a, b = 0, 0, 1
+    while n < max:
+        yield b # 注意这个 yield 操作符
+        a, b = b, a+b
+        n = n+1
+
+# fib(6) 是一个生成器
+generator = fib(6)
+
+for num in generator:
+    print num
+```
+
+注意上述代码中的 yield 操作符，就是它让 fib 这个函数变成了一个生成器。此时的 fib(6) 是一个能生成 1~6 斐波那契数列的生成器，每次调用 next 时，生成器都会执行，执行到 `yield b` 这一句之后返回。再次调用 next 时，会从 yield 的位置接着执行。
+
+例如下面的例子：
+
+```py
+def odd():
+    print 'step 1'
+    yield 1
+    print 'step 2'
+    yield 3
+    print 'step 3'
+    yield 5
+
+o = odd()
+print o.next()
+# step 1
+# 1
+
+print o.next()
+# step 2
+# 3
+
+print o.next()
+# step 3
+# 5
+
+print o.next()
+#Traceback (most recent call last):
+#  File "<stdin>", line 1, in <module>
+#StopIteration
+```
+
