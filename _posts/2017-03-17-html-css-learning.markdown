@@ -567,6 +567,28 @@ CSS 中设置元素或文字长度常用的单位有以下几种：
 对于不定宽块状元素而言，有以下方法可以实现水平居中效果：
 - 我们可以用一个 table 标签来包裹目标标签，然后对 table 标签进行 `margin:0 auto` 设定来完成水平居中的效果。其原理是 table 标签具有长度自适应的特性，它的宽度不会延展为父 body 的宽度，而是与内容的大小保持一致。这样就可以设置 `margin:0 auto` 了，形如 `<table style="margin:0 auto;><tbody><tr><td> <div>设置居中</div> </tbody></table>`。
 - 将元素的 `display` 属性修改为 `inline`，接着就可以像行内属性一样为它的父元素设置 `text-align:center` 来实现自身居中的效果了。
+- 给父元素设置 `float:left`, 让它悬浮起来，然后设置 `position:relative`, `left:50%` 让父元素相对于原位置偏移到中间；接着子元素设置 `position:relative` 和 `left:-50%` 来实现水平居中；
+
+#### 垂直居中
+
+对于单行文本而言，设置垂直居中非常简单，只需要将父元素的 height 和 `line-height` 属性设为一致就可以了，形如：`<div style="height:100px; line-height:100px;"> <p>哈哈哈哈</p> </div>`
+
+对于多行文本而言，你可以借助 table 的 `vertical-align:middle` 属性来实现，形如：
+
+```
+<body>
+<table><tbody><tr><td style="height:300px; background:#333;">
+<div>
+    <p>看我是否可以居中。</p>
+    <p>看我是否可以居中。</p>
+    <p>看我是否可以居中。</p>
+    <p>看我是否可以居中。</p>
+</div>
+</td></tr></tbody></table>
+</body>
+```
+
+上述代码实际上是把我们的多行文本当做表格的一个表项 (table-cel) 来实现的，在 IE8 以上可以设置 `display:table-cell` 属性来表示。
 
 
 ## Tips
