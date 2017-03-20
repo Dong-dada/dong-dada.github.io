@@ -305,3 +305,202 @@ for k, v in d.iteritems():
 
 
 ## 函数
+
+### 内置函数
+
+你可以去 [这里](https://docs.python.org/2/library/functions.html) 查看 python 内置函数的列表。
+
+以下函数可以用于数据类型转换：
+
+```python
+>>> int('123')
+123
+>>> int(12.34)
+12
+>>> float('12.34')
+12.34
+>>> str(1.23)
+'1.23'
+>>> unicode(100)
+u'100'
+>>> bool(1)
+True
+>>> bool('')
+False
+```
+
+### 定义函数
+
+定义函数需要使用 def 操作符：
+
+```python
+def my_abs(x) : # 注意这里要加冒号
+    if x >= 0:
+        return x
+    else:
+        return -x
+```
+
+检查传入参数的类型可以使用 `isinstance()` 函数：
+
+```py
+def my_abs(x) :
+    if not isinstance(int, float):
+        raise TypeError('bad oper and type') # 抛异常，以后会介绍
+    if x >= 0:
+        return x
+    else:
+        return -x
+```
+
+python 中的函数可以有多个返回值：
+
+```
+import math
+
+def move(x, y, step, angle = 0):
+    nx = x + step * math.cos(angle)
+    ny = y - step * math.sin(angle)
+    return nx, ny
+
+x, y = move(100, 10, 60, math.pi / 6)
+print x, y
+```
+
+实际上这时候返回的是一个 tuple, python 提供了语法糖可以同时接受多个结果。
+
+如果你希望一个函数什么都不做，可以用 `pass` 语句:
+
+```py
+def foo():
+    # 暂时 pass, 以后对应代码
+    pass
+```
+
+对于 if, elif, else 也可以使用 `pass`：
+
+```py
+if age > 60:
+    pass
+```
+
+函数在 python 中是第一类值，可以存储到变量中：
+
+```py
+a = abs
+print a(-1)
+```
+
+### 函数的参数
+
+python 中函数的参数可以有默认值：
+
+```py
+def power(x, n=2): 
+    sum = 1
+    while n > 0:
+        n = n - 1
+        sum = sum * x
+    return sum
+```
+
+有默认值的参数必须放到参数列表后面；
+
+要注意参数的默认值必须是不可变的值，而不能是 list 等可变值，下面的代码在多次调用时会出现错误：
+
+```py
+def add_end(list_param = [])
+    list_param.append('END')
+    return list_param
+
+print add_end() # END
+print add_end() # END, END 
+```
+
+这是因为默认参数也是一个变量，如果你不断调用，那么会不断操作同一个变量。所以要注意默认参数最好是不可变的值，避免引起意外错误。
+
+python 中可以传递可变参数：
+
+```py
+def calc(*numbers):
+    sum = 0
+    for num in numbers:
+        sum = sum + num
+    return sum
+
+# 传入多个参数
+print calc(1, 2, 3, 4)
+
+# 如果参数是 list 或 tuple, 可以在参数前加一个 * 来传入
+numbers = [1, 2, 3, 4, 5]
+print calc(*numbers)
+```
+
+python 中的可变参数实际上是通过 tuple 来实现的，python 自动帮你把传入的多个参数转换为一个 tuple。
+
+python 中还提供了一种叫做关键字参数的用法，这种参数类似于 dict：
+
+```py
+def person(name, age, **kw):
+    print name, age, kw
+
+person('Dongdada', 18, city='hangzhou') # 输出 Dongdada 18 {'city': 'Beijing'}
+
+def student(name, age, **info):
+    # 关键字参数实际上是一个 dict, 可以直接使用
+    for key, value in info:
+        print key value
+
+#类似的，你可以把 dict 当做关键字参数直接传进去，只需在参数前加两个 *
+info = {'city'='hangzhou'}
+student('Dongdata', 18, **info)
+```
+
+关键字参数的作用在于它可以扩展函数的功能。
+
+上述几种参数可以组合使用，其先后顺序必须是： 必选参数、默认参数、可变参数、关键字参数。
+
+```py
+def func(a, b, c=0, *args, **kw):
+    print 'a =', a, 'b =', b, 'c =', c, 'args =', args, 'kw =', kw
+```
+
+如果某一项参数没有填，python 会自动填充为空的 tuple 或 dict:
+
+```py
+>>> func(1, 2)
+a = 1 b = 2 c = 0 args = () kw = {}
+>>> func(1, 2, c=3)
+a = 1 b = 2 c = 3 args = () kw = {}
+>>> func(1, 2, 3, 'a', 'b')
+a = 1 b = 2 c = 3 args = ('a', 'b') kw = {}
+>>> func(1, 2, 3, 'a', 'b', x=99)
+a = 1 b = 2 c = 3 args = ('a', 'b') kw = {'x': 99}
+```
+
+### 递归函数
+
+python 中可以定义递归函数： 
+
+```py
+def fact(n):
+    if n==1:
+        return 1
+    return n * fact(n - 1)
+```
+
+上述递归可能会导致栈溢出，解决栈溢出的方式是使用 尾递归优化，事实上尾递归和循环的效果是一样的。
+
+尾递归是指：在函数返回的时候，返回函数自身，并且 return 语句中不能包含表达式，这样编译器就可以对尾递归优化掉，不管递归都多少次，都使用同一个栈帧：
+
+```
+def fact(n):
+    return fact_iter(n, 1)
+
+def fact_iter(num, product):
+    if num == 1:
+        return product
+    return fact_iter(num - 1, num * product)
+```
+
+上述代码符合尾递归的定义方法，可惜的是 python 的解释器没有对尾递归做出优化，也会导致栈溢出；
