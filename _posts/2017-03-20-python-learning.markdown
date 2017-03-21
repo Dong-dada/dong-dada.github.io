@@ -1221,3 +1221,224 @@ def readImage(fp):
         return readData(fp)
     return None
 ```
+
+## 面向对象高级编程
+
+### 使用 __slots__
+
+在 python 中，我们可以对 类实例、类本身 的成员进行修改：
+
+```py
+class Student(object):
+    pass
+
+bart = Student()
+
+# 为 bart 这个实例新增一个成员变量 name
+bart.name = 'Bart'
+
+def print_name(self):
+    print self.name
+
+# 为 bart 这个实例新增一个成员函数 print_name
+bart.print_name = print_name
+
+def set_score(self, score):
+    self.score = score
+
+# 为 Student 类新增一个成员函数 set_score
+Student.set_score = set_score
+
+lisa = Student()
+lisa.set_score(100)
+```
+
+可以看到 python 不仅支持动态修改实例的成员，还支持动态修改类本身的成员。
+
+这个功能虽然很强大，但有可能引入我们不需要的成员，如果我们想要限制使用者不能随意添加成员，可以在定义类的时候添加一个特殊的变量 `__slots__`：
+
+```py
+class Student(object):
+    __slots__('name', 'score')
+    pass
+
+bart = Student()
+bart.age = 10 # 出错！不允许添加 age 成员
+```
+
+`__slots__` 限制了外部添加属性的能力，有了它之后外部只能添加固定的几个成员。
+
+### 使用 @property
+
+我们常常会在类中添加 get/set 方法，以便对类成员进行访问：
+
+```py
+class Student(object):
+    
+    def get_score(self)
+        return self.__score
+    
+    def set_score(self, score)
+        if not isinstance(score, int):
+            raise ValueError('score must be an integer!')
+        
+        if score < 0 or score > 100:
+            raise ValueError('score must between 0 ~ 100!')
+
+        self.__score = score
+```
+
+set 方法中常常会包括一些参数合法性检查，避免用户直接访问 `self.__score` 时输入不合法的数据。
+
+python 内置了一个叫做 `@property` 的装饰器，可以自动生成 get/set 方法，使得用户可以通过 `self.score` 来访问属性，同时又能有边界检查的功能：
+
+```py
+class Student(object):
+
+    @property
+    def score(self):
+        return self.__score
+    
+    @score.setter
+    def score(self, value)
+        if not isinstance(value, int):
+            raise ValueError('score must be an integer!')
+        
+        if value < 0 or value > 100:
+            raise ValueError('score must between 0 ~ 100!')
+
+        self.__score = value
+
+# 外部可以直接通过 self.score 属性来访问
+bart = Student()
+bart.score = 100
+bart.score = 9999 # 错误！'score must between 0 ~ 100!'
+```
+
+如果你没有定义 `@score.setter` 那么 score 就会变成一个只读属性。
+
+### 多重继承
+
+python 中的类也支持多重继承：
+
+```py
+class Runable(object):
+    pass
+
+class Flyable(object):
+    pass
+
+# 多重继承
+class Chicken(Animal, Runable, Flyable)
+    pass
+```
+
+可以看到 Chicken 多重继承了 Runable 和 Flyable 这两个基类。python 中的多重继承与 C++ 中的多重继承并无不同，特殊的地方在于这里可以使用一种叫 Mixin 的设计模式，如果我们希望为一个类添加更多的功能，就可以通过上述例子中的方法，只需要把这些功能的类添加到继承列表里就可以了。
+
+### 定制类
+
+我们之前介绍了 `__slots__` 这个函数。遇到这种形如 `__xxx__` 格式的函数需要注意，它们具有特殊的用途。python 的 class 还有许多这样具有特殊用途的函数。
+
+#### __str__
+
+自定义 `__str__` 函数可以让我们返回一个自定义的字符串，来标识这个 class:
+
+```py
+class Student(object):
+    def __init__(self, name):
+        self.name = name
+    def __str__(self)
+        return 'Student object (name : %s)' % self.name
+
+print Student('Tracy')
+# 输出： Student object (name : Tracy)
+```
+
+`__repr__` 函数的功能与 `__str__` 类似，它是给程序调试用的。
+
+#### __iter__
+
+自定义 `__iter__` 可以让类实例能够被 `for...in` 来遍历：
+
+```py
+class Fib(object):
+    def __init__(self):
+        self.a, self.b = 0, 1
+    
+    def __iter__(self):
+        return self # 实例本身就是迭代对象，所以返回自己
+    
+    def next(self):
+        self.a, self.b = self.b, self.a + self.b
+        if self.a > 100000:
+            raise StopIteration()
+        return self.a
+
+for n in Fib():
+    print n
+```
+
+#### __getitem__
+
+自定义 `__getitem__` 可以让类实例能够像 list 那样用下标取数据：
+
+```py
+class Fib(object):
+    def __getitem__(self, n):
+        if isinstance(n, int):
+            a, b = 1, 1
+            for x in range(n):
+                a, b = b, a + b
+            return a
+        if isinstance(n, slice): # 如果传入的是一个 slice, 那么需要支持切片
+            start = n.start
+            stop = n.stop
+            a, b = 1, 1
+            L = []
+            for x in range(stop):
+                if x >= start:
+                    L.append(a)
+                a, b = b, a + b
+            return L
+```
+
+#### __getattr__
+
+如果自定义了 `__getattr__` 方法，那么当使用者尝试访问一个不存在的属性时，可以返回一个我们自己定义的内容：
+
+```py
+class Student(object):
+
+    def __init__(self):
+        self.name = 'Michael'
+
+    def __getattr__(self, attr):
+        if attr=='score':
+            return 99
+        else:
+            raise AttributeError('\'Student\' object has no attribute \'%s\'' % attr)
+
+stu = Student()
+print stu.score # 输出 99
+```
+
+#### __call__
+
+如果自定义了 `__call__` 方法，那么使用者可以直接对实例调用方法：
+
+```py
+class Student(object):
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self):
+        print('My name is %s.' % self.name)
+
+stu = Student('Tracy')
+stu() # 输出 My name is Tracy.
+```
+
+### 使用元类
+
+这一节有点复杂，又不怎么会用到，这里先略过吧，具体可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/001386820064557c69858840b4c48d2b8411bc2ea9099ba000)
+
