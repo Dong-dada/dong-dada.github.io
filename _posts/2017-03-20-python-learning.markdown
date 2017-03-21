@@ -943,5 +943,159 @@ int16('1234566')
 
 ## 模块
 
+python 支持以模块的方式对代码进行管理。对于 python 而言，一个 .py 文件就是一个模块，我们可以使用 import 关键字来导入其他的 .py 文件：
+
+```py
+# my_module.py 文件
+
+# -*- coding: utf-8 -*-
+
+# 文档注释，任何模块代码的第一行字符串都被视为模块的文档注释
+' a test module '
+
+# 模块的作者
+__author__ = 'Dong dada'
+
+# 我们模块中的一个函数
+def foo():
+    print 'foo'
+```
+
+`my_module.py` 文件就是我们所编写的模块，现在我们看看怎么在别的文件中使用它：
+
+```py
+# test.py 文件
+
+# 导入 my_module 模块
+import my_module
+
+# 使用 my_module 模块中的 foo 函数
+my_module.foo()
+```
+
+可以看到模块的定义和使用都非常简单。
+
+这里需要考虑一个问题，如果我们的模块名 `my_module` 和别的模块冲突了怎么办？python 引入了按照目录来组织模块的方法，称为包(package). 我们需要把自己的模块放到一个文件夹中，例如`dongdada_modules`, 然后在这个文件夹中放入我们的 `.py` 模块文件：
+
+```
+dongdada_modules
+|
++-- __init__.py
+|
++-- my_module.py
+|
++-- abc.py
+```
+
+可以看到上述目录中还有一个 `__init__.py` 文件，它的作用是告诉 python 这个文件夹是一个 package. 这个文件可以使空文件，也可以包含一些代码，当使用者调用 `import dongdada_modules` 的时候，会导入 `__init__.py` 文件中的内容，用户这时候如果需要导入 `my_module.py`，需要在 import 的时候加上包名：`import dongdada_modules.my_module`。
+
+包的下面可以不只有一个文件夹，文件夹可以有多个层级，导入的时候按照层级来逐层导入。
+
+### 使用模块
+
+#### 别名
+
+导入模块时，可以使用别名，这样可以根据当前环境选择最合适的模块。比如 python 一般会提供 StringIO 和 cStringIO 这两个库，cStringIO 用 C 语言编写，速度更快，但不是所有的环境上都有这个库，这个时候就可以通过别名的方式先尝试导入 cStringIO, 如果导入失败则使用 StringIO:
+
+```py
+try:
+    import cStringIO as StringIO
+except ImportError:
+    import StringIO
+```
+
+通过别名的方式，不管我们导入的模块是 cStringIO 还是 StringIO, 后续的代码都能够正常工作。
+
+#### 作用域
+
+python 模块中定义的变量或函数，具有作用域的概念。对于普通的变量或函数而言，其作用域是公开的，如果你希望隐藏某些变量或函数，可以使用类似 `__xxx`, `_xxx` 这样的变量名可以表示该变量为非空开的变量，避免外部使用到它：
+
+值得注意的是，这只是一种编程风格，而不是一种强制要求，外部仍然可以访问到 `__xxx`, `_xxx` 这样的变量，只是使用者在访问它们时会了解到，这些变量是不应该去使用的。
+
+### 使用第三方模块
+
+在 python 中，安装第三方模块是通过 setuptools 这个工具来完成的。python 封装了两个 setuptools 工具： `easy_install` 和 `pip`, 官方推荐使用 `pip` 工具。你可在安装 python 环境时注意一下，勾选 pip 这个工具。
+
+python 下有一个非常强大的第三方库 python image library. 我们可以使用下述命令来下载安装它：
+
+```
+pip install PIL
+```
+
+安装完毕后，我们就可以在代码中使用它了：
+
+```py
+import Image
+
+img = Image.open('test.png')
+print img.format img.size img.mode
+
+# 生成图片的缩略图
+img.thumbnail((200, 100))
+img.save('thumb.jpg', 'JPEG')
+```
+
+上述代码在 64 位 windows 下会执行失败，这是因为 PIL 只提供了 32 位版本，你可以自行下载 PIL 的安装包来手动安装这个库。
+
+#### 模块搜索路径
+
+当我们试图加载模块时，python 会按照 当前目录-->内置模块目录-->第三方模块目录 这样的顺序来搜索模块。如果我们的模块没有在这些目录里，搜索就会失败。
+
+这些路径都记录在 `sys.path` 这个变量里面：
+
+```py
+import sys
+print sys.path
+
+# 输出
+# ['', 'C:\\Windows\\system32\\python27.zip', 'D:\\Python27\\DLLs', 'D:\\Python27\
+# \lib', 'D:\\Python27\\lib\\plat-win', 'D:\\Python27\\lib\\lib-tk', 'D:\\Python27
+#', 'D:\\Python27\\lib\\site-packages', 'D:\\Python27\\lib\\site-packages\\PIL']
+```
+
+我们可以通过修改这个路径来添加自己的模块路径。
+
+如果觉得修改 `sys.path` 不太好，也可以设置 `PYTHONPATH` 环境变量来添加。
+
+### 使用 __future__
+
+python 提供了 `__future__` 模块，可以把新版本的特性导入到当前版本。例如：
+
+```py
+# still running on Python 2.7
+
+from __future__ import unicode_literals
+
+print '\'xxx\' is unicode?', isinstance('xxx', unicode)
+print 'u\'xxx\' is unicode?', isinstance(u'xxx', unicode)
+print '\'xxx\' is str?', isinstance('xxx', str)
+print 'b\'xxx\' is str?', isinstance(b'xxx', str)
+
+# 输出如下：
+# 'xxx' is unicode? True
+# u'xxx' is unicode? True
+# 'xxx' is str? False
+# b'xxx' is str? True
+```
+
+`unicode_literals` 这个模块可以使用 python3.x 中关于字符串的新语法。在 python2.x 中，unicode 字符串前面需要加上 u, 普通的字符串不加 u. 而在 python3.x 中，字符串默认就是 Unicode 的，使用 `b'xxx'` 这样的形式来表示窄字节版本。
+
+类似的，在 python2.x 中，整数间的除法得到的结果也是整数，而在 python3.x 中，整数除法如果不能整除，得到的是一个浮点数：
+
+```py
+from __future__ import division
+
+print '10 / 3 =', 10 / 3
+print '10.0 / 3 =', 10.0 / 3
+print '10 // 3 =', 10 // 3
+
+# 输出如下：
+# 10 / 3 = 3.33333333333
+# 10.0 / 3 = 3.33333333333
+# 10 // 3 = 3
+```
+
+`//` 表示之前的 “地板除” 方式，得到的仍然是一个整数。
+
 
 
