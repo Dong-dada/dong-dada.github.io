@@ -8,6 +8,8 @@ categories: lang python
 * TOC
 {:toc}
 
+本文参考自 [廖雪峰的官方网站](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000)
+
 ## Python 基础知识
 
 ### 输入和输出
@@ -697,4 +699,249 @@ print o.next()
 #  File "<stdin>", line 1, in <module>
 #StopIteration
 ```
+
+
+## 函数式编程
+
+函数式编程就是一种抽象程度很高的编程范式，纯粹的函数式编程语言编写的函数没有变量，因此，任意一个函数，只要输入是确定的，输出就是确定的，这种纯函数我们称之为没有副作用。而允许使用变量的程序设计语言，由于函数内部的变量状态不确定，同样的输入，可能得到不同的输出，因此，这种函数是有副作用的。
+
+函数式编程的一个特点就是，允许把函数本身作为参数传入另一个函数，还允许返回一个函数！
+
+Python对函数式编程提供部分支持。由于Python允许使用变量，因此，Python不是纯函数式编程语言。
+
+### 高阶函数
+
+函数在 python 里是第一类值，它与普通的值比如 int, string 一样可以传递给变量、可以作为函数参数、可以作为返回值。
+
+例如下面的代码：
+
+```py
+# abs 只是一个变量，它存储的是计算绝对值函数的这个值，因此我们可以把函数传给别的变量
+abs(-10)
+my_abs = abs
+my_abs(-10)
+
+# abs 这个变量中的函数值可以作为参数传给其他函数
+def add(x, y, fun):
+    return fun(x) + fun(y)
+
+add(10, -10, abs)
+
+# abs 这个变量中的函数值可以作为返回值返回
+def get_fun()
+    return abs
+
+fun = get_fun()
+fun(-10)
+```
+
+高阶函数(High-order function) 就类似于上面例子中的 `get_fun` 函数，它接受另外一个函数作为参数，这样的函数就称为高阶函数。
+
+我们接下来看一下 python 中提供了哪些高阶函数，由此来体会高阶函数的魅力。 
+
+#### map/reduce
+
+Python 内建了 map/reduce 高阶函数。
+
+如果你读过Google的那篇大名鼎鼎的论文“[MapReduce: Simplified Data Processing on Large Clusters](http://research.google.com/archive/mapreduce.html)”，你就能大概明白map/reduce的概念。
+
+`map(f, list)` 有两个参数，第一个参数是一个函数，另一个是一个序列。map 会把 f 依次作用到 list 的每个元素上，然后返回一个新的 list. 例如下面的例子将一串数字依次计算 x*x ：
+
+```py
+def f(x):
+    return x*x
+
+ret = map(f, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+```
+
+你当然也可以用循环的方式来完成上述计算，但是这种方法没能清晰地表达出 “把f(x)作用在list的每一个元素并把结果生成一个新的list” 这一过程。
+
+map 作为一个高阶函数，事实上它把运算规则抽象了，因此我们不但可以计算 `f(x) = x^2` 还可以计算任意复杂的函数，比如下面的代码把 list 中所有数字转换为字符串：
+
+```py
+char_list map(str, [1, 2, 3, 4, 5, 6])
+print "".join(char_list) # "".join() 可以把字符列表转换为字符串
+```
+
+`reduce(f, list)` 有两个参数，第一个参数是一个函数 f, 另一个是一个序列 list. 其中 f 必须接受两个参数，并且只有一个返回值。 recuce 会先将 f 作用到 list 的前两个元素上，然后将 f 的返回值和 list 的下一个元素作为参数传给 f 继续进行计算，从而把计算结果累积起来。例如我们熟悉的 sum 操作可以这样来实现：
+
+```py
+def add(x, y):
+    return x+y
+
+reduce(add, [1, 2, 3, 4, 5, 6])
+```
+
+上面的例子没啥用处，结合 map/reduce 我们可以写出 str 转 int 的函数：
+
+```py
+# str 转 int 分为两步：
+# 第一步是把 str 中的每个字符都转换为 int 数字。这可以用 map 来实现；
+# 第二步是把 每个 int 数字叠加起来，计算出最终的数字，这可以用 reduce 来实现；
+
+def str_to_num(str):
+    def char_to_num(ch):
+        return {'0':0, '1':1, '2':2, '3':3, '4':4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9}[ch]
+
+    def fn(x, y):
+        return x*10 + y
+    return reduce(fn, map(char_to_num, str))
+
+print str_to_num('123456')
+```
+
+reduce 抽象的运算规则是对一个列表中的元素进行累积计算。
+
+#### filter
+
+python 内置的 `filter()` 高阶函数用于过滤序列
+
+`filter(f, list)` 也有两个参数， f 会作用到 list 的每个元素上，根据 f 的返回值为 True/False, filter 决定保留或删除这个元素。例如：
+
+```py
+def not_emptys(ch):
+    return ch and ch.strip()
+
+print filter(not_empty, ['A', '', 'B', None, 'C', ' '])
+# 输出 ['A', 'B', 'C']
+```
+
+#### sorted
+
+python 内置的排序函数 sorted 也是高阶函数。它可以接受一个比较函数来实现自定义排序：
+
+```py
+# 默认的字符串比较方法中， Z 会排在 a 前面，我们修改比较函数，使他忽略大小写
+def cmp_ignore_case(s1, s2):
+    u1 = s1.upper()
+    u2 = s2.upper()
+    if u1 < u2:
+        return -1
+    if u1 > u2:
+        return 1
+    return 0
+
+print sorted(['bob', 'about', 'Zoo', 'Credit'], cmp_ignore_case)
+# 输出：['about', 'bob', 'Credit', 'Zoo']
+```
+
+### 返回函数
+
+python 中的函数是第一类值，因此可以作为返回值返回：
+
+```py
+def lazy_sum(*args):
+    def sum()
+        ax = 0
+        for n in args:
+            ax = ax + n
+        return ax
+    return sum
+
+# 得到一个函数
+f = lazy_sum(1,2,3,4,5)
+
+# 使用函数进行计算
+print f()
+```
+
+注意上述代码中, `lazy_sum` 在返回函数时，将局部变量 args 和 sum 函数一起作为返回值返回了，这种把局部变量和函数打包在一起的方式叫做 “闭包”。
+
+### 匿名函数
+
+python 中对匿名函数提供了有限支持，在 python 中, `lambda` 表示匿名函数，且看下面的例子：
+
+```py
+print map (lambda : x*x, [1, 2, 3, 4, 5, 6])
+```
+
+上述代码中的 `lambda` 就是匿名函数。在 python 中，匿名函数中只能有一个表达式，并且没有返回值，这个表达式的计算结果就是返回值。
+
+### 装饰器
+
+假如我们希望在运行期间增强某个函数的功能，比如在函数调用前后自动打印日志，但是又不希望修改函数原先的定义，这种在代码运行期间动态增加功能的方式，称之为“装饰器”(Decorator).
+
+本质上， decotator 就是一个返回函数的高阶函数。例如下面的代码定义了一个能够自动打印日志的装饰器：
+
+```py
+def log(func)
+    def wrapper(*args, **kw)
+        print "%s Enter" % func.__name__
+        return func(*args, **kw)
+    return wrapper
+```
+
+`log` 函数就是我们定义的装饰器，那么怎么使用它来装饰另外一个函数呢？请看下面的代码：
+
+```py
+@log
+def now()
+    print '2017-03-21' 
+
+print now()
+# 输出内容：
+# now Enter
+# 2017-03-21
+```
+
+要使用我们定义的装饰器，只需要在函数定义的前面加上 `@log` 即可，相当于 `now = log(now)`。
+
+如果我们希望 `log()` 这个装饰器能够接收参数要怎么做呢？因为默认的 `@log` 语法并不支持传入参数，所以我们可以先定义一个高阶函数，这个高阶函数的作用是返回真正的装饰器：
+
+```py
+def log(text):
+    def decorator(func):
+        def wrapper(*args, **kw):
+            print "%s Enter text = %s" % func.__name__, text
+            return func(*args, **kw)
+        return wrapper
+    return decorator
+
+@log('adsf')
+def now():
+    return '2017-03-21'
+
+print now()
+# 输出内容：
+# now Enter text = asdf
+# 2017-03-21
+```
+
+`@log('asdf')` 相当于 `now = log('asdf')(now)`
+
+上述代码已经说明了装饰器的作用，但存在一个问题，如果我们这个时候查看 `now.__name__` 属性，会发现它的名字是 `wrapper` 而不是 `now`, 对于一些依赖于函数名的代码可能会有问题。这时候我们可以利用 python 内置的 `functools.wraps` 这个装饰器来复制 `now()` 的属性到 `wrapper()` 中：
+
+```py
+import functools
+
+def log(func)
+    @functools.wraps(func)
+    def wrapper(*args, **kw)
+        print 'call %s' % func.__name__
+        return func(*args, **kw)
+    return wrapper
+```
+
+### 偏函数
+
+functools 模块还提供了一个偏函数(partial function)的功能。偏函数可以为函数中的参数设定一个默认值，然后生成一个新的函数：
+
+```py
+# int 函数用于字符串转整形，它有一个额外的参数，可以指定目标进制
+int('123456', 16)
+
+# 每次转换为 16 进制都要多填一个参数，有点麻烦，偏函数可以直接为我们生成一个新的函数，并帮我们填好 16 这个参数：
+import functools
+int16 = functools.partial(int, base = 16)
+
+# 直接调用即可，不需要写目标进制这个参数了
+int16('1234566')
+```
+
+偏函数可以生成一个新的函数，并向原函数传入固定的值，从而方便我们对函数的调用。
+
+
+## 模块
+
+
 
