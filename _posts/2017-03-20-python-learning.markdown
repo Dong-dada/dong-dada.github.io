@@ -1008,9 +1008,7 @@ except ImportError:
 
 #### 作用域
 
-python 模块中定义的变量或函数，具有作用域的概念。对于普通的变量或函数而言，其作用域是公开的，如果你希望隐藏某些变量或函数，可以使用类似 `__xxx`, `_xxx` 这样的变量名可以表示该变量为非空开的变量，避免外部使用到它：
-
-值得注意的是，这只是一种编程风格，而不是一种强制要求，外部仍然可以访问到 `__xxx`, `_xxx` 这样的变量，只是使用者在访问它们时会了解到，这些变量是不应该去使用的。
+python 模块中定义的变量或函数，具有作用域的概念。对于普通的变量或函数而言，其作用域是公开的，如果你希望隐藏某些变量或函数，可以使用类似 `__xxx`, `_xxx` 这样的变量名可以表示该变量为非空开的变量，避免外部使用到它；
 
 ### 使用第三方模块
 
@@ -1098,4 +1096,128 @@ print '10 // 3 =', 10 // 3
 `//` 表示之前的 “地板除” 方式，得到的仍然是一个整数。
 
 
+## 面向对象编程
 
+python 支持面向对象方式的编程：
+
+```py
+# 定义类
+class Students(object):
+    def __init__(self, name, score):
+        self.name = name
+        self.score = score
+    def print_score(self):
+        print '%s: %s' % (self.name, self.score)
+
+# 创建对象
+bart = Student('Bart Simpson', 59)
+lisa = Student('Lisa Simpson', 87)
+
+# 访问对象的成员变量
+print bart.name
+print lisa.name
+
+# 调用对象的成员函数
+bart.print_score()
+lisa.print_score()
+```
+
+上述代码中有一些需要注意的地方：
+- `class Student(object):` 这一句中的 `object` 是 Student 类的基类；
+- `__init__` 可以看做这个类的构造函数；
+- 类的所有成员函数的第一个参数都是 self, self 表示创建的实例本身，类似于 C++ 中的 this, 我们可以把各种属性设定到 self 上面；
+
+### 成员的可见性
+
+如果我们希望隐藏成员变量的可见性，可以将成员变量命名为 `__xxx` 的形式，例如：
+
+```py
+class Students(object):
+    def __init__(self, name, score):
+        self.__name = name
+        self.__score = score
+
+    def print_score(self):
+        print '%s: %s' % (self.__name, self.__score)
+    
+    def set_name(self, name):
+        self.__name = name
+    
+    def get_name(self)
+        return self.__name
+```
+
+### 继承和多态
+
+正如之前所说, python 中的类也支持继承：
+
+```py
+class Animal(object):
+    def run(self):
+        print 'Animal is running...'
+
+class Cat(Animal):
+    pass
+
+class Dog(Animal):
+    def run(self):
+        print 'Dog is running...'
+
+cat = Cat()
+dog = Dog()
+
+cat.run()  # 输出 Animal is running ...
+dog.run()  # 输出 Dog is running ... 
+```
+
+可以看到，因为 Cat 类没有复写基类 Animal 的 run 方法，因此调用 `Cat.run()` 时执行的是基类的方法；而 Dog 复写了 Animal 的 run 方法，调用 `Dog.run()` 时执行的是 Dog 类的 run 方法。
+
+### 获取对象信息
+
+当我们获取到一个对象的引用时，可以通过下述方法来得到关于这个对象的一些信息：
+
+#### type() 方法获取对象类型
+
+```py
+type(123)
+# <type 'int'>
+
+type('str')
+# <type 'str'>
+
+type(None)
+#<type 'NoneType'>
+
+type(abs)
+# <type 'builtin_function_or_method'>
+
+a = Animal()
+type(a)
+# <class '__main__.Animal'>
+```
+
+#### isinstance() 判断继承关系
+
+```py
+isinstance(dog, Animal)
+# True
+
+isinstance(animal, Dog)
+# False
+```
+
+#### dir() 获取一个对象的所有属性和方法
+
+```py
+dir('ABC')
+# ['__add__', '__class__', '__contains__', '__delattr__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getitem__', '__getnewargs__', '__getslice__', '__gt__', '__hash__', '__init__', '__le__', '__len__', '__lt__', '__mod__', '__mul__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__rmod__', '__rmul__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', '_formatter_field_name_split', '_formatter_parser', 'capitalize', 'center', 'count', 'decode', 'encode', 'endswith', 'expandtabs', 'find', 'format', 'index', 'isalnum', 'isalpha', 'isdigit', 'islower', 'isspace', 'istitle', 'isupper', 'join', 'ljust', 'lower', 'lstrip', 'partition', 'replace', 'rfind', 'rindex', 'rjust', 'rpartition', 'rsplit', 'rstrip', 'split', 'splitlines', 'startswith', 'strip', 'swapcase', 'title', 'translate', 'upper', 'zfill']
+```
+
+除了可以获取所有属性，还可以使用 `getattr()`, `setattr()`, `hasattr()` 这几个方法来对属性进行访问：
+
+```py
+def readImage(fp):
+    if hasattr(fp, 'read'):
+        return readData(fp)
+    return None
+```
