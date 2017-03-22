@@ -291,6 +291,13 @@ n = 99
 while n > 0:
     sum = sum + n
     n = n-2
+
+# python 也可以使用 break, continue
+n = 0
+while True
+    n = n + 1
+    if n = 2:
+        break
 ```
 
 对于 dict,set 而言，还可以使用 items, iteritems 方法来遍历:
@@ -2162,3 +2169,253 @@ re_telephone.match('010-12345').groups()
 re_telephone.match('010-8086').groups()
 # ('010', '8086')
 ```
+
+
+## 常用内建模块
+
+python 内置了许多模块可供我们使用，接下来逐个介绍比较有用的模块：
+
+### collections 
+
+`collections` 模块中封装了许多有用的集合类。
+
+#### namedtuple
+
+tuple 表示不可变的数据集合，但它不能通过属性来引用。`namedtuple` 可以很方便地定义出一种数据类型，这种数据类型是 tuple, 但同时可以用属性的方式来访问 tuple 里的数据：
+
+```py
+fron collections import namedtuple
+
+# 定义 Point 这种数据类型
+Point = namedtuple('Point', ['x', 'y'])
+
+# 创建实例
+p = Point(1, 2)
+
+# 通过属性来访问
+print p.x, p.y
+```
+
+#### deque
+
+`list` 内部的实现其实是数组方式，插入和删除的效率比较低，索引的效率比较高。
+
+如果我们需要对大量数据进行插入删除操作，则可以使用 `deque`, 它还可以方便地用于队列和栈：
+
+```py
+from collections import deque
+q = deque(['a', 'b', 'c'])
+q.append('x')
+q.appendleft('y')
+
+print q
+# deque(['y', 'a', 'b', 'c', 'x'])
+```
+
+#### defaultdict
+
+`defaultdict` 与 `dict` 的不同之处在于，`dict` 中访问某个 key 如果失败，会抛出异常，而 `defaultdict` 则会返回一个默认值：
+
+```py
+from collections import defaultdict
+dd = defaultdict(lambda: 'N/A')
+dd['key1'] = 'abc'
+print dd['key1'] # key1存在
+# 'abc'
+
+print dd['key2'] # key2不存在，返回默认值
+# 'N/A'
+```
+
+#### OrderedDict
+
+与 `dict` 不同，`OrderedDict` 中的 key 是按照插入顺序排序的：
+
+```py
+from collections import OrderedDict
+
+od = OrderedDict()
+od['z'] = 1
+od['y'] = 2
+od['x'] = 3
+
+print od.keys() # 按照插入的Key的顺序返回
+# ['z', 'y', 'x']
+```
+
+#### Counter
+
+Counter 是一个简单的计数器：
+
+```py
+from collections import Counter
+
+c = Counter()
+for ch in 'programming':
+    c[ch] = c[ch] + 1
+
+print c
+# Counter({'g': 2, 'm': 2, 'r': 2, 'a': 1, 'i': 1, 'o': 1, 'n': 1, 'p': 1})
+```
+
+### base64
+
+Base64 是一种编码格式，他把二进制转换为几个标准的字符。二进制数据经过 base64 编码后可以放到 url 里面。
+
+```py
+import base64
+
+# 编码
+print base64.b64encode('binary\x00string')
+# 'YmluYXJ5AHN0cmluZw=='
+
+# 解码
+print base64.b64decode('YmluYXJ5AHN0cmluZw==')
+# 'binary\x00string'
+```
+
+注意 `YmluYXJ5AHN0cmluZw==` 这样的字符串，用在 url 里的时候可能会跟 url 本身的 `=` 符号冲突，所以一般会把它去掉。因为 base64 字符串的长度一定是 4 的倍数，可以根据这一点，在解码的时候吧去掉的 `=` 补上。
+
+### struct
+
+这个模块用于 字节 与 整形、浮点型 等类型的转换。感觉用到的地方不多，需要的话请参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/0013994173393204e80af1f8fa94c8e9d094d229395ea43000)
+
+### hashlib
+
+`hashlib` 模块提供了常用的摘要算法，如 MD5, SHA1 等。
+
+摘要算法又称哈希算法、散列算法。它通过一个函数，把任意长度的数据转换为一个长度固定的数据串（通常用16进制的字符串表示）。
+
+```py
+import hashlib
+
+md5 = hashlib.md5()
+md5.update('how to use md5 in ')
+md5.update('python hashlib?')    # 可以分批加入要 md5 的字符串
+print md5.hexdigest()
+# d26a53750bc40b38b65a520292f69306
+```
+
+可以看到 hashlib 中的 md5 算法支持分批计算，这样就避免了在计算大文件 md5 时可能造成的内存占用高问题。
+
+sha1 算法类似：
+
+```py
+import hashlib
+
+sha1 = hashlib.sha1()
+sha1.update('how to use sha1 in ')
+sha1.update('python hashlib?')
+print sha1.hexdigest()
+```
+
+### itertools
+
+用于操作迭代对象，感觉用的不多，需要的话请参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/001415616001996f6b32d80b6454caca3d33c965a07611f000)
+
+### XML
+
+操作 XML 有两种方法 DOM 和 SAX, DOM 会一次性载入 XML 文件并将它解析为树结构，而 SAX 则是边解析边抛事件出来。
+
+SAX 方法比较节省内存，我们介绍一下这种方法：
+
+```py
+from xml.parsers.expat import ParserCreate
+
+class DefaultSaxHandler(object):
+    def start_element(self, name, attrs):
+        print('sax:start_element: %s, attrs: %s' % (name, str(attrs)))
+
+    def end_element(self, name):
+        print('sax:end_element: %s' % name)
+
+    def char_data(self, text):
+        print('sax:char_data: %s' % text)
+
+xml = r'''<?xml version="1.0"?>
+<ol>
+    <li><a href="/python">Python</a></li>
+    <li><a href="/ruby">Ruby</a></li>
+</ol>
+'''
+
+# 创建 parser
+parser = ParserCreate()
+
+# 设置为 returns_unicode, 这样返回的所有节点名和数据都是 unicode 格式
+parser.returns_unicode = True
+
+# 创建 handler, 用于处理 SAX 解析过程中的事件
+handler = DefaultSaxHandler()
+
+# 设置解析过程中的各个事件处理函数
+parser.StartElementHandler = handler.start_element
+parser.EndElementHandler = handler.end_element
+parser.CharacterDataHandler = handler.char_data
+
+# 开始解析
+parser.Parse(xml)
+```
+
+至于生成 xml 的方法，文中只介绍了最粗暴的字符串拼接法：
+
+```py
+L = []
+L.append(r'<?xml version="1.0"?>')
+L.append(r'<root>')
+L.append(encode('some & data'))
+L.append(r'</root>')
+
+return ''.join(L)
+```
+
+### HTMLParser
+
+由于 HTML 网页的格式没有 xml 那么严格，所以不能用 XML 模块来解析 HTML 文件。好在 python 提供了 HTMLParser 来方便地解析 HTML:
+
+```py
+from HTMLParser import HTMLParser
+from htmlentitydefs import name2codepoint
+
+# 定义 MyHTMLParser 类，继承自 HTMLParser
+class MyHTMLParser(HTMLParser):
+
+    # 标签头
+    def handle_starttag(self, tag, attrs):
+        print('<%s>' % tag)
+
+    # 标签尾
+    def handle_endtag(self, tag):
+        print('</%s>' % tag)
+
+    # 形如 <x/> 的标签
+    def handle_startendtag(self, tag, attrs):
+        print('<%s/>' % tag)
+
+    # 标签中的数据
+    def handle_data(self, data):
+        print('data')
+
+    # 注释
+    def handle_comment(self, data):
+        print('<!-- -->')
+
+    # 处理一些特殊字符，以&开头的
+    def handle_entityref(self, name):
+        print('&%s;' % name)
+
+    # 处理特殊字符串，就是以&#开头的，一般是内码表示的字符
+    def handle_charref(self, name):
+        print('&#%s;' % name)
+
+parser = MyHTMLParser()
+
+# 开始解析
+parser.feed('<html><head></head><body><p>Some <a href=\"#\">html</a> tutorial...<br>END</p></body></html>')
+```
+
+
+## 常用第三方模块
+
+原文只介绍了 PIL 这一个第三方库，现在还没有用到，需要的话可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/00140767171357714f87a053a824ffd811d98a83b58ec13000)
+
