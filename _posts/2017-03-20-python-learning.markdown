@@ -2419,3 +2419,53 @@ parser.feed('<html><head></head><body><p>Some <a href=\"#\">html</a> tutorial...
 
 原文只介绍了 PIL 这一个第三方库，现在还没有用到，需要的话可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/00140767171357714f87a053a824ffd811d98a83b58ec13000)
 
+
+## 图形界面
+
+python 支持多种图形界面的第三方库，包括：
+- Tk
+- wxWidgets
+- Qt
+- GTK
+
+python 自带的是 Tk 的 Tkinter, 无需任何安装包即可使用，本章介绍使用 Tkinter 来进行 GUI 编程。
+
+下面的例子展示了使用 Tkinter 编写一个 GUI 小程序的例子：
+
+```py
+# -*- coding: UTF-8 -*-
+
+from Tkinter import *
+
+# 从 Frame 派生一个 Application 类，作为所有 widgets 的容器
+class Application(Frame):
+
+    def __init__(self, master=None):
+        Frame.__init__(self, master)
+
+        # pack 将会把这个 widget 布局到界面中，现在 Application 是这个 widget 树的根节点
+        self.pack()
+        self.createWidgets()
+    
+    def createWidgets(self):
+        # label 是一个 widget, 我们先创建一个 label, 然后使用 pack 将它布局到界面中
+        self.helloLabel = Label(self, text='Hello, world!')
+        self.helloLabel.pack()
+
+        self.quitButton = Button(self, text='Quit', command=self.quit)
+        self.quitButton.pack()
+
+# 创建 Application 实例
+app = Application()
+
+# 设置标题
+app.master.title('Hello, world')
+
+# 启动消息泵
+app.mainloop()
+```
+
+上述内容对 Tkinter GUI 编程做了简单的介绍，更多细节请参考相关文章。
+
+
+
