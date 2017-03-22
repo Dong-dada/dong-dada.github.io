@@ -1637,3 +1637,215 @@ n = int(s)
 pdb.set_trace() # 运行到这里会自动暂停
 print 10 / n
 ```
+
+
+## IO 编程
+
+IO在计算机中指Input/Output，也就是输入和输出。由于程序和运行时数据是在内存中驻留，由CPU这个超快的计算核心来执行，涉及到数据交换的地方，通常是磁盘、网络等，就需要IO接口。
+
+IO编程中，Stream（流）是一个很重要的概念，可以把流想象成一个水管，数据就是水管里的水，但是只能 **单向流动**。Input Stream就是数据从外面（磁盘、网络）流进内存，Output Stream就是数据从内存流到外面去。对于浏览网页来说，浏览器和新浪服务器之间至少需要建立两根水管，才可以既能发数据，又能收数据。
+
+IO 操作分为同步和异步两种模式，本章介绍的都是同步 IO
+
+### 文件读写
+
+下面的代码展示了如何读取一个文件中的内容：
+
+```py
+try:
+    f = open('/path/to/file', 'r')
+    print f.read()
+finally:
+    if f:
+        f.close()
+```
+
+要对文件进行操作，首先要打开它，文件操作结束后，需要将这个文件关闭。`f.read()` 会返回一个 `str` 对象，由于我们使用 `r` 的方式来打开文件，str 中存储的是文本形式的数据。如果我们用 `rb` 的形式来打开文件，那么 str 中存储的就是二进制数据。
+
+上述代码写起来有些长， python 提供了 `with...as` 这样的简写形式，效果和上面的代码一样：
+
+```py
+with open('/path/to/file', 'r') as f:
+    f.close()
+```
+
+调用 `read()` 会一次性读取文件的全部内容，如果文件有10G，内存就爆了，所以，要保险起见，可以反复调用 `read(size)` 方法，每次最多读取 size 个字节的内容。另外，调用 `readline()` 可以每次读取一行内容，调用`readlines()` 一次读取所有内容并按行返回list。因此，要根据需要决定怎么调用。
+
+如果文件很小，`read()` 一次性读取最方便；如果不能确定文件大小，反复调用 `read(size)` 比较保险；如果是配置文件，调用 `readlines()` 最方便：
+
+#### file-like Object
+
+像 `open()` 函数返回的这种有个 `read()` 方法的对象，在 Python 中统称为 `file-like Object` 。除了 file 外，还可以是内存的字节流，网络流，自定义流等等。 `file-like Object` 不要求从特定类继承，只要写个 `read()` 方法就行。
+
+`StringIO` 就是在内存中创建的 `file-like Object`，常用作临时缓冲。
+
+#### 字符编码
+
+要读取非 ASCII 编码的文本文件，就必须以二进制模式打开，再解码。比如 GBK 编码的文件：
+
+```py
+f = open('/Users/michael/gbk.txt', 'rb')
+u = f.read().decode('gbk')
+```
+
+python 还提供了 `codecs` 模块来方便地执行上述操作：
+
+```py
+import codecs
+with codecs.open('/Users/michael/gbk.txt', 'r', 'gbk') as f:
+    f.read() # u'\u6d4b\u8bd5'
+```
+
+在 python 中，使用 `with...as` 来操作文件是一个好习惯。
+
+### 操作文件和目录
+
+python 中与操作系统打交道的函数封装在 os 模块中。
+
+`os.environ` 和 `os.getenv()` 可以访问环境变量：
+```py
+import os
+
+print os.environ
+print os.getenv('PATH')
+```
+
+`os.path` 模块封装了一些与路径相关的函数：
+
+```py
+# 获取绝对路径
+print os.path.abspath('.')
+
+# 拼接路径
+print os.path.join('/Users/michael', 'testdir') # 输出 /Users/michael/testdir
+
+# 分割路径得到文件名
+print os.path.split('/Users/michael/testdir/file.txt') # 输出 ('Users/michael/testdir/', 'file.txt')
+
+# 分割路径得到扩展名
+print os.path.splitext('/path/to/file.txt') # 输出 ('Users/michael/testdir/file', '.txt')
+```
+
+上述函数不会考虑文件是否存在，它只是对字符串进行分割。
+
+`os` 模块中还有一些函数可以对文件、文件夹进行创建、删除、重命名等操作：
+
+```py
+# 创建一个目录
+os.mkdir('/Users/michael/testdir')
+
+# 删掉一个目录:
+os.rmdir('/Users/michael/testdir')
+
+# 对文件重命名:
+os.rename('test.txt', 'test.py')
+
+# 删掉文件:
+os.remove('test.py')
+```
+
+python 没有提供复制文件的操作，这是因为这个函数在操作系统上没有直接提供。`shutil` 提供了 `copyfile()` 操作，你可以在 `shutil` 模块中找到许多实用的函数，它可以被看做是 `os` 模块的补充。
+
+结合列表生成式，我们可以写出非常简单的代码来过滤文件夹中的内容：
+
+```py
+print [x for x in os.listdir('.') if os.path.isfile(x) and os.path.splitext(x)[1]=='.py']
+```
+
+### 序列化
+
+python 中把序列化称为 pickling, 反序列化则称为 unpickling.
+
+python 中提供了两个模块来实现序列化: `pickle` 和 `cPickle`, 这两个模块的功能是一样的，区别仅在于 `cPickle` 由 C 语言编写，速度比较快。
+
+```py
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
+d = dict(name='Bob', age=20, score=88)
+
+# 序列化到字符串
+string = pickle.dumps(d)
+
+# 序列化到文件
+f = open('dump.txt', 'wb')
+pickle.dump(d, f)
+f.close()
+
+# 从文件中反序列化出对象
+f = open('dump.txt', 'rb')
+d = pickle.load(f)
+f.close()
+```
+
+#### JSON
+
+如果希望序列化出的内容能够交给不同语言处理，就必须把对象序列化为标准格式，例如 xml, json.
+
+```py
+import json
+
+d = dict(name='Bob', age=20, score=88)
+
+# 序列化
+print json.dumps(d) # 输出 '{"age": 20, "score": 88, "name": "Bob"}'
+
+# 反序列化
+json_str = '{"age": 20, "score": 88, "name": "Bob"}'
+d = json.loads(json_str)
+```
+
+有一点需要注意的是，反序列化得到的 dict 中，所有字符串对象都是 unicode 编码，类似于 `u'age'` 这样。
+
+#### JSON 进阶
+
+如果我们希望序列化一个类对象为 json, 会遇到错误：
+
+```py
+import json
+
+class Student(object):
+    def __init__(self, name, age, score):
+        self.name = name
+        self.age = age
+        self.score = score
+
+s = Student('Bob', 20, 88)
+print(json.dumps(s)) # 错误! TypeError: <__main__.Student object at 0x10aabef50> is not JSON serializable
+```
+
+可以看到类对象不是可以序列化的类型。
+
+为了解决这个问题，我们需要编写一个函数，告诉 json 模块如何对这个类对象进行序列化：
+
+```py
+def student2dict(std):
+    return {
+        'name': std.name,
+        'age': std.age,
+        'score': std.score
+    }
+
+print(json.dumps(s, default=student2dict))
+```
+
+每个类都这样写感觉有点麻烦，我们可以通过下面的代码来支持任意 class 的序列化：
+
+```py
+print(json.dumps(s, default=lambda obj: obj.__dict__))
+```
+
+通常每个 class 的实例都有一个 `__dict__` 属性，用来存储成员变量。也有少数例外，例如定义了 `__slots__` 的 class.
+
+同样的，我们也需要传入一个函数来支持将 json 文本反序列化为一个类实例：
+
+```py
+def dict2student(d):
+    return Student(d['name'], d['age'], d['score'])
+
+json_str = '{"age": 20, "score": 88, "name": "Bob"}'
+print(json.loads(json_str, object_hook=dict2student))
+```
+
