@@ -1849,3 +1849,229 @@ json_str = '{"age": 20, "score": 88, "name": "Bob"}'
 print(json.loads(json_str, object_hook=dict2student))
 ```
 
+
+## 进程和线程
+
+python 提供了多进程和多线程的支持，接下来我们会讨论如何编写这两种多任务程序。
+
+### 多进程
+
+Unix/Linux 系统提供了一个 `fork()` 系统调用，它能够创建一个子进程, python 的 os 模块中也包含了 `fork()` 函数：
+
+```py
+# multiprocessing.py
+import os
+
+print 'Process (%s) start...' % os.getpid()
+pid = os.fork()
+if pid==0:
+    print 'I am child process (%s) and my parent is %s.' % (os.getpid(), os.getppid())
+else:
+    print 'I (%s) just created a child process (%s).' % (os.getpid(), pid)
+```
+
+有了 fork 调用，一个进程在接到一个新任务时就可以复制出一个子进程来处理任务，常见的 Apache 服务器就是由父进程监听端口，每当有新 http 请求时，就 fork 出子进程来处理新的 http 请求。
+
+#### multiprocessing 模块
+
+由于 windows 没有 `fork` 调用，上述代码无法在 windows 下运行. python 的 multiprocessing 模块提供了跨平台的多进程支持：
+
+```py
+from multiprocessing import Process
+import os
+
+# 子进程要执行的代码
+def run_proc(name):
+    print 'Run child process %s (%s)...' % (name, os.getpid())
+
+if __name__=='__main__':
+    print 'Parent process %s.' % os.getpid()
+    p = Process(target=run_proc, args=('test',)) # 一个 Process 对象就代表一个进程
+    print 'Process will start.'
+    p.start() # 启动进程
+    p.join()  # 等待进程执行结束
+    print 'Process end.'
+```
+
+#### 进程池
+
+如果要启动大量的子进程，可以用进程池的方式来批量创建子进程：
+
+```py
+from multiprocessing import Pool
+import os, time, random
+
+def long_time_task(name):
+    print 'Run task %s (%s)...' % (name, os.getpid())
+    start = time.time()
+    time.sleep(random.random() * 3)
+    end = time.time()
+    print 'Task %s runs %0.2f seconds.' % (name, (end - start))
+
+if __name__=='__main__':
+    print 'Parent process %s.' % os.getpid()
+    p = Pool() # 一个 Pool 对象代表一个进程池，进程池中的进程数默认与 CPU 内核数有关，你可以自己指定进程数，只需要在创建时传入一个数字即可，例如 p = Pool(5)
+    for i in range(5):
+        p.apply_async(long_time_task, args=(i,)) # 在进程池中执行任务
+    print 'Waiting for all subprocesses done...'
+    p.close() # 调用 close 表示以后不能再向这个池中添加新的任务
+    p.join()  # 等待进程池中所有进程都执行结束，必须在 close 之后才能调用
+    print 'All subprocesses done.'
+```
+
+#### 进程间通信
+
+`multiprocessing` 模块包装了进程间通信的底层机制，提供了 `Queue`, `Pipes` 等多种方式来交换数据。
+
+下面的代码中有一个读进程，一个写进程。分别对同一个 Queue 进行操作
+
+```py
+from multiprocessing import Process, Queue
+import os, time, random
+
+# 写数据进程执行的代码:
+def write(q):
+    for value in ['A', 'B', 'C']:
+        print 'Put %s to queue...' % value
+        q.put(value)
+        time.sleep(random.random())
+
+# 读数据进程执行的代码:
+def read(q):
+    while True:
+        value = q.get(True)
+        print 'Get %s from queue.' % value
+
+if __name__=='__main__':
+    # 父进程创建Queue，并传给各个子进程：
+    q = Queue()
+    pw = Process(target=write, args=(q,))
+    pr = Process(target=read, args=(q,))
+    # 启动子进程pw，写入:
+    pw.start()
+    # 启动子进程pr，读取:
+    pr.start()
+    # 等待pw结束:
+    pw.join()
+    # pr进程里是死循环，无法等待其结束，只能强行终止:
+    pr.terminate()
+```
+
+### 多线程
+
+python 标准库中提供了两个模块用于对线程的操作：`thread` 和 `threading`, `thread` 是比较底层的模块，`threading` 比较高层，对 `thread` 进行了封装。一般我们只需要使用 `threading` 模块即可。
+
+下面是创建一个线程的例子：
+
+```py
+import time, threading
+
+# 新线程执行的代码:
+def loop():
+    print 'thread %s is running...' % threading.current_thread().name
+    n = 0
+    while n < 5:
+        n = n + 1
+        print 'thread %s >>> %s' % (threading.current_thread().name, n)
+        time.sleep(1)
+    print 'thread %s ended.' % threading.current_thread().name
+
+print 'thread %s is running...' % threading.current_thread().name
+t = threading.Thread(target=loop, name='LoopThread') # 创建一个新线程，执行 loop 函数，线程名为 LoopThread
+t.start() # 启动新线程
+t.join() # 等待新线程执行完毕
+print 'thread %s ended.' % threading.current_thread().name
+```
+
+#### 锁
+
+使用 `threading.Lock()` 函数可以获得一把互斥锁，用来保护线程间共享的数据：
+
+```py
+balance = 0
+lock = threading.Lock()
+
+def run_thread(n):
+    for i in range(100000):
+        # 先要获取锁:
+        lock.acquire()
+        try:
+            # 放心地改吧:
+            change_it(n)
+        finally:
+            # 改完了一定要释放锁:
+            lock.release()
+```
+
+#### 多核
+
+下面的代码在 python 中运行，并不能让 cpu 的所有核心都跑满 100%, 这是为什么呢？
+
+```py
+import threading, multiprocessing
+
+def loop():
+    x = 0
+    while True:
+        x = x ^ 1
+
+for i in range(multiprocessing.cpu_count()):
+    t = threading.Thread(target=loop)
+    t.start()
+```
+
+因为Python的线程虽然是真正的线程，但解释器执行代码时，有一个GIL锁：Global Interpreter Lock，任何Python线程执行前，必须先获得GIL锁，然后，每执行100条字节码，解释器就自动释放GIL锁，让别的线程有机会执行。这个GIL全局锁实际上把所有线程的执行代码都给上了锁，所以，**多线程在Python中只能交替执行，即使100个线程跑在100核CPU上，也只能用到1个核**。
+
+GIL是Python解释器设计的历史遗留问题，通常我们用的解释器是官方实现的CPython，要真正利用多核，除非重写一个不带GIL的解释器。
+
+所以，在Python中，可以使用多线程，但不要指望能有效利用多核。如果一定要通过多线程利用多核，那只能通过C扩展来实现，不过这样就失去了Python简单易用的特点。
+
+不过，也不用过于担心，Python虽然不能利用多线程实现多核任务，但可以通过多进程实现多核任务。多个Python进程有各自独立的GIL锁，互不影响。
+
+### ThreadLocal
+
+我们往往需要在子线程中设定一些私有数据。这种时候本应当使用局部变量，但这样会比较麻烦，你不得不把这些局部变量一层一层传给需要它的函数。
+
+python 的 ThreadLocal 可以解决这个问题。
+
+首先 `ThreadLocal` 是一个全局变量，但是它又不太像一个全局变量，倒更像是一个字典。每个线程都可以访问到全局的 ThreadLocal 对象，但是这些线程在访问这个对象的时候，访问的是一个属于当前线程的私有数据，例如下面的代码：
+
+```py
+import threading
+
+# 创建全局ThreadLocal对象:
+local_school = threading.local()
+
+def process_student():
+    print 'Hello, %s (in %s)' % (local_school.student, threading.current_thread().name)
+
+def process_thread(name):
+    # 绑定ThreadLocal的student:
+    local_school.student = name
+    process_student()
+
+t1 = threading.Thread(target= process_thread, args=('Alice',), name='Thread-A')
+t2 = threading.Thread(target= process_thread, args=('Bob',), name='Thread-B')
+t1.start()
+t2.start()
+t1.join()
+t2.join()
+```
+
+`local_school` 是一个全局对象，但它更像是在每个线程中都存在一份拷贝，线程 A 访问的 `local_school` 与线程 B 访问的并不是同一个，`local_school` 在不同线程间是相互独立的内容。你可以认为在每个线程中都有一个自己的 `local_school` 对象。因为 `local_school` 是全局的，因此你不需要像局部对象那样把它一层一层传入给调用方。
+
+### 进程 vs 线程
+
+要实现多任务，我们往往会设计 Master-Worker 模式, Master 负责分配任务, Worker 负责执行任务。
+
+多进程的优势在于稳定性高，一个进程挂掉不会影响另外一个；缺点则在于创建进程的开销比较大，另外进程间的通信相比线程间要低效一些。
+
+多线程的优势在于效率高，但存在稳定性问题。
+
+任务分为 计算密集型 和 IO 密集型。
+- 对于计算密集型而言，主要的工作都由 CPU 来承担，因此最好让线程的数量等于 CPU 的核数；
+- 对于 IO 密集型而言, CPU 参与的工作并不多，主要时间耗费在 IO 上面，因此线程或进程数多一些也没关系，因为 CPU 有充分的空闲可以去对它们进行调度；
+
+### 分布式进程
+
+请参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/001386832973658c780d8bfa4c6406f83b2b3097aed5df6000)
