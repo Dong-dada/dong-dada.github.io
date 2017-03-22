@@ -2564,3 +2564,218 @@ def tcplink(sock, addr):
 
 使用 UDP 编程的方法很简单，这里就不介绍了，具体可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/0013868325264457324691c860044c5916ce11b305cb814000)
 
+
+## 电子邮件
+
+这部分内容不太常用，这里就不介绍了，有需要的话可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/0013868325601402299d1e941914a21990ac7861ef4bc2d000)
+
+
+## 访问数据库
+
+### 使用 SQLite
+
+SQLite是一种嵌入式数据库，它的数据库就是一个文件。由于SQLite本身是C写的，而且体积很小，所以，经常被集成到各种应用程序中，甚至在iOS和Android的App中都可以集成。
+
+Python就内置了SQLite3，所以，在Python中使用SQLite，不需要安装任何东西，直接使用。
+
+在使用SQLite前，我们先要搞清楚几个概念：
+- 表是数据库中存放关系数据的集合，一个数据库里面通常都包含多个表，比如学生的表，班级的表，学校的表，等等。表和表之间通过外键关联。
+- 要操作关系数据库，首先需要连接到数据库，一个数据库连接称为Connection；
+- 连接到数据库后，需要打开游标，称之为Cursor，通过Cursor执行SQL语句，然后，获得执行结果。
+- Python定义了一套操作数据库的API接口，任何数据库要连接到Python，只需要提供符合Python标准的数据库驱动即可。
+- 由于SQLite的驱动内置在Python标准库中，所以我们可以直接来操作SQLite数据库。
+
+下面是在 python 中创建 SQLite 数据库的一个例子：
+
+```py
+# 导入SQLite驱动:
+import sqlite3
+
+# 连接到SQLite数据库
+# 数据库文件是test.db
+# 如果文件不存在，会自动在当前目录创建:
+conn = sqlite3.connect('test.db')
+
+# 创建一个Cursor:
+cursor = conn.cursor()
+
+# 执行一条SQL语句，创建user表:
+cursor.execute('create table user (id varchar(20) primary key, name varchar(20))')
+
+# 继续执行一条SQL语句，插入一条记录:
+cursor.execute('insert into user (id, name) values (\'1\', \'Michael\')')
+
+# 通过rowcount获得插入的行数:
+print cursor.rowcount
+# 1
+
+# 关闭Cursor:
+cursor.close()
+
+# 提交事务:
+conn.commit()
+
+# 关闭Connection:
+conn.close()
+```
+
+下面是在 python 中查询 sqlite 数据库的例子：
+
+```py
+conn = sqlite3.connect('test.db')
+cursor = conn.cursor()
+
+# 执行查询语句:
+cursor.execute('select * from user where id=?', ('1',))
+
+# 获得查询结果集:
+values = cursor.fetchall()
+print values
+# [(u'1', u'Michael')]
+
+cursor.close()
+conn.close()
+```
+
+使用Python的DB-API时，只要搞清楚Connection和Cursor对象，打开后一定记得关闭，就可以放心地使用:
+- 使用Cursor对象执行insert，update，delete语句时，执行结果由rowcount返回影响的行数，就可以拿到执行结果。
+- 使用Cursor对象执行select语句时，通过featchall()可以拿到结果集。结果集是一个list，每个元素都是一个tuple，对应一行记录。
+- 如果SQL语句带有参数，那么需要把参数按照位置传递给execute()方法，有几个?占位符就必须对应几个参数，例如：
+    `cursor.execute('select * from user where name=? and pwd=?', ('abc', '123456'))`
+
+SQLite 支持常见的标准 SQL 语句以及几种常见的数据类型。具体文档请参阅 SQLite 官方网站。
+
+### 使用 MySQL
+
+MySQL是Web世界中使用最广泛的数据库服务器。SQLite的特点是轻量级、可嵌入，但不能承受高并发访问，适合桌面和移动应用。而MySQL是为服务器端设计的数据库，能承受高并发访问，同时占用的内存也远远大于SQLite。
+
+此外，MySQL内部有多种数据库引擎，最常用的引擎是支持数据库事务的InnoDB。
+
+由于 MySQL 服务器以独立的进程运行，并通过网络对外服务，所以需要支持 Python 的 MySQL 驱动来连接到 MySQL 服务器。目前可选的驱动有以下两个：
+- mysql-connector-python：是MySQL官方的纯Python驱动；
+- MySQL-python：是封装了MySQL C驱动的Python驱动。
+
+安装驱动的方法和安装第三方模块一样，这里就不赘述了。
+
+下面使用 `mysql-connector-python` 驱动作为例子，演示如何使用 MySQL.
+
+```py
+# 导入MySQL驱动:
+import mysql.connector
+
+# 注意把password设为你的root口令:
+conn = mysql.connector.connect(user='root', password='password', database='test', use_unicode=True)
+
+cursor = conn.cursor()
+
+# 创建user表:
+cursor.execute('create table user (id varchar(20) primary key, name varchar(20))')
+
+# 插入一行记录，注意MySQL的占位符是%s:
+cursor.execute('insert into user (id, name) values (%s, %s)', ['1', 'Michael'])
+print cursor.rowcount
+# 1
+
+# 提交事务:
+conn.commit()
+cursor.close()
+
+# 运行查询:
+cursor = conn.cursor()
+cursor.execute('select * from user where id = %s', ('1',))
+values = cursor.fetchall()
+print values
+# [(u'1', u'Michael')]
+
+# 关闭Cursor和Connection:
+cursor.close()
+conn.close()
+```
+
+可以看到，由于Python的DB-API定义都是通用的，所以，操作MySQL的数据库代码和SQLite类似。
+
+Tips:
+- MySQL的SQL占位符是%s；
+- 通常我们在连接MySQL时传入use_unicode=True，让MySQL的DB-API始终返回Unicode。
+
+### 使用 SQLAlchemy
+
+python 的 DB-API 返回的查询结果是一个 tuple 列表：
+
+```py
+[
+    ('1', 'Michael'),
+    ('2', 'Bob'),
+    ('3', 'Adam')
+]
+```
+
+这样很难看出表的结构，如果能够把这个结构转换为一个类对象，也就是说把关系数据库的表结构映射到对象上，这样就能很好理解了。
+
+这种技术叫做 ORM(Object-Relational Mapping) 技术，进行这种转换需要 ORM 框架，在 python 中，最有名的 ORM 框架是 SQLAlchemy. 这节我们介绍 SQLAlchemy 的用法。
+
+首先通过 `easy_install` 或者 `pip` 安装 SQLAlchemy:
+
+```s
+$ easy_install sqlalchemy
+```
+
+接下来我们看看如何在代码中使用它，将表结构映射到对象上：
+
+```py
+# 导入:
+from sqlalchemy import Column, String, create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+
+# 创建对象的基类:
+Base = declarative_base()
+
+# 定义User对象:
+class User(Base):
+    # 表的名字:
+    __tablename__ = 'user'
+
+    # 表的结构:
+    id = Column(String(20), primary_key=True)
+    name = Column(String(20))
+
+# 初始化数据库连接，连接信息为：'数据库类型+数据库驱动名称://用户名:口令@机器地址:端口号/数据库名'
+engine = create_engine('mysql+mysqlconnector://root:password@localhost:3306/test')
+# 创建DBSession类型:
+DBSession = sessionmaker(bind=engine)
+
+### 以下代码展示如何向表中插入数据
+
+# 创建session对象:
+session = DBSession()
+
+# 创建新User对象:
+new_user = User(id='5', name='Bob')
+
+# 添加到session:
+session.add(new_user)
+
+# 提交即保存到数据库:
+session.commit()
+
+# 关闭session:
+session.close()
+
+### 以下代码展示如何从表中查询数据，查询的结果是一个 object
+
+# 创建Session:
+session = DBSession()
+
+# 创建Query查询，filter是where条件，最后调用one()返回唯一行，如果调用all()则返回所有行:
+user = session.query(User).filter(User.id=='5').one()
+
+# 打印类型和对象的name属性:
+print 'type:', type(user)
+print 'name:', user.name
+
+# 关闭Session:
+session.close()
+```
+
+从上述代码中可以看到 ORM 的作用：它把表结构与类对象映射起来，能够更加直白简单地表示对表的操作。
