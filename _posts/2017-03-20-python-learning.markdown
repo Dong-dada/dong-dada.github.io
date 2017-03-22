@@ -1442,3 +1442,198 @@ stu() # 输出 My name is Tracy.
 
 这一节有点复杂，又不怎么会用到，这里先略过吧，具体可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/001386820064557c69858840b4c48d2b8411bc2ea9099ba000)
 
+
+## 错误、调试和测试
+
+### 错误处理
+
+在程序运行过程中，可以通过返回错误码的方式来表示代码是否运行正常：
+
+```py
+def foo():
+    r = some_function()
+    if r==(-1):
+        return (-1)
+    # do something
+    return r
+
+def bar():
+    r = foo()
+    if r==(-1):
+        print 'Error'
+    else:
+        pass
+```
+
+可以看到，这种错误处理方式不太方便，因为错误码会跟正常的结果混在一起，调用者必须通过大量代码来判断是否出错。
+
+#### try
+
+python 提供了 `try` 机制：
+
+```py
+try:
+    print 'try...'
+    r = 10 / int('a')
+    print 'result:', r
+except ValueError, e:
+    print 'ValueError:', e
+except ZeroDivisionError, e:
+    print 'ZeroDivisionError:', e
+else:
+    print 'no error!'
+finally:
+    print 'finally...'
+print 'END'
+```
+
+当我们觉得某段代码可能抛出异常时，可以通过 `try` 来包裹这段代码，如果代码出错，程序会运行到 `except` 处，无论是否成功，都会执行 `finally` 代码。如果错误没有发生，你可以在 `except` 后面跟一个 `else` 专门来处理这种情况。
+
+注意，一般情况下，程序发生异常后会立刻停止运行，但如果我们用 `try...except` 包裹住了出现异常的代码，那么即使发生异常，程序也会在执行完 except 之后继续执行。
+
+python 中的异常也是一个 class, 所有的异常都是从 BaseException 继承的，你可以从 [这里](https://docs.python.org/2/library/exceptions.html#exception-hierarchy) 查看到常见的异常类型和继承关系。
+
+`try...except` 这种机制还有一个巨大的好处，当存在多个层次的调用时，深层的异常会一层层抛到外部，你只需要在合适的层次捕获这个异常就可以了，不需要在每层都写 `try..except` 代码：
+
+```py
+def foo(s):
+    return 10 / int(s)
+
+def bar(s):
+    return foo(s) * 2
+
+def main():
+    try:
+        bar('0')
+    except StandardError, e:
+        print 'Error!'
+    finally:
+        print 'finally...'
+```
+
+#### 记录错误
+
+当异常发生导致程序终止时，python 解释器会在终端上打印错误的调用堆栈。方便我们定位异常发生的位置。
+
+python 提供了一个 logging 模块，可以让我们在程序出现异常时，将异常信息打印出来：
+
+```py
+# err.py
+import logging
+
+def foo(s):
+    return 10 / int(s)
+
+def bar(s):
+    return foo(s) * 2
+
+def main():
+    try:
+        bar('0')
+    except StandardError, e:
+        logging.exception(e)
+
+main()
+print 'END
+```
+
+#### 抛出错误
+
+我们也可以在自己编写的函数中抛出异常：
+
+```py
+# err.py
+class FooError(StandardError):
+    pass
+
+def foo(s):
+    n = int(s)
+    if n==0:
+        raise FooError('invalid value: %s' % s)
+    return 10 / n
+```
+
+上述代码中自定义了一个异常类型 FooError, 并在异常发生时抛出了这个异常。
+
+一般情况下我们应当尽量选择 python 内置的异常类型，默认的异常类型具有更高的辨识度，方便我们快速确定造成异常的原因。
+
+接着请看下述代码：
+
+```py
+# err.py
+def foo(s):
+    n = int(s)
+    return 10 / n
+
+def bar(s):
+    try:
+        return foo(s) * 2
+    except StandardError, e:
+        print 'Error!'
+        raise
+
+def main():
+    bar('0')
+
+main()
+```
+
+程序捕获到一个异常后，打印了一下，接着又把它抛了出去。这种做法相当常见，因为异常发生时，当前函数可能不知道该如何处理这个异常，因此在这里记录一下，抛给上层来处理。
+
+### 调试
+
+#### assert 断言
+
+下面是 python 中使用断言的一个例子：
+
+```py
+# err.py
+def foo(s):
+    n = int(s)
+    assert n != 0, 'n is zero!'
+    return 10 / n
+
+def main():
+    foo('0')
+```
+
+#### logging
+
+下面是 python 中使用 logging 模块的一个例子：
+
+```py
+# err.py
+import logging
+logging.basicConfig(level=logging.INFO)
+
+s = '0'
+n = int(s)
+logging.info('n = %d' % n)
+print 10 / n
+```
+
+#### 单步调试和设置断点
+
+在运行 python 脚本时加上 `-m pdb` 参数，就能以单步的方式来运行程序：
+
+```
+$ python -m pdb err.py
+```
+
+进入调试后，有以下命令来对调试过程进行控制：
+- n : 单步执行代码；
+- l : 查看代码；
+- `p 变量名` : 查看变量的值；
+- q : 结束调试，退出程序；
+
+利用 pdb 模块的 `pdb.set_trace()` 方法，可以在代码中设置断点：
+
+```py
+# err.py
+import pdb
+
+s = '0'
+n = int(s)
+pdb.set_trace() # 运行到这里会自动暂停
+print 10 / n
+```
