@@ -2468,4 +2468,99 @@ app.mainloop()
 上述内容对 Tkinter GUI 编程做了简单的介绍，更多细节请参考相关文章。
 
 
+## 网络编程
+
+### TCP 编程
+
+#### 客户端
+
+如下代码创建一个基于 TCP 连接的 socket:
+
+```py
+# 导入socket库:
+import socket
+
+# 创建一个socket:
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# 建立连接:
+s.connect(('www.sina.com.cn', 80))
+
+# 发送数据:
+s.send('GET / HTTP/1.1\r\nHost: www.sina.com.cn\r\nConnection: close\r\n\r\n')
+
+# 接收数据:
+buffer = []
+while True:
+    # 每次最多接收1k字节:
+    d = s.recv(1024)
+    if d:
+        buffer.append(d)
+    else:
+        break
+data = ''.join(buffer)
+
+# 关闭连接:
+s.close()
+
+# 获取 HTTP 头和返回的 html 页面
+header, html = data.split('\r\n\r\n', 1)
+print header
+
+# 把接收的数据写入文件:
+with open('sina.html', 'wb') as f:
+    f.write(html)
+```
+
+上述代码中的 `AF_INET` 指定使用 ipv4 协议，如果要使用 ipv6, 请填写为 `AF_INET6`, `SOCK_STREAM` 指定使用面向流的 TCP 协议。
+
+`s.connect(('www.sina.com.cn', 80))` 这段代码表示将 socket 连接到 `www.sina.com.cn` 的 80 端口。
+
+Tips: 端口号小于 1024 的是 Internet 标准服务的端口，端口号大于 1024 的则是自定义端口。
+
+#### 服务器
+
+服务端的程序比较麻烦一些，因为服务端需要接收并相应多个客户端的请求，所以每一个连接都需要一个新的进程或者新的线程来处理。
+
+下面是一个简单的服务器程序的例子，它接受客户端连接，把客户端发过来的字符串加上 `Hello` 再发回去。
+
+```py
+# 导入socket库:
+import socket
+
+# 创建一个socket:
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+# 绑定端口:
+s.bind(('127.0.0.1', 9999))
+
+# 监听端口
+s.listen(5)
+print 'Waiting for connection...'
+
+while True:
+    # 接受一个新连接:
+    sock, addr = s.accept()
+    # 创建新线程来处理TCP连接:
+    t = threading.Thread(target=tcplink, args=(sock, addr))
+    t.start()
+
+def tcplink(sock, addr):
+    print 'Accept new connection from %s:%s...' % addr
+    sock.send('Welcome!')
+    while True:
+        # 接受来自客户端的数据
+        data = sock.recv(1024)
+        time.sleep(1)
+        if data == 'exit' or not data:
+            break
+        # 向客户端发送数据
+        sock.send('Hello, %s!' % data)
+    sock.close()
+    print 'Connection from %s:%s closed.' % addr
+```
+
+### UDP 编程
+
+使用 UDP 编程的方法很简单，这里就不介绍了，具体可以参考 [原文](http://www.liaoxuefeng.com/wiki/001374738125095c955c1e6d8bb493182103fac9270762a000/0013868325264457324691c860044c5916ce11b305cb814000)
 
