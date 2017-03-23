@@ -2779,3 +2779,326 @@ session.close()
 ```
 
 从上述代码中可以看到 ORM 的作用：它把表结构与类对象映射起来，能够更加直白简单地表示对表的操作。
+
+
+## Web 开发
+
+最早的软件都是运行在大型机上的，软间使用者通过 “亚终端” 登录到大型机上运行。后来随着 PC 机的兴起，软件开始主要运行在桌面上，而数据库这样的软件运行在服务器端，这种 Client/Server 模式简称 CS 架构。
+
+随着互联网的兴起，人们发现， CS 架构不适合 Web ，最大的原因是 Web 应用程序的修改和升级非常迅速，而 CS 架构需要每个客户端逐个升级桌面 App ，因此, Browser/Server 模式开始流行，简称 BS 架构。
+
+在 BS 架构下，客户端只需要浏览器，应用程序的逻辑和数据都存储在服务器端。浏览器只需要请求服务器，获取 Web 页面，并把 Web 页面展示给用户即可。
+
+当然， Web 页面也具有极强的交互性。由于 Web 页面是用 HTML 编写的，而 HTML 具备超强的表现力，并且，服务器端升级后，客户端无需任何部署就可以使用到新的版本，因此， BS 架构迅速流行起来。
+
+用 python 开发 web, 也就是在服务器端动态生成 HTML.
+
+### HTTP 协议简介
+
+HTTP 请求的流程：
+- 浏览器向服务器发送 HTTP 请求，请求包括：
+    - 方法: GET 或者 POST, GET 仅仅请求资源，POST 会附带用户数据；
+    - 路径: /full/url/path;
+    - 域名: 由 host 头指定，例如: host:www.sina.com.cn
+    - 其他 Header;
+    - 如果是 POST 方法，还包括一个 body, 包含了用户数据;
+- 服务器向浏览器返回 HTTP 响应，响应包括：
+    - 状态码: 200 表示成功, 3xx 表示重定向, 4xx 表示客户端发送的请求有错误, 5xx 表示服务器端处理的时候发生了错误；
+    - 响应类型: 由 Content-Type 指定；
+    - 其他 Header;
+    - 通常会有一个 body, 包含了响应的内容, HTML 源码就包含在 body 中;
+- 如果浏览器还需要继续向服务器请求其它资源，比如图片，就再次发出 HTTP 请求，重复步骤 1,2;
+
+Web 采用的 HTTP 协议采用了非常简单的请求-响应模式，从而大大简化了开发。当我们编写一个页面时，我们只需要在 HTTP 请求中把 HTML 发送出去，不需要考虑如何附带图片、视频等，浏览器如果需要请求图片和视频，它会发送另一个 HTTP 请求，因此，一个 HTTP 请求只处理一个资源。
+
+每个 HTTP 请求和响应都遵循相同的格式，一个 HTTP 包含 Header 和 Body 两个部分，其中 Body 是可选项；
+
+HTTP 协议是一种文本协议，所以它的格式也非常简单，下面是 HTTP GET 的请求格式：
+
+```
+GET /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+Header3: Value3
+```
+
+每个Header一行一个，换行符是 `\r\n`.
+
+HTTP POST 的请求格式：
+
+```
+POST /path HTTP/1.1
+Header1: Value1
+Header2: Value2
+Header3: Value3
+
+body data goes here...
+```
+
+当遇到连续两个`\r\n`时, Header 部分结束，后面的数据全部是 Body.
+
+HTTP 响应的格式：
+
+```
+200 OK
+Header1: Value1
+Header2: Value2
+Header3: Value3
+
+body data goes here...
+```
+
+HTTP响应如果包含body，也是通过\r\n\r\n来分隔的。请再次注意，Body的数据类型由Content-Type头来确定，如果是网页，Body就是文本，如果是图片，Body就是图片的二进制数据。
+
+当存在Content-Encoding时，Body数据是被压缩的，最常见的压缩方式是gzip，所以，看到Content-Encoding: gzip时，需要将Body数据先解压缩，才能得到真正的数据。压缩的目的在于减少Body的大小，加快网络传输。
+
+要详细了解HTTP协议，推荐 “HTTP: The Definitive Guide” 一书，非常不错，有中文译本：[HTTP权威指南](https://www.amazon.cn/dp/B008XFDQ14)
+
+### WSGI 接口
+
+了解了HTTP协议和HTML文档，我们其实就明白了一个Web应用的本质就是：
+- 浏览器发送一个 HTTP 请求；
+- 服务器收到请求，生成一个 HTML 文档；
+- 服务器把 HTML 文档作为 HTTP 响应的 Body 发送给浏览器；
+- 浏览器收到 HTTP 响应，从 HTTP Body 取出 HTML 文档并显示。
+
+所以，最简单的Web应用就是先把 HTML 用文件保存好，用一个现成的 HTTP 服务器软件，接收用户请求，从文件中读取 HTML, 返回。 Apache,Nginx,Lighttpd 等这些常见的静态服务器就是干这件事情的。
+
+如果要动态生成 HTML, 就需要把上述步骤自己来实现。不过，接受 HTTP 请求、解析 HTTP 请求、发送 HTTP 响应都是苦力活，如果我们自己来写这些底层代码，还没开始写动态 HTML 呢，就得花个把月去读 HTTP 规范。
+
+正确的做法是底层代码由专门的服务器软件实现，我们用 Python 专注于生成 HTML 文档。因为我们不希望接触到 TCP 连接, HTTP 原始请求和响应格式，所以，需要一个统一的接口，让我们专心用 Python 编写 Web 业务。
+
+这个接口就是 WSGI：Web Server Gateway Interface. WSGI 接口定义非常简单，它只要求 Web 开发者实现一个函数，就可以响应 HTTP 请求。我们来看一个最简单的 Web 版本的 "Hello, web!":
+
+```py
+def application(environ, start_response):
+    # 组装 header 部分
+    start_response('200 OK', [('Content-Type', 'text/html')])
+    # 组装 body 部分
+    return '<h1>Hello, web!</h1>'
+```
+
+上面的 `application` 函数就是符合 WSGI 标准的一个 HTTP 处理函数，它接收两个参数：
+- environ : 一个包含 HTTP 请求信息的 dict 对象；
+- start_response: 一个发送 HTTP 响应的函数；
+
+整个 `application()` 函数本身没有涉及到任何解析 HTTP 的部分，也就是说，底层代码不需要我们自己编写，我们只负责在更高层次上考虑如何响应请求就可以了。
+
+为了让 WSGI 调用上述函数，我们首先得运行 WSGI 服务. python 内置了一个 WSGI 服务器，这个模块叫做 wsgiref, 它是用纯 python 编写的 WSGI 服务，它完全符合 WSGI 标准，但是不考虑任何运行效率，仅供开发和测试使用。
+
+下面代码展示了如何运行 python 内置的 WSGI 服务：
+
+```py
+# server.py
+
+# 从 wsgiref 模块导入:
+from wsgiref.simple_server import make_server
+# 导入我们自己编写的application函数:
+from hello import application
+
+# 创建一个服务器， IP 地址为空，端口是 8000，处理函数是 application:
+httpd = make_server('', 8000, application)
+print "Serving HTTP on port 8000..."
+# 开始监听 HTTP 请求:
+httpd.serve_forever()
+```
+
+### 使用 Web 框架
+
+有了 WSGI 我们就只需要编写 application 函数，让它根据不同的 url 返回不同的 HTML 文本就可以了。
+
+然而这样还是很麻烦，因为你不得不在 application 函数里添加许多 `if...elif` 判断，这样才能对不同的 url 进行处理：
+
+```py
+def application(environ, start_response):
+    method = environ['REQUEST_METHOD']
+    path = environ['PATH_INFO']
+    if method=='GET' and path=='/':
+        return handle_home(environ, start_response)
+    if method=='POST' and path='/signin':
+        return handle_signin(environ, start_response)
+    ...
+```
+
+这些一路写下去，代码会越来越长，越来越难以维护。如果能够有一个框架自动地把 url 和它对应的处理函数一一映射起来，代码就会清晰许多。
+
+也正因为这个原因，诞生了 web 框架这个东西。由于用 python 开发一个 web 框架非常容易，因此这样的框架有许多，我们这里直接选取一个比较流行的 web 框架 -- `Flask` 来使用。
+
+首先安装 Flask:
+
+```s
+$ pip install flask
+```
+
+接着就可以在 python 中使用 flask 了：
+
+```py
+from flask import Flask
+from flask import request
+
+# 创建一个 flask 对象
+app = Flask(__name__)
+
+# 处理首页，也就是 localhost:5000/
+@app.route('/', methods=['GET', 'POST'])
+def home():
+    return '<h1>Home</h1>'
+
+# 处理登录页，也就是 localhost:5000/signin
+@app.route('/signin', methods=['GET'])
+def signin_form():
+    # 返回登录表单
+    return '''<form action="/signin" method="post">
+              <p><input name="username"></p>
+              <p><input name="password" type="password"></p>
+              <p><button type="submit">Sign In</button></p>
+              </form>'''
+
+# 处理登录表单，也就是 localhost:5000/sigin
+@app.route('/signin', methods=['POST'])
+def signin():
+    # 需要从request对象读取表单内容：
+    if request.form['username']=='admin' and request.form['password']=='password':
+        return '<h3>Hello, admin!</h3>'
+    return '<h3>Bad username or password.</h3>'
+
+if __name__ == '__main__':
+    # 运行 flask 对象，这将启动 WSGI 服务器
+    app.run()
+```
+
+flask 默认监听的端口是 5000. 我们运行上述 python 代码后，就可以看到 flask 框架运行了起来：
+
+```
+C:\Users\dongyu\Desktop>python serve.py
+ * Running on http://127.0.0.1:5000/ (Press CTRL+C to quit)
+```
+
+之后在浏览器中输入 `localhost:5000/` 就可以访问首页，输入 `localhost:5000/signin` 就可以显示登录页，在登录页上输入 admin, password 之后就可以提交表单，之后页面会显示一个 Hello, admin! 字符串。
+
+从上述代码可以看出, Flask 通过 python 的装饰器在内部自动地把 url 和处理函数关联起来。无需我们调用 WSIG 那样写许多 `if...elif` 判断。
+
+除了Flask，常见的Python Web框架还有：
+- Django：全能型Web框架；
+- web.py：一个小巧的Web框架；
+- Bottle：和Flask类似的Web框架；
+- Tornado：Facebook的开源异步Web框架。
+
+### 使用模板
+
+上面的代码中还有一个问题，我们在函数中直接返回了 HTML 页面，简单的页面这么处理当然没问题，但对于动辄几千上万行的复杂页面来说，太复杂了。
+
+在 python 里用拼字符串的方式来生成 HTML 是不现实的，所以，模板技术出现了。
+
+使用模板，我们需要预先准备一个HTML文档，这个HTML文档不是普通的HTML，而是嵌入了一些变量和指令，然后，根据我们传入的数据，替换后，得到最终的HTML，发送给用户：
+
+![]({{site.url}}/asset/python-html-template.png)
+
+这就是传说中的 MVC: Model-View-Controller 中文名“模型-视图-控制器”：
+- 上面例子中的 `['name': 'Michael']` 就是 model, 它是数据的来源；
+- 包含变量 `{{ name }}` 的模板就是 view, view 负责显示逻辑，通过简单地替换一些变量, view 的最终输出就是 HTML;
+- python 中处理 url 的代码就是 controller, controller 负责业务逻辑，比如检查用户名是否存在，取出用户信息等；
+
+我们使用 MVC 模式来修改一下上一章中的例子：
+
+```py
+from flask import Flask, request, render_template
+
+app = Flask(__name__)
+
+@app.route('/', methods=['GET', 'POST'])
+def home():
+    # 渲染 home.html 模板，将得到一个 HTML
+    return render_template('home.html')
+
+@app.route('/signin', methods=['GET'])
+def signin_form():
+    # 渲染 form.html 模板，将得到一个 HTML
+    return render_template('form.html')
+
+@app.route('/signin', methods=['POST'])
+def signin():
+    # 逻辑部分，通过用户名和密码来判断需要渲染哪个模板
+    username = request.form['username']
+    password = request.form['password']
+    if username=='admin' and password=='password':
+        return render_template('signin-ok.html', username=username)
+    return render_template('form.html', message='Bad username or password', username=username)
+
+if __name__ == '__main__':
+    app.run()
+```
+
+上述例子中的 `render_template()` 是 flask 的一个函数，它会完成模板的渲染操作。实际上模板的渲染有许多种, flask 默认支持的是 [jinja2](http://jinja.pocoo.org/), 所以我们需要先安装它，否则 flask 无法帮助我们完成模板渲染操作。
+
+```s
+$ pip install jinja2
+```
+
+安装好 jinja2 之后，我们就可以编写 HTML 模板了：
+
+这是首页的模板：
+
+```html
+<html>
+<head>
+  <title>Home</title>
+</head>
+<body>
+  <h1 style="font-style:italic">Home</h1>
+</body>
+</html>
+```
+
+这是用来显示登录表单的模板：
+
+```html
+<html>
+<head>
+  <title>Please Sign In</title>
+</head>
+<body>
+  {% if message %}
+  <p style="color:red">{{ message }}</p>
+  {% endif %}
+  <form action="/signin" method="post">
+    <legend>Please sign in:</legend>
+    <p><input name="username" placeholder="Username" value="{{ username }}"></p>
+    <p><input name="password" placeholder="Password" type="password"></p>
+    <p><button type="submit">Sign In</button></p>
+  </form>
+</body>
+</html>
+```
+
+这是登录成功的模板：
+
+```html
+<html>
+<head>
+  <title>Welcome, {{ username }}</title>
+</head>
+<body>
+  <p>Welcome, {{ username }}!</p>
+</body>
+</html>
+```
+
+随后，我们创建一个 `templates` 目录来存放这些 html 模板，`templates` 和 `app.py` 在同一目录下。
+
+启动 `app.py` 就可以查看模板的效果了。
+
+注意上述代码中，我们用 `form.html` 代表了登录失败的模板，如果登录失败，会给模板传一个 message 变量，这个时候就会显示出失败的原因。在 jinja2 中，使用 `{{ name }}` 来表示一个需要替换的变量，使用 `{% ... %}` 来表示循环、条件判断等指令。例如循环输出页码：
+
+```html
+{% for i in page_list %}
+    <a href="/page/{{ i }}">{{ i }}</a>
+{% endfor %}
+```
+
+在 python 中传入 `page_list = [1, 2, 3, 4, 5]`, 那么上述代码将输出五个超链接。
+
+除了 jinja2 之外，常见的模板还有：
+- Mako：用 `<% ... %>` 和 `${xxx}` 的一个模板；
+- Cheetah：也是用 `<% ... %>` 和 `${xxx}` 的一个模板；
+- Django：Django 是一站式框架，内置一个用 `{% ... %}` 和 `{{ xxx }}` 的模板。
