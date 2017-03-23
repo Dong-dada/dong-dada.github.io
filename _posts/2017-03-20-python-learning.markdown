@@ -2996,7 +2996,7 @@ C:\Users\dongyu\Desktop>python serve.py
 
 这就是传说中的 MVC: Model-View-Controller 中文名“模型-视图-控制器”：
 - 上面例子中的 `['name': 'Michael']` 就是 model, 它是数据的来源；
-- 包含变量 `{{ name }}` 的模板就是 view, view 负责显示逻辑，通过简单地替换一些变量, view 的最终输出就是 HTML;
+- 包含变量 &#123;&#123; name &#125;&#125; 的模板就是 view, view 负责显示逻辑，通过简单地替换一些变量, view 的最终输出就是 HTML;
 - python 中处理 url 的代码就是 controller, controller 负责业务逻辑，比如检查用户名是否存在，取出用户信息等；
 
 我们使用 MVC 模式来修改一下上一章中的例子：
@@ -3052,53 +3052,23 @@ $ pip install jinja2
 
 这是用来显示登录表单的模板：
 
-```html
-<html>
-<head>
-  <title>Please Sign In</title>
-</head>
-<body>
-  {% if message %}
-  <p style="color:red">{{ message }}</p>
-  {% endif %}
-  <form action="/signin" method="post">
-    <legend>Please sign in:</legend>
-    <p><input name="username" placeholder="Username" value="{{ username }}"></p>
-    <p><input name="password" placeholder="Password" type="password"></p>
-    <p><button type="submit">Sign In</button></p>
-  </form>
-</body>
-</html>
-```
+![]({{site.url}}/asset/python-jinja-code1.png)
 
 这是登录成功的模板：
 
-```html
-<html>
-<head>
-  <title>Welcome, {{ username }}</title>
-</head>
-<body>
-  <p>Welcome, {{ username }}!</p>
-</body>
-</html>
-```
+![]({{site.url}}/asset/python-jinja-code2.png)
 
 随后，我们创建一个 `templates` 目录来存放这些 html 模板，`templates` 和 `app.py` 在同一目录下。
 
 启动 `app.py` 就可以查看模板的效果了。
 
-注意上述代码中，我们用 `form.html` 代表了登录失败的模板，如果登录失败，会给模板传一个 message 变量，这个时候就会显示出失败的原因。在 jinja2 中，使用 `{{ name }}` 来表示一个需要替换的变量，使用 `{% ... %}` 来表示循环、条件判断等指令。例如循环输出页码：
+注意上述代码中，我们用 `form.html` 代表了登录失败的模板，如果登录失败，会给模板传一个 message 变量，这个时候就会显示出失败的原因。在 jinja2 中，使用 &#123;&#123; name &#125;&#125; 来表示一个需要替换的变量，使用 &#123;&#37; ... &#37;&#125; 来表示循环、条件判断等指令。例如循环输出页码：
 
-```html
-{% for i in page_list %}
-    <a href="/page/{{ i }}">{{ i }}</a>
-{% endfor %}
-```
+![]({{site.url}}/asset/python-jinja-code3.png)
 
 在 python 中传入 `page_list = [1, 2, 3, 4, 5]`, 那么上述代码将输出五个超链接。
 
 除了 jinja2 之外，常见的模板还有：
 - Mako：用 `<% ... %>` 和 `${xxx}` 的一个模板；
 - Cheetah：也是用 `<% ... %>` 和 `${xxx}` 的一个模板；
-- Django：Django 是一站式框架，内置一个用 `{% ... %}` 和 `{{ xxx }}` 的模板。
+- Django：Django 是一站式框架，内置一个用 &#123;&#37; ... &#37;&#125; 和 &#123;&#123; xxx &#125;&#125; 的模板。
