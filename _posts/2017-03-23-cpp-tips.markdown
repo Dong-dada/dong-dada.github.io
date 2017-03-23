@@ -1,0 +1,30 @@
+---
+layout: post
+title:  "C/C++ 小知识点"
+date:   2017-03-23 16:18:30 +0800
+categories: lang cpp
+---
+
+* TOC
+{:toc}
+
+## bad_div 问题：
+
+这个知识点来自于 《软件调试》 1.6.1 节。请看下面的代码：
+
+```c
+int bad_div(int m, unsigned int n)
+{
+	return m/n;
+}
+
+int main()
+{
+	printf("%d\n", bad_div(-6, 3));
+	// 错误！输出 1431655763
+
+	return 0;
+}
+```
+
+上述代码出错的原因在于，出错的原因在于参数 `n` 是一个无符号整数，编译器在编译 `m/n` 时采用了无符号除法指令 DIV, 这相当于假设参数 `m` 也是无符号整数，从而导致了意外的结果。
