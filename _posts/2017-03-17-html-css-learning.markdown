@@ -12,7 +12,7 @@ categories: web
 
 网页使用 HTML 对页面元素进行布局，使用 CSS 对页面元素进行装饰：
 
-{% highlight html %}
+```html
 <!DOCTYPE HTML>
 <html>
     <head>
@@ -30,7 +30,7 @@ categories: web
         <h1>Hello World!</h1>
     </body>
 </html>
-{% endhighlight %}
+```
 
 
 ## HTML 基础知识
@@ -63,12 +63,12 @@ head 和 body 标签下还会有子标签，例如 head 标签下的 title 标�
 
 - `ul-li` 标签：用来表示无序列表，列表的每一项前面都没有序号，只有一个点；
 - `ol-li` 标签：用来表示有序列表，列表的每一项前面都有按照顺序的序号；列表的示例代码如下：
-{% highlight html %}
+```html
 <ul>
     <li>第一列</li>
     <li>第二列</li>
 </ul>
-{% endhighlight%}
+```
 
 - `<table>` 标签：表示一个表格，需要和 `<tr>`, `<th>`, `<td>`, `<tbody>` 这几个标签来配合使用。其中：
     - `<tr>` 表示一行 (table row)；
@@ -87,7 +87,7 @@ head 和 body 标签下还会有子标签，例如 head 标签下的 title 标�
 - `<span>` 标签：这个标签 **没有语义**, 它仅用来占位，以后可以用 css 来专门修改 span 中包括的内容；
 
 - `<form>` 标签：表单标签，表单可以把用户输入的数据发送到服务器端，这样服务器端程序就可以处理表单传过来的数据，且看下面的例子：
-{% highlight html %}
+```html
 <form method="post" action="save.php">
     <label for="username">用户名：</label>
     <input type="text" name="username" />
@@ -96,7 +96,7 @@ head 和 body 标签下还会有子标签，例如 head 标签下的 title 标�
     <input type="submit" value="确定"  name="submit" />
     <input type="reset" value="重置" name="reset" />
 </form>
-{% endhighlight %}
+```
 
 - `<form>` 标签中可以包含如下表单控件：
     - method 属性表示数据传送的方式 get/post;
@@ -115,7 +115,7 @@ head 和 body 标签下还会有子标签，例如 head 标签下的 title 标�
 
 CSS 用于对 html 中的标签进行修饰。例如下面的代码：
 
-{% highlight html %}
+```html
 <!DOCTYPE HTML>
 <html>
     <head>
@@ -133,7 +133,7 @@ CSS 用于对 html 中的标签进行修饰。例如下面的代码：
         <p>慕课网，<span>超酷的互联网</span>、IT技术免费学习平台，创新的网络一站式学习、实践体验；<span>服务及时贴心</span>，内容专业、<span>有趣易学</span>。专注服务互联网工程师快速成为技术高手！</p>
     </body>
 </html>
-{% endhighlight %}
+```
 
 上述 CSS 代码将导致该 html 中所有 `<span>` 标签包裹的内容都变为蓝色，字号设置为 20，并加粗文字。
 
@@ -152,7 +152,7 @@ CSS 代码不一定要写在 `<head>` 中，也可以写在别的地方：
 
 以下是外部式写法的一个例子：
 
-{% highlight HTML %}
+```html
 <!DOCTYPE HTML>
 <html>
     <head>
@@ -165,14 +165,14 @@ CSS 代码不一定要写在 `<head>` 中，也可以写在别的地方：
         <p>慕课网，<span>超酷的互联网</span>、IT技术免费学习平台，创新的网络一站式学习、实践体验；<span>服务及时贴心</span>，内容专业、<span>有趣易学</span>。专注服务互联网工程师快速成为技术高手！</p>
     </body>
 </html>
-{% endhighlight %}
+```
 
-{% highlight css %}
+```css
 /* style.css 文件 */
 span{
    color:red;  
 }
-{% endhighlight %}
+```
 
 注意 `<link href="style.css" rel="stylesheet" type="text/css" />` 这行 HTML 代码，其中 href 属性指定了 css 文件的位置，rel 和 type 属性是固定写法。
 
@@ -196,18 +196,18 @@ span{
 
 类选择器设置的是某个类的效果，这些类需要提前设置到标签上面：
 
-{% highlight HTML %}
+```html
 <span class="address">挪威国布宜诺斯艾利斯市</span>
-{% endhighlight %}
+```
 
 设置了类之后，就可以在 css 代码中为 address 这个类来设定样式了：
 
-{% highlight CSS %}
+```css
 .address {
     color:red;
     font-size:14px;
 }
-{% endhighlight %}
+```
 
 如此一来，所有设置了 address 类的元素都会被设为红色；
 
@@ -215,7 +215,7 @@ span{
 
 ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很像，不同之处在于 id 在整个 HTML 文件中是唯一的，而 class 则可以设定到多个标签上；
 
-{% highlight HTML %}
+```html
 <!DOCTYPE HTML>
 <html>
     <head>
@@ -232,13 +232,13 @@ ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很�
         <p>三年级时，我还是一个<span id="stress">胆小如鼠</span>的小女孩，上课从来不敢回答老师提出的问题，生怕回答错了老师会批评我。就一直没有这个勇气来回答老师提出的问题。学校举办的活动我也没勇气参加。</p>
     </body>
 </html>
-{% endhighlight %}
+```
 
 写法上的不同之处在于标签的属性是 id 而不是 class, 同时 css 里选择器的格式是 `#选择器` 而不是 `.选择器`；
 
 类选择器 和 ID 选择器还有一个不同在于，你可以为同一个标签设置多个类，但不能设置多个 id:
 
-{% highlight HTML %}
+```html
 .stress{
     color:red;
 }
@@ -246,7 +246,7 @@ ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很�
     font-size:25px;
 }
 <p>到了<span class="stress bigsize">三年级</span>下学期时，我们班上了一节公开课...</p>
-{% endhighlight %}
+```
 
 上面代码中为 `<span>` 标签设置了两个类 stress, bigsize;
 
@@ -264,7 +264,7 @@ ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很�
 
 与子选择器的不同之处在于使用空格而非 `>` 符号来选择；
 
-{% highlight HTML %}
+```html
 <!DOCTYPE HTML>
 <html>
     <head>
@@ -295,7 +295,7 @@ ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很�
         </ul>
     </body>
 </html>
-{% endhighlight %}
+```
 
 在上述例子中，如果使用的是子选择器，则之后 food 类下第一代子元素 `<li>水果</li>` 和 `<li>蔬菜</li>` 会被选择，而使用后代选择器则将选择 food 类下所有的 `li` 元素；
 
@@ -315,16 +315,16 @@ ID 选择器设置的是某个 id 的效果，它的写法与 类选择器 很�
 
 你可以把多个选择器合在一起写：
 
-{% highlight CSS %}
+```css
 h1,span{color:red;}
-{% endhighlight %}
+```
 
 上述代码等价于：
 
-{% highlight CSS %}
+```css
 h1{color:red;}
 span{color:red;}
-{% endhighlight %}
+```
 
 ### CSS 的继承、层叠、和特殊性
 
@@ -332,14 +332,14 @@ span{color:red;}
 
 CSS 的某些样式是有继承性的，这里继承的意思是说这个样式不仅会应用到选择的元素上，还会应用到它的子元素上。比如下面的代码中，CSS 的颜色样式不仅会应用到 p 标签，它的子标签 span 也会应用：
 
-{% highlight CSS %}
+```css
 p {
     color:red;
     border: 1px solid green;
 }
 
 <p>哈哈哈哈<span>呵呵呵呵</span></p>
-{% endhighlight %}
+```
 
 但有些 CSS 样式并不具有继承性，例如上述例子中的 border 属性，不会被 span 标签所继承。
 
@@ -347,24 +347,24 @@ p {
 
 如果我们为同一个标签设置了不同的 CSS 样式代码。这种时候会采用哪一个呢？
 
-{% highlight CSS %}
+```css
 p { color:red; }
 .first { color:green; }
 
 <p class="first">哈哈哈哈<span>呵呵呵呵</span></p>
-{% endhighlight %}
+```
 
 答案是会采用 `.first` 样式，这是因为 CSS 样式代码是有权值的，同时出现的情况下会使用权值高的那一个。
 
 权值的规则为：标签的权值为 1, 类选择器的权值为 10, ID 选择器的权值为 100. 例如下面的代码：
 
-{% highlight CSS %}
+```css
 p {color:red;} /* 权值为 1 */
 p span{color:green;} /* 权值为 1+1=2 */
 .warning{color:blue;} /* 权值为 10 */
 p span.warning{color:white;} /* 权值为 1+1+10=12 */
 #footer .note p{color:black} /* 权值为 100+10+1=111 */
-{% endhighlight %}
+```
 
 可以看到使用包含选择器时权值需要相加。
 
@@ -372,10 +372,10 @@ p span.warning{color:white;} /* 权值为 1+1+10=12 */
 
 如果有相同权值的 CSS 作用到同一个元素上，这时候会采用哪一个呢？
 
-{% highlight CSS %}
+```css
 p {color:red;}
 p {color:green;}
-{% endhighlight %}
+```
 
 答案是会采用后一个，层叠的意思就是说当有相同权值的 CSS 作用在同一个元素上时，会采用后一个覆盖前一个的样式，也就是说，会采用最后一个 CSS 样式来装饰元素。
 
@@ -385,12 +385,12 @@ p {color:green;}
 
 有的时候我们希望某个 CSS 样式无法被其他人覆盖，也不会因为权值或者用户的设置而被修改。这时候可以使用 `!important` 标识符来修饰这个样式：
 
-{% highlight HTML %}
+```html
 p {color:red!important;}
 p.first {color:green;}
 
 <p class="first">哈哈哈啊</p>
-{% endhighlight %}
+```
 
 这时候虽然 p.first 的样式权值比较高，并且位于 p 样式的后面，但仍然会使用红色样式，因为这个样式被指定为 important.
 
@@ -501,23 +501,23 @@ layer:
 
 另外，上述几种形式是可以混用的，从而实现复杂的页面效果。但需要注意的是, absolute 默认情况下是相对于 HTML 最外层 body 的位置，如果你希望它能够相对于其他元素来设定位置，那么你需要把父元素设定上 `position:relative` 样式：
 
-{% highlight HTML %}
+```html
 <div id="box1" style="position:relative; border:1px solid red; width:100px; height:100px" >
     <div id="box2" style="position:absolute; left:10px; top:20px; border:1px solid green; width:100px; height:100px"></div>
 </div>
-{% endhighlight %}
+```
 
 这样就可以实现 box2 相对于父元素 box1 的左上角偏移一定距离的效果了。
 
 需要注意的是，如果元素有多个层级，那么子元素在这是 absolute 位置时，所对应的参照物，是它前辈元素中最近的那个具有 relative 样式的元素。例如下面的代码：
 
-{% highlight HTML %}
+```html
 <div id="box1" style="position:relative;">
     <div id="box2">
         <div id="box3" style="position:absolute;"></div>
     </div>
 </div>
-{% endhighlight %}
+```
 
 由于 box2 没有设置 relative 样式，因此 box3 的参照物是设置了 relative 的 box1.
 
@@ -552,11 +552,11 @@ CSS 中设置元素或文字长度常用的单位有以下几种：
 
 对于行内元素(a, img) 而言，由于它自身的宽高都是固定的，所以你需要对他的父元素设定 `text-align:center` 样式来达到本身居中的效果：
 
-{% highlight HTML %}
+```html
 <div style="text-align:center">
     <a href="http://www.baidu.com">点这里</a>
 </div>
-{% endhighlight %}
+```
 
 对于块状元素(div, table) 而言，有以下方法可以做到水平居中：
 
@@ -601,7 +601,7 @@ CSS 中设置元素或文字长度常用的单位有以下几种：
 
 我们之前介绍了许多设置字体的代码，例如：
 
-{% highlight CSS %}
+```css
 body{
     font-style:italic;
     font-variant:small-caps; 
@@ -610,25 +610,25 @@ body{
     line-height:1.5em; 
     font-family:"宋体",sans-serif;
 }
-{% endhighlight %}
+```
 
 上述代码可以简写为：
 
-{% highlight CSS %}
+```css
 body{
     font:italic  small-caps  bold  12px/1.5em  "宋体",sans-serif;
 }
-{% endhighlight %}
+```
 
 需要注意的是 `font-size` 和 `line-height` 之间要用 `/` 而不是空格来分隔；
 
 上述一些属性我们可以省略，一般中文网站会写为如下形式：
 
-{% highlight CSS %}
+```css
 body{
     font:12px/1.5em  "宋体",sans-serif;
 }
-{% endhighlight %}
+```
 
 
 
