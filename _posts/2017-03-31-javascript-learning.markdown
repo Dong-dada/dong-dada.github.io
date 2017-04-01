@@ -1052,3 +1052,270 @@ f.next(); // {value: 3, done: true}
 ```
 
 generator 相比于普通函数的优势在于，它能记住 **状态**，yield 使得函数执行之后能够停下来，把当前的计算结果先返回，下一次再从这个状态开始继续计算。这里多说无用，以后遇到了实际的代码，就能体会它的妙处了。
+
+
+## 标准对象
+
+我们先用 `typeof` 操作符打印一下现在用过的几种数据类型：
+
+```js
+typeof 123; // 'number'
+typeof NaN; // 'number'
+typeof 'str'; // 'string'
+typeof true; // 'boolean'
+typeof undefined; // 'undefined'
+typeof Math.abs; // 'function'
+typeof null; // 'object'
+typeof []; // 'object'
+typeof {}; // 'object'
+```
+
+在 JS 中，一切都是对象，除了几个基本数据类型 `number`, `string`, `boolean`, `undefined`, `function` 以外。
+
+有点奇葩的是 `null` 居然也是 object 类型，我有点懵逼。
+
+除了这些之外，JS 还提供了包装对象：
+
+```js
+var n = new Number(123); // 123,生成了新的包装类型
+var b = new Boolean(true); // true,生成了新的包装类型
+var s = new String('str'); // 'str',生成了新的包装类型
+```
+
+这些包装对象是 object 类型，因此使用 `===` 进行比较的话将会报错：
+
+```js
+typeof new Number(123); // 'object'
+new Number(123) === 123; // false
+```
+
+**不要使用包装类型**，这个东西看不出来有啥用，还会造成困惑。
+
+更奇葩的是如果你不写 new 的话，那么 `Number()` 是一个函数，函数的作用是将一个变量转换为基本类型 `number`：
+
+```js
+var n = Number('123'); // 123，相当于parseInt()或parseFloat()
+typeof n; // 'number'
+
+var b = Boolean('true'); // true
+typeof b; // 'boolean'
+
+var b2 = Boolean('false'); // true! 'false'字符串转换结果为true！因为它是非空字符串！
+var b3 = Boolean(''); // false
+
+var s = String(123.45); // '123.45'
+typeof s; // 'string'
+```
+
+你可以用下述方法来判断全局变量或局部变量是否存在：
+
+```js
+function foo() {
+    if (typeof window.myVar === 'undefined') {
+        // 全局变量 myVar 不存在
+    }
+
+    if (typeof myVar === 'undefined') {
+        // 局部变量 myVar 不存在
+    }
+}
+```
+
+接下来介绍一下 JS 中提供的几个标准对象：
+
+### Date
+
+Data 对象用来表示当前时间：
+
+```js
+var now = new Date();
+now; // Wed Jun 24 2015 19:49:22 GMT+0800 (CST)
+now.getFullYear(); // 2015, 年份
+now.getMonth(); // 5, 月份，注意月份范围是0~11，5表示六月
+now.getDate(); // 24, 表示24号
+now.getDay(); // 3, 表示星期三
+now.getHours(); // 19, 24小时制
+now.getMinutes(); // 49, 分钟
+now.getSeconds(); // 22, 秒
+now.getMilliseconds(); // 875, 毫秒数
+now.getTime(); // 1435146562875, 以number形式表示的时间戳
+```
+
+上述代码有个非常坑爹的地方，它的月份是从 0 数到 11 的，因此 5 表示的是六月！
+
+```js
+// 将时间解析为时间戳
+var d = Date.parse('2015-06-24T19:49:22.875+08:00');
+d; // 1435146562875
+
+// 从时间戳反推回时间
+var d = new Date(1435146562875);
+d; // Wed Jun 24 2015 19:49:22 GMT+0800 (CST)
+```
+
+时间戳是一个自增的整数，它表示从1970年1月1日零时整的GMT时区开始的那一刻，到现在的毫秒数。假设浏览器所在电脑的时间是准确的，那么世界上无论哪个时区的电脑，它们此刻产生的时间戳数字都是一样的，所以，时间戳可以精确地表示一个时刻，并且与时区无关。
+
+所以，我们只需要传递时间戳，或者把时间戳从数据库里读出来，再让JavaScript自动转换为当地时间就可以了。
+
+### RegExp
+
+JS 中对正则表达式也提供了支持，这需要通过 RegExp 标准对象来使用：
+
+```js
+// 写正则表达式
+var re = /^\d{3}\-\d{3,8}$/;
+
+re.test('010-12345'); // true
+re.test('010-1234x'); // false
+re.test('010 12345'); // false
+```
+
+正则表达式有两种写法，一种是用斜杠括起来： `/正则表达式/` 另一种是通过 `new RegExp('正则表达式')`。
+
+正则表达式的 `test()` 方法用于判断字符串是否匹配。
+
+之前提到过 string 的 `split()` 方法可以对字符串进行切分，你可以给 `split()` 方法传入正则表达式来进行更准确的切分：
+
+```js
+// 普通的切分无法识别连续多个空格
+'a b   c'.split(' '); // ['a', 'b', '', '', 'c']
+
+// 正则表达式可以识别连续的空格
+'a b   c'.split(/\s+/); // ['a', 'b', 'c']
+
+// 除了空格还可以根据逗号切分
+'a,b, c  d'.split(/[\s\,]+/); // ['a', 'b', 'c', 'd']
+```
+
+JS 中的正则表达式同样提供了分组的功能，或者可以称它为捕获：
+
+```js
+var re = /^(\d{3})-(\d{3,8})$/;
+re.exec('010-12345'); // ['010-12345', '010', '12345']
+re.exec('010 12345'); // null
+```
+
+可以看到，使用 `exec()` 进行分组之后会返回一个数组，数组的第一个是匹配的字符串，随后是分组的各个子串。
+
+JS 正则默认是贪婪匹配，加上 `?` 可以变为非贪婪：
+
+```js
+var re = /^(\d+?)(0*)$/;
+re.exec('102300'); // ['102300', '1023', '00']
+```
+
+JS 的正则表达式还可以指定一些特殊的标志，例如 `i` 表示忽略大小写、`m` 表示执行多行匹配、`g` 表示进行全局匹配：
+
+```js
+var s = 'JavaScript, VBScript, JScript and ECMAScript';
+var re=/[a-zA-Z]+Script/g;
+
+// 使用全局匹配，每次匹配都会记录上次匹配到的位置，下次调用 exec 会从此位置继续匹配:
+re.exec(s); // ['JavaScript']
+re.lastIndex; // 10
+
+re.exec(s); // ['VBScript']
+re.lastIndex; // 20
+
+re.exec(s); // ['JScript']
+re.lastIndex; // 29
+
+re.exec(s); // ['ECMAScript']
+re.lastIndex; // 44
+
+re.exec(s); // null，直到结束仍没有匹配到
+```
+
+### JSON
+
+JSON 是 JavaScript Object Notation 的缩写，是 JavaScript 支持的一种数据交换格式。
+
+下面的代码将一个对象序列化为 JSON 字符串：
+
+```js
+var xiaoming = {
+    name: '小明',
+    age: 14,
+    gender: true,
+    height: 1.65,
+    grade: null,
+    'middle-school': '\"W3C\" Middle School',
+    skills: ['JavaScript', 'Java', 'Python', 'Lisp']
+};
+
+JSON.stringify(xiaoming, null, '  '); 
+
+/*
+{
+  "name": "小明",
+  "age": 14,
+  "gender": true,
+  "height": 1.65,
+  "grade": null,
+  "middle-school": "\"W3C\" Middle School",
+  "skills": [
+    "JavaScript",
+    "Java",
+    "Python",
+    "Lisp"
+  ]
+}
+*/
+```
+
+`JSON.stringify()` 的第二个参数用来筛选对象的键，如果只想序列化指定的属性，可以传入一个数组：
+
+```js
+JSON.stringify(xiaoming, ['name', 'skills'], '  ');
+
+/*
+{
+  "name": "小明",
+  "skills": [
+    "JavaScript",
+    "Java",
+    "Python",
+    "Lisp"
+  ]
+}
+*/
+```
+
+你还可以给第二个参数传入一个函数，这样每个 key-value 都会被这个函数处理一遍：
+
+```js
+function convert(key, value) {
+    if (typeof value === 'string') {
+        return value.toUpperCase();
+    }
+    return value;
+}
+
+JSON.stringify(xiaoming, convert, '  ');
+
+/*
+{
+  "name": "小明",
+  "age": 14,
+  "gender": true,
+  "height": 1.65,
+  "grade": null,
+  "middle-school": "\"W3C\" MIDDLE SCHOOL",
+  "skills": [
+    "JAVASCRIPT",
+    "JAVA",
+    "PYTHON",
+    "LISP"
+  ]
+}
+*/
+```
+
+从字符串反序列化出对象也很简单：
+
+```js
+JSON.parse('[1,2,3,true]'); // [1, 2, 3, true]
+JSON.parse('{"name":"小明","age":14}'); // Object {name: '小明', age: 14}
+JSON.parse('true'); // true
+JSON.parse('123.45'); // 123.45
+```
