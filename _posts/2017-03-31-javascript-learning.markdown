@@ -1319,3 +1319,140 @@ JSON.parse('{"name":"小明","age":14}'); // Object {name: '小明', age: 14}
 JSON.parse('true'); // true
 JSON.parse('123.45'); // 123.45
 ```
+
+
+## 面向对象编程
+
+JS 中的面向对象与 Java/C++ 等语言不一样，它没有提供 class 这个概念，而是提供了一种叫做 原型(prototype) 的东西来完成面向对象功能：
+
+```js
+var Student = {
+    name: 'Robot',
+    height: 1.2,
+    run: function () {
+        console.log(this.name + ' is running...');
+    }
+};
+
+var xiaoming = {
+    name: '小明'
+};
+
+xiaoming.__proto__ = Student;
+```
+
+如上，我们通过 `xiaoming.__proto__ = Student;` 这行语句，将 `xiaoming` 的原型设定为 `Student`，其效果就类似于 `xiaoming` 继承自 `Student`，这样就可以通过 `xiaoming` 来调用 `Student` 的 `run` 方法了：
+
+```js
+xiaoming.name; // '小明'
+xiaoming.run(); // 小明 is running...
+```
+
+直接用 `__proto__` 指向的方式来修改原型不太好，标准的做法是使用 `Object.create()` 方法：
+
+```js
+// 原型对象:
+var Student = {
+    name: 'Robot',
+    height: 1.2,
+    run: function () {
+        console.log(this.name + ' is running...');
+    }
+};
+
+function createStudent(name) {
+    // 基于Student原型创建一个新对象:
+    var s = Object.create(Student);
+    // 初始化新对象:
+    s.name = name;
+    return s;
+}
+
+var xiaoming = createStudent('小明');
+xiaoming.run(); // 小明 is running...
+xiaoming.__proto__ === Student; // true
+```
+
+### 创建对象
+
+除了直接用 `{ ... }` 创建一个对象以外，JS 还支持用构造函数来创建对象：
+
+```js
+function Student(name) {
+    this.name = name;
+    this.hello = function () {
+        alert('Hello, ' + this.name + '!');
+    }
+}
+
+// 必须用 new 操作符来调用构造函数
+var xiaoming = new Student('小明');
+xiaoming.name; // '小明'
+xiaoming.hello(); // Hello, 小明!
+```
+
+新创建的 xiaoming 对象的原型链是：
+
+```js
+xiaoming ----> Student.prototype ----> Object.prototype ----> null
+```
+
+使用构造函数来创建对象，有一个弊端是对象中的函数不是共享的，假如你又创建了一个 `xiaohong` 对象，那么 `xiaoming.hello` 函数和 `xiaohong.hello` 函数是两个不同的函数。这造成了内存的浪费。
+
+你可以用如下写法来让创建出来的对象共享同一个函数：
+
+```js
+function Student(name) {
+    this.name = name;
+}
+
+Student.prototype.hello = function () {
+    alert('Hello, ' + this.name + '!');
+};
+```
+
+上述写法还有一个比较坑的地方，如果你忘记写 new 了，也不一定会报错，而是会产生意外的结果：
+
+```js
+var xiaoming = Student('小明');
+xiaoming.name; // '小明'
+xiaoming.hello(); // Hello, 小明!
+```
+
+这时候 Student 变成了一个普通的函数，它内部的 this 指向的可能会是 `undefined` (strict 模式下) 也可能是 `window`。前者会报错，后者不会报错但比报错更加糟糕。
+
+为此我们可以创建一个 `createStudent()` 函数，在内部封装 new 操作，一个常用的编程模式是：
+
+```js
+function Student(props) {
+    this.name = props.name || '匿名'; // 默认值为'匿名'
+    this.grade = props.grade || 1; // 默认值为1
+}
+
+Student.prototype.hello = function () {
+    alert('Hello, ' + this.name + '!');
+};
+
+function createStudent(props) {
+    return new Student(props || {})
+}
+```
+
+这种写法非常灵活，你不需要用 new 就可以创建出对象，同时 `createStudent()` 的参数可以是空，也可以是键值对。
+
+### 原型继承
+
+JS 的原型是个很奇葩的东西，我们来看看上一节代码的原型链：
+
+```js
+function Student(props) {
+    this.name = props.name || 'Unnamed';
+}
+
+Student.prototype.hello = function () {
+    alert('Hello, ' + this.name + '!');
+}
+```
+
+![]( {{ site.url }}/asset/javascript-learning-prototype-chain.png)
+
