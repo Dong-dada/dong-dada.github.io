@@ -1456,3 +1456,45 @@ Student.prototype.hello = function () {
 
 ![]( {{ site.url }}/asset/javascript-learning-prototype-chain.png)
 
+关于原型我没彻底想明白，以 class 的概念来推断原型的理论，这样是不可行的，它们俩思路不一样。这个以后再说，这里先略过它。
+
+### class 继承
+
+新的关键字 class 从 ES6 开始正式引入到了 JavaScript 中。`class` 的目的就是让类的定义变得更简单。
+
+```js
+class Student {
+    constructor(name) {
+        this.name = name;
+    }
+
+    hello() {
+        alert('Hello, ' + this.name + '!');
+    }
+}
+
+xiaoming = new Student("小明");
+```
+
+ES6 中的继承也变得非常简单：
+
+```js
+class PrimaryStudent extends Student {
+    constructor(name, grade) {
+        super(name); // 记得用super调用父类的构造方法!
+        this.grade = grade;
+    }
+
+    myGrade() {
+        alert('I am at grade ' + this.grade);
+    }
+}
+
+xiaohong = new PrimaryStudent("小红", 90);
+xiaohong.hello();
+xiaohong.myGrade();
+```
+
+ES6 引入的 class 操作符，其作用是让 JavaScript 引擎去实现原来需要我们来编写的一大堆继承代码。让类的编写更简单，更容易理解。
+
+因为并不是所有的主流浏览器都支持 class 语句，如果你需要在旧版本浏览器上使用，你可以使用 [babel](https://babeljs.io/) 这个工具，它能够把 class 定义的类转换成使用原型来定义的类。
