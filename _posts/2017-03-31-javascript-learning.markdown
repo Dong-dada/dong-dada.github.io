@@ -500,3 +500,555 @@ a.forEach(function (element) {
     alert(element);
 });
 ```
+
+
+## 函数
+
+JS 中定义函数的语法如下：
+
+```js
+function abs(x) {
+    if (x >= 0) {
+        return x;
+    } else {
+        return -x;
+    }
+}
+```
+
+如果函数没有 return 语句，那么返回值是 `undefined` 而不是 `null`;
+
+由于函数在 JS 中是第一类值，因此可以有如下写法：
+
+```js
+var abs = function (x) {
+    if (x >= 0) {
+        return x;
+    } else {
+        return -x;
+    }
+};
+```
+
+### 函数参数
+
+JS 中的函数参数可以是可变参数，这时候可以通过 `arguments` 关键字来获取所有参数：
+
+```js
+function abs() {
+    if (arguments.length === 0) {
+        return 0;
+    }
+    var x = arguments[0];
+    return x >= 0 ? x : -x;
+}
+
+abs(); // 0
+abs(10); // 10
+abs(-9); // 9
+```
+
+使用 `arguments` 关键字有一个比较麻烦的地方：
+
+```js
+function foo(a, b) {
+    var i, rest = [];
+    if (arguments.length > 2) {
+        for (i = 2; i<arguments.length; i++) {
+            rest.push(arguments[i]);
+        }
+    }
+    console.log('a = ' + a);
+    console.log('b = ' + b);
+    console.log(rest);
+}
+```
+
+上述例子中，`a`, `b` 这两个参数可以直接获取，但剩下的参数需要通过 `arguments` 来循环获取，并且还得把前两个排除。这种写法很别扭，为此 ES6 标准引入了 rest 参数，可以写为：
+
+```js
+function foo(a, b, ...rest) {
+    console.log('a = ' + a);
+    console.log('b = ' + b);
+    console.log(rest);
+}
+
+foo(1, 2, 3, 4, 5);
+// 结果:
+// a = 1
+// b = 2
+// Array [ 3, 4, 5 ]
+```
+
+### 变量作用域
+
+与其他语言一样，`var` 定义的局部变量，其作用域位于 `{ ... }` 内部。
+
+JavaScript 函数定义有个特点，它会先扫描整个函数体的语句，把它声明的所有变量“提升”到函数顶部：
+
+```js
+'use strict';
+
+function foo() {
+    var x = 'Hello, ' + y;
+    alert(x);
+    var y = 'Bob';
+}
+
+foo();
+```
+
+虽然在 `var x = 'Hello, ' + y` 这一句中引用了未定义的变量 `y`, 但这句话并不会报错，因为 `y` 在之后定义过了，它相当于：
+
+```js
+function foo() {
+    var y; // 提升变量y的申明
+    var x = 'Hello, ' + y;
+    alert(x);
+    y = 'Bob';
+}
+```
+
+注意，这时只是提升了 `y` 的声明，并没有提升它的赋值操作，因此 `y` 的值是 `undefined`.
+
+由于 JS 的这个奇怪特性，我们在函数内部定义变量的时候，请严格遵守 “在函数内部首先申明所有变量” 这一原则：
+
+```js
+function foo() {
+    var
+        x = 1, // x初始化为1
+        y = x + 1, // y初始化为2
+        z, i; // z和i为undefined
+    // 其他语句:
+    for (i=0; i<100; i++) {
+        ...
+    }
+}
+```
+
+### 全局作用域
+
+不在任何函数内定义的变量就具有全局作用域。实际上，JS 默认有一个全局对象 `window`, 全局作用域的变量实际上被绑定到了 `window` 的一个属性上：
+
+```js
+'use strict';
+
+var course = 'Learn JavaScript';
+alert(course); // 'Learn JavaScript'
+alert(window.course); // 'Learn JavaScript'
+```
+
+类似地，在顶层定义的函数也是一个全局变量，也被绑定到了 `window` 对象上：
+
+```js
+'use strict';
+
+function foo() {
+    alert('foo');
+}
+
+foo(); // 直接调用foo()
+window.foo(); // 通过window.foo()调用
+```
+
+### 名字空间
+
+全局变量会绑定到 `window` 上，同一页面不同的 JS 文件会共享同一个 window, 如果定义了相同名字的函数或者变量，就会造成名字冲突。为了解决这个问题，你可以把自己所有的变量和函数都绑定到一个全局变量上：
+
+```js
+// 唯一的全局变量MYAPP:
+var MYAPP = {};
+
+// 其他变量:
+MYAPP.name = 'myapp';
+MYAPP.version = 1.0;
+
+// 其他函数:
+MYAPP.foo = function () {
+    return 'foo';
+};
+```
+
+### 局部作用域
+
+JS 中变量作用域在函数内部，因此在 `for` 语句中定义的变量可能会被外部引用到：
+
+```js
+'use strict';
+
+function foo() {
+    for (var i=0; i<100; i++) {
+        //
+    }
+    i += 100; // 仍然可以引用变量i
+}
+```
+
+为了解决块级作用域，ES6 引入了新的关键字 `let`, 用 `let` 替代 `var` 可以申明一个块级作用域的变量：
+
+```js
+'use strict';
+
+function foo() {
+    var sum = 0;
+    for (let i=0; i<100; i++) {
+        sum += i;
+    }
+    i += 1; // SyntaxError
+}
+```
+
+### 常量
+
+ES6 标准引入了新的关键字 `const` 来定义常量，`const` 和 `let` 都具有块级作用域。
+
+```js
+'use strict';
+
+const PI = 3.14;
+PI = 3; // 某些浏览器不报错，但是无效果！
+PI; // 3.14
+```
+
+### 方法
+
+给一个对象绑定函数，称为这个对象的方法：
+
+```js
+var xiaoming = {
+    name: '小明',
+    birth: 1990,
+    age: function () {
+        var y = new Date().getFullYear();
+        return y - this.birth;
+    }
+};
+
+xiaoming.age; // function xiaoming.age()
+xiaoming.age(); // 今年调用是25,明年调用就变成26了
+```
+
+注意上述代码中使用了 `this` 关键字。`this` 的语义和 C/C++ 中的 `this` 类似，用来代表当前对象，也就是上述例子中的 `xiaoming` 对象。
+
+然而这里的 `this` 有点奇葩，你必须用 `obj.xxx()` 的形式来调用，`this` 才能代表当前对象，否则 `this` 将指向 `window` 对象！(ECMA 规定，如果使用 strict 模式，这种情况下 `this` 将指向 `undefined`)。这意味着下面的代码都有问题：
+
+```js
+'use strict';
+
+var xiaoming = {
+    name: '小明',
+    birth: 1990,
+    age: function () {
+        var y = new Date().getFullYear();
+        return y - this.birth;
+    }
+};
+
+// 先拿到 age 函数，再进行调用，不行，因为没有提供 obj, this 找不到 obj 就会指向 window 或 undefined
+var fn = xiaoming.age;
+fn(); // Uncaught TypeError: Cannot read property 'birth' of undefined
+```
+
+```js
+'use strict';
+
+var xiaoming = {
+    name: '小明',
+    birth: 1990,
+    age: function () {
+        // 不行，函数内部定义的函数，没有提供 obj, this 找不到 obj 就会指向 window 或 undefined
+        function getAgeFromBirth() {
+            var y = new Date().getFullYear();
+            return y - this.birth;
+        }
+        return getAgeFromBirth();
+    }
+};
+
+xiaoming.age(); // Uncaught TypeError: Cannot read property 'birth' of undefined
+```
+
+如果你真要使用 `this`, 首先避免上面的第一种写法，必须用 `obj.xxx()` 的方式来调用函数，其次，你可以在函数内部先获取到 `this`, 这样函数内部定义的函数就能访问到正确的 `this` 了：
+
+```js
+'use strict';
+
+var xiaoming = {
+    name: '小明',
+    birth: 1990,
+    age: function () {
+        var that = this; // 在方法内部一开始就捕获this
+        function getAgeFromBirth() {
+            var y = new Date().getFullYear();
+            return y - that.birth; // 用that而不是this
+        }
+        return getAgeFromBirth();
+    }
+};
+
+xiaoming.age(); // 25
+```
+
+此外，JS 提供了 `apply` 和 `call` 方法，也可以部分解决上述问题，它的作用请看下述代码：
+
+```js
+function getAge() {
+    var y = new Date().getFullYear();
+    return y - this.birth;
+}
+
+var xiaoming = {
+    name: '小明',
+    birth: 1990,
+    age: getAge
+};
+
+xiaoming.age(); // 25
+getAge.apply(xiaoming, []); // 25, this指向xiaoming, 参数为空
+```
+
+`call` 和 `apply` 功能一样，只不过 `apply` 把函数参数用数组的方式进行打包，而 `call` 只是把参数按顺序传入。
+
+利用 `apply` 还可以动态修改一个函数的定义：
+
+```js
+var count = 0;
+var oldParseInt = parseInt; // 保存原函数
+
+window.parseInt = function () {
+    count += 1; // 统计 parseInt 调用次数
+    return oldParseInt.apply(null, arguments); // 调用原函数
+};
+
+// 测试:
+parseInt('10');
+parseInt('20');
+parseInt('30');
+count; // 3
+```
+
+### 高阶函数
+
+高阶函数 (Higher-order function), 意思是接收其他函数作为参数的函数。高阶函数定义了某种规则，利用其他函数来实现某种计算。
+
+JS 内置了几个高阶函数，接下来我们分别介绍它们。
+
+#### map/reduce
+
+高阶函数 map 接受两个参数，一个数组 array, 一个函数 `f(x)`, map 会把 `f(x)` 作用到数组的每个元素上，计算结束后返回一个新的数组。
+
+![]( {{ site.url }}/asset/javascript-learning-map.png)
+
+JS 中调用 map 方法需要使用 `Array` ：
+
+```js
+function pow(x) {
+    return x * x;
+}
+
+var arr = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+arr.map(pow); // [1, 4, 9, 16, 25, 36, 49, 64, 81]
+```
+
+高阶函数 reduce 接受两个参数，一个数组 array, 一个函数 `f(x, y)`, reduce 会把数组的元素通过 `f(x, y)`进行累计运算，返回累积运算之后的结果。其效果就是：
+
+```
+[x1, x2, x3, x4].reduce(f) = f(f(f(x1, x2), x3), x4)
+```
+
+例如数组的求和运算可以用 reduce 表达为：
+
+```js
+var arr = [1, 3, 5, 7, 9];
+arr.reduce(function (x, y) {
+    return x + y;
+}); // 25
+```
+
+要把 `[1, 3, 5, 7, 9]` 变换成整数 `13579`，`reduce()`也能派上用场：
+
+```js
+var arr = [1, 3, 5, 7, 9];
+arr.reduce(function (x, y) {
+    return x * 10 + y;
+}); // 13579
+```
+
+#### filter
+
+高阶函数 filter 接受两个参数，一个数组 array, 一个函数 `f(x)`, filter 会根据 `f(x)` 返回的布尔值决定保留或丢弃数组中的指定元素：
+
+```js
+var arr = [1, 2, 4, 5, 6, 9, 10, 15];
+var r = arr.filter(function (x) {
+    return x % 2 !== 0;
+});
+r; // [1, 5, 9, 15]
+```
+
+#### sort
+
+之前我们提到的 sort 也是一个高阶函数，它接受两个参数，一个数组 array, 一个函数 `f(x, y)`, sort 会根据 `f(x, y)` 返回的布尔值决定排序的顺序。
+
+```js
+// 忽略大小写的排序
+
+var arr = ['Google', 'apple', 'Microsoft'];
+arr.sort(function (s1, s2) {
+    x1 = s1.toUpperCase();
+    x2 = s2.toUpperCase();
+    if (x1 < x2) {
+        return -1;
+    }
+    if (x1 > x2) {
+        return 1;
+    }
+    return 0;
+}); // ['apple', 'Google', 'Microsoft']
+```
+
+值得一提的是，sort 如果没有提供排序函数，默认的排序规则会先把元素转换为字符串，然后进行排序。
+
+### 闭包
+
+闭包的概念很简单，就是可以把 函数 和 函数外的局部变量 打包在一起，这个整体就称为闭包。函数实际上是闭包的一种特殊情况。同时，由于函数在 JS 里是第一类值，因此可以作为返回值返回。
+
+下面的代码返回了一个闭包，并且使用这个闭包进行计算：
+
+```js
+function count() {
+    var arr = [];
+    for (var i=1; i<=3; i++) {
+        arr.push(function () {
+            return i * i;
+        });
+    }
+    return arr;
+}
+
+var results = count();
+var f1 = results[0];
+var f2 = results[1];
+var f3 = results[2];
+
+f1(); // 16
+f2(); // 16
+f3(); // 16
+```
+
+上面的代码有一个问题，函数 count 返回了三个闭包，当 count 返回时，实际上 `i` 的值已经变成了 4，因此每个函数的计算结果都是 16, 而不是我们所设想的，三个函数分别返回 `1, 4, 9`。
+
+上述问题的根本原因在于，我们返回的三个闭包都引用了同一个变量 `i`, 并且这个变量 `i` 随后被修改了。因此在使用闭包时要注意，不要在闭包函数里使用那些 **后续** 会被修改的变量：
+
+```js
+function count() {
+    var arr = [];
+    for (var i=1; i<=3; i++) {
+        arr.push((function (n) {
+            return function () {
+                return n * n;
+            }
+        })(i));
+    }
+    return arr;
+}
+
+var results = count();
+var f1 = results[0];
+var f2 = results[1];
+var f3 = results[2];
+
+f1(); // 1
+f2(); // 4
+f3(); // 9
+```
+
+上述代码中多创建了一个函数，将 `i` 作为参数传给了这个函数，这种方法避免了之前的问题。值得注意的是，如果要创建一个匿名函数并让函数立刻执行，应当像下面这样写：
+
+```js
+(function (x) {
+    return x * x;
+})(3);
+```
+
+用括号把匿名函数的定义括起来，后面再跟上函数的参数。
+
+### 箭头函数
+
+ES6 中新增了一种箭头函数 (Arrow Function)：
+
+```js
+x => x * x
+```
+
+它相当于
+
+```js
+function (x) {
+    return x * x;
+}
+```
+
+箭头函数的意义在于简化函数定义，可以看到它省略了 `function` 关键字、参数列表、大括号小括号 这些东西。你可以像如下代码那样定义含有多条语句的箭头函数：
+
+```js
+// 两个参数:
+(x, y) => x * x + y * y
+
+// 无参数:
+() => 3.14
+
+// 可变参数:
+(x, y, ...rest) => {
+    var i, sum = x + y;
+    for (i=0; i<rest.length; i++) {
+        sum += rest[i];
+    }
+    return sum;
+}
+```
+
+箭头函数相比匿名函数而言有个明显的区别：箭头函数内部的 `this` 是词法作用域，由上下文确定：
+
+```js
+var obj = {
+    birth: 1990,
+    getAge: function () {
+        var b = this.birth; // 1990
+        var fn = () => new Date().getFullYear() - this.birth; // this指向obj对象
+        return fn();
+    }
+};
+obj.getAge(); // 25
+```
+
+### generator
+
+ES6 标准引入了新的数据类型 generator, 它是一种可以多次返回的函数：
+
+```js
+function* fib(max) {
+    var
+        t,
+        a = 0,
+        b = 1,
+        n = 1;
+    while (n < max) {
+        yield a;
+        t = a + b;
+        a = b;
+        b = t;
+        n ++;
+    }
+    return a;
+}
+
+var f = fib(5);
+f.next(); // {value: 0, done: false}
+f.next(); // {value: 1, done: false}
+f.next(); // {value: 1, done: false}
+f.next(); // {value: 2, done: false}
+f.next(); // {value: 3, done: true}
+```
+
+generator 相比于普通函数的优势在于，它能记住 **状态**，yield 使得函数执行之后能够停下来，把当前的计算结果先返回，下一次再从这个状态开始继续计算。这里多说无用，以后遇到了实际的代码，就能体会它的妙处了。
