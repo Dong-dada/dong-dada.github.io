@@ -1498,3 +1498,82 @@ xiaohong.myGrade();
 ES6 引入的 class 操作符，其作用是让 JavaScript 引擎去实现原来需要我们来编写的一大堆继承代码。让类的编写更简单，更容易理解。
 
 因为并不是所有的主流浏览器都支持 class 语句，如果你需要在旧版本浏览器上使用，你可以使用 [babel](https://babeljs.io/) 这个工具，它能够把 class 定义的类转换成使用原型来定义的类。
+
+
+## 错误处理
+
+JS 提供了 `try ... catch ... finally` 这样的异常处理语句：
+
+```js
+`use strict`
+
+var r1, r2, s = null;
+try {
+    r1 = s.length; // 此处应产生错误
+    r2 = 100; // 该语句不会执行
+} catch (e) {
+    alert('出错了：' + e);
+} finally {
+    console.log('finally');
+}
+console.log('r1 = ' + r1); // r1应为undefined
+console.log('r2 = ' + r2); // r2应为undefined
+```
+
+其中 `e` 是一个异常对象，表示出现异常的具体信息，JS 中的异常对象都从 `Error` 派生，包括 `TypeError`, `ReferenceError` 等错误：
+
+```js
+try {
+    ...
+} catch (e) {
+    if (e instanceof TypeError) {
+        alert('Type error!');
+    } else if (e instanceof Error) {
+        alert(e.message);
+    } else {
+        alert('Error: ' + e);
+    }
+}
+```
+
+程序也可以主动抛出错误：
+
+```js
+`use strict`
+
+var r, n, s;
+try {
+    s = prompt('请输入一个数字');
+    n = parseInt(s);
+    if (isNaN(n)) {
+        throw new Error('输入错误');
+    }
+    // 计算平方:
+    r = n * n;
+    alert(n + ' * ' + n + ' = ' + r);
+} catch (e) {
+    alert('出错了：' + e);
+}
+```
+
+### 错误传播
+
+如果代码发生了错误，又没有用 `try ... catch` 捕获，那么错误会被抛到外层调用函数，如果外层函数也没有捕获错误，那么错误会沿着函数调用链一直往外抛，直到抛给 JavaScript 引擎，代码中止执行。
+
+### 异步错误处理
+
+涉及到异步代码时需要注意，我们直接捕获异步函数中的错误往往是不行的，需要在回调函数中捕获错误：
+
+```js
+function printTime() {
+    throw new Error();
+}
+
+// 这里捕获错误是没用的，因为错误不是 setTimeout 抛出的，是回调函数抛出的
+try {
+    setTimeout(printTime, 1000);
+    console.log('done');
+} catch (e) {
+    alert('error');
+}
+```
