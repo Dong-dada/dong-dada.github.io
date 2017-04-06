@@ -2,7 +2,7 @@
 layout: post
 title:  "Python 基础知识学习"
 date:   2017-03-20 10:53:30 +0800
-categories: lang python
+categories: python
 ---
 
 * TOC

@@ -2,7 +2,7 @@
 layout: post
 title:  "JavaScript 浏览器操作"
 date:   2017-04-05 09:56:30 +0800
-categories: lang javascript
+categories: javascript
 ---
 
 * TOC

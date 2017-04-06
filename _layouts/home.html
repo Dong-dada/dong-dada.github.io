@@ -7,58 +7,69 @@ layout: default
     <h1 class="page-heading"></h1>
 
     {{ content }}
-	<h1>调试</h1>
+    <h1>调试</h1>
     <ul class="post-list">
         {% for post in site.categories.debugging %}
-		<li>
-			<h2>
-				<a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
-			</h2>
-		</li>
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
         {% endfor %}
     </ul>
-	
-	<h1>JavaScript</h1>
+
+    <h1>Node.js</h1>
+    <ul class="post-list">
+        {% for post in site.categories.nodejs %}
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
+        {% endfor %}
+    </ul>
+
+    <h1>JavaScript</h1>
     <ul class="post-list">
         {% for post in site.categories.javascript %}
-		<li>
-			<h2>
-				<a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
-			</h2>
-		</li>
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
         {% endfor %}
     </ul>
-	
-	<h1>Python</h1>
+
+    <h1>Python</h1>
     <ul class="post-list">
         {% for post in site.categories.python %}
-		<li>
-			<h2>
-				<a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
-			</h2>
-		</li>
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
         {% endfor %}
     </ul>
-	
-	<h1>C++</h1>
+
+    <h1>C++</h1>
     <ul class="post-list">
         {% for post in site.categories.cpp %}
-		<li>
-			<h2>
-				<a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
-			</h2>
-		</li>
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
         {% endfor %}
     </ul>
-	
-	<h1>Web知识</h1>
+
+    <h1>Web知识</h1>
     <ul class="post-list">
         {% for post in site.categories.web %}
-		<li>
-			<h2>
-				<a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
-			</h2>
-		</li>
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
         {% endfor %}
     </ul>
 

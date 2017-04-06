@@ -2,7 +2,7 @@
 layout: post
 title:  "《软件调试》 学习 03 断点和单步执行"
 date:   2017-03-30 14:10:30 +0800
-categories: debugging book-software-debugging
+categories: debugging
 ---
 
 * TOC

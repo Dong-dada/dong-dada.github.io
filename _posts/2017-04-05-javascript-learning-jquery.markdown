@@ -2,7 +2,7 @@
 layout: post
 title:  "JavaScript 库 jQuery"
 date:   2017-04-05 14:36:30 +0800
-categories: lang javascript
+categories: javascript
 ---
 
 * TOC

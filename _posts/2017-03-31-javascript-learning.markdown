@@ -2,7 +2,7 @@
 layout: post
 title:  "JavaScript 基础知识学习"
 date:   2017-03-31 16:08:30 +0800
-categories: lang javascript
+categories: javascript
 ---
 
 * TOC

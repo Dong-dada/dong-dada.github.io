@@ -2,7 +2,7 @@
 layout: post
 title:  "《软件调试》 学习 02 中断和异常"
 date:   2017-03-29 16:07:30 +0800
-categories: debugging book-software-debugging
+categories: debugging
 ---
 
 * TOC

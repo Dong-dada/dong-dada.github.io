@@ -2,7 +2,7 @@
 layout: post
 title:  "C/C++ 小知识点"
 date:   2017-03-23 16:18:30 +0800
-categories: lang cpp
+categories: cpp
 ---
 
 * TOC

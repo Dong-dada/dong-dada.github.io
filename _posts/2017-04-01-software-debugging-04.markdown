@@ -2,7 +2,7 @@
 layout: post
 title:  "《软件调试》 学习 04 分支记录和性能监视"
 date:   2017-04-01 14:08:30 +0800
-categories: debugging book-software-debugging
+categories: debugging
 ---
 
 * TOC
