@@ -9,7 +9,7 @@ layout: default
     {{ content }}
     <h1>调试</h1>
     <ul class="post-list">
-        {% for post in site.categories.debugging %}
+        {% for post in site.categories.debugging reversed %}
         <li>
             <h2>
                 <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
@@ -20,7 +20,7 @@ layout: default
 
     <h1>Node.js</h1>
     <ul class="post-list">
-        {% for post in site.categories.nodejs %}
+        {% for post in site.categories.nodejs reversed %}
         <li>
             <h2>
                 <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
@@ -31,7 +31,7 @@ layout: default
 
     <h1>JavaScript</h1>
     <ul class="post-list">
-        {% for post in site.categories.javascript %}
+        {% for post in site.categories.javascript reversed %}
         <li>
             <h2>
                 <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
@@ -42,7 +42,7 @@ layout: default
 
     <h1>Python</h1>
     <ul class="post-list">
-        {% for post in site.categories.python %}
+        {% for post in site.categories.python reversed %}
         <li>
             <h2>
                 <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
@@ -53,7 +53,7 @@ layout: default
 
     <h1>C++</h1>
     <ul class="post-list">
-        {% for post in site.categories.cpp %}
+        {% for post in site.categories.cpp reversed %}
         <li>
             <h2>
                 <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
@@ -64,7 +64,7 @@ layout: default
 
     <h1>Web知识</h1>
     <ul class="post-list">
-        {% for post in site.categories.web %}
+        {% for post in site.categories.web reversed %}
         <li>
             <h2>
                 <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
