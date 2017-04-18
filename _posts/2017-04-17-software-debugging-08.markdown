@@ -198,3 +198,286 @@ KiDispatchException 会先将第二轮处理机会送给调试子系统的 DbgkF
 对于内核态的异常，KiDispatchException 会直接调用 RtlDispatchException 来寻找异常处理块；对于用户态异常，KiDispatchException 会通过设置 TrapFrame 让 KiUserExceptionDispatcher 来寻找用户空间中的异常处理块。
 
 尽管 KiDispatchException 分发内核态异常和用户态异常的流程有所不同，但也有类似之处，比如都会试图先交给调试器来处理，而且最多会给每个异常两轮处理机会。
+
+
+## 结构化异常处理 (SEH)
+
+为了让系统和应用程序代码都可以简单方便地支持异常处理， Windows 定义了一套标准的机制来规范异常处理代码的设计(对程序员)和编译(对编译器)，这套机制被称为结构化异常处理 (Structured Exception Handling), 简称为 SEH。
+
+从系统的角度看，SEH 是对 Windows 操作系统中的异常分发和处理机制的总称，其实现遍布在 Windows 系统的很多模块和数据结构中。比如 KiDispatchException 函数和 NtRaiseException 函数时位于内核模块中的，KiUserExceptionDispatcher 是位于 NTDLL.DLL 中的，异常注册链表的表头是登记在每个线程的线程信息块 (TEB) 中的。
+
+从编程的角度看，SEH 是一套规范，利用这套规范，程序员可以编写处理代码来复用系统的异常处理设施。可以将其理解为是操作系统的异常机制的对外接口，也就是如何在 Windows 程序中使用 Windows 的异常处理机制。
+
+从使用角度来看，结构化异常处理为程序员提供了终结处理 (Termination Handling) 和异常处理 (Exception Handling) 两种功能。终结处理用于保证终结处理块始终可以得到执行，无论被保护的代码块如何结束。异常处理用于接收和处理被保护块中的代码所发生的异常。
+
+### SEH 的终结处理
+
+终结处理的语法结构如下(以 VC++ 编译器为例)：
+
+```cpp
+__try
+{
+    // 被保护体 (guarded body), 也就是要保护的代码块
+}
+__finally
+{
+    // 终结处理块
+}
+```
+
+显而易见，终结处理有两部分构成，使用 `__try` 关键字定义的被保护体和使用 `__finally` 关键字定义的终结处理块。终结处理的目标是只要被保护体执行，那么终结处理块也就会被执行，除非被保护体中的代码终结了当前线程。因为终结处理块的这种特征，它非常适合做状态恢复或资源释放等工作。比如释放被保护块中获得的信号量以防止被保护块中发生意外时因为没有释放信号量而导致线程死锁。
+
+根据被保护块的执行路线，SEH 把被保护块的退出(执行完毕)分为正常结束和非正常结束两种。如果被保护块正常执行并进入到终结处理块，那么就是正常结束；如果被保护块是因为 发生异常、进入 return, goto, break 等原因离开被保护块，那么就是非正常结束。无论是否正常结束，最终都会进入终结处理块，你可以在终结处理块中调用 AbnormalTermination() 函数来判断被保护块是否正常退出。
+
+除了上面出现的 `__try` 和 `__finally` 关键字，终结处理还有一个关键字 `__leave`，它的作用是立即离开被保护块，或者可以理解为立刻跳转到被保护块的末尾。
+
+下面示例展示了终结处理的几种情况：
+
+```cpp
+#include <stdlib.h>
+#include <excpt.h>
+
+int main(int argc, char* argv[])
+{
+    int nNum = 0;
+    int nRet = 0;
+    const char* WeekDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Firday", "Saturday"};
+
+    __try
+    {
+        nNum = atoi(argv[1]);
+
+        if (nNum <= 0)
+        {
+            nRet = -3;
+            __leave;        // 使用 __leave 离开被保护块
+        }
+        
+        if (nNum == 6666)
+        {
+            goto EXIT_BYE;  // 使用 goto 离开被保护块
+        }
+
+        if (nNum == 6)
+        {
+            return -2;      // 使用 return 离开被保护块
+        }
+
+                            // 正常离开被保护块
+    }
+    __finally
+    {
+        printf("Termination/CleanUp block is executed with %d. \n", AbnormalTermination());
+    }
+
+EXIT_BYE:
+    printf("Exit!");
+
+    return ret;
+}
+```
+
+### SEH 的异常处理
+
+异常处理的语法如下：
+
+```cpp
+__try
+{
+    // 被保护体(guarded body)，也就是要保护的代码块
+}
+__except (过滤表达式)
+{
+    // 异常处理块 (exception-handling block)
+}
+```
+
+除了 `__try` 和 `__except` 关键字，VC 编译器还提供了以下两个宏来辅助编写异常处理代码：
+- `DWORD GetExceptionCode()`: 返回异常代码，只能在过滤表达式或异常处理块 `__except` 中使用这个宏；
+- `LPEXCEPTION_POINTERS GetExceptionInformation()`: 返回一个指向 `EXCEPTION_POINTERS` 结构的指针，该结构包含了指向 CONTEXT 结构和异常记录 (exception record) 结构的指针。只能在过滤表达式中使用这个宏。
+
+其中，`EXCEPTION_POINTERS` 结构的定义如下：
+
+```cpp
+typedef struct _EXCEPTION_POINTERS
+{
+    PEXCEPTION_RECORD ExceptionRecord;      // 异常记录
+    PCONTEXT ContextRecord;                 // 异常发生时的线程上下文
+}
+```
+
+通过 ExceptionRecord 可以获取异常的详细信息，通过 ContextRecord 可以获取异常发生时的线程上下文，包括寄存器取值等。
+
+### 过滤表达式
+
+在 `__except` 关键字后面可以跟一个过滤表达式，对要处理的异常进行过滤。过滤表达式可以是常量、函数调用，也可以是条件表达式或其他表达式，但表达式的结果应该是 0,1,-1 这三个值之一。它们的含义如下：
+
+- `EXCEPTION_CONTINUE_SEARCH(0)`: 本保护块不处理该异常，让系统继续寻找其他异常保护块；
+- `EXCEPTION_CONTINUE_EXECUTION(1)`：已经处理异常，让程序回到异常发生的位置继续执行，如果异常导致的情况没有被消除，那么很可能会再次发生异常；
+- `EXCEPTION_EXECUTE_HANDLER(-1)`：本保护块要处理该异常，让系统执行异常处理块中的代码；
+
+下面给出一个通过过滤函数修正错误情况后再恢复执行的例子：
+
+```cpp
+#include <excpt.h>
+#include <windows.h>
+#include <stdlib.h>
+
+char g_szDefPara[] = "0123456789";
+int ExceptionFilter(LPEXCEPTION_POINTERS pException, char** ppPara)
+{
+    PEXCEPTION_RECORD pER = pException->ExceptionRecord;
+    PCONTEXT = pException->ContextRecord;
+
+    if (**ppPara == NULL && pER->ExceptionCode == STATUS_ACCESS_VIOLATION)
+    {
+        // 如果 ppPara 为 NULL，则将其设为默认字符串，并返回 EXECPTION_CONTINUE_EXECUTION，让 CPU 重新执行发生异常的指令
+        *ppPara = g_szDefPara;
+        pContext->Eip -= 3;     // 由于高级语言和汇编语言的差异，需要重设程序指针，具体请参考原文
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+
+void FuncA(char* lpsz)
+{
+    __try
+    {
+        *lpsz = '2';    // 当 lpsz 为 NULL 时将导致页错误异常
+    }
+    __except(ExceptionFilter(GetExceptionInformation(), &lpsz))
+    {
+        printf("Executing handling block in FuncA.\n");
+    }
+    printf("Exiting from FuncA with lpsz=%s.\n", lpsz);
+}
+
+int FuncB(int nPara)
+{
+    __try
+    {
+        nPara = 1/nPara;    // 当 nPara 为 0 时将产生除 0 异常
+
+        *(int*)0 = 1;       // 将产生非法访问异常
+    }
+    __except(GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+    {
+        // 如果是非法访问异常，那么将执行异常处理块，否则抛出异常到上层
+        printf("Executing handling block in FuncB [%X].\n", GetExceptionCode());
+    }
+    printf("Exiting from FuncB with Para=%d.\n", nPara);
+    return nPara;
+}
+
+int main(int argc, char* argv[])
+{
+    int nRet = 0;
+
+    FuncA(argv[1]);
+
+    __try
+    {
+        nRet = FuncB(argc-1);
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        printf("Executing exception handling block in main [%X].\n", GetExceptionCode());
+    }
+
+    printf("Exit from main with nRet = %d.\n", nRet);
+    return nRet;
+}
+```
+
+注意 FuncB 的处理中，一开始会产生一个除 0 异常，这个异常进入过滤表达式后，会返回 `EXCEPTINO_CONTINUE_SEARCH`，意思是“我不处理异常，你继续找其他人吧”，因为 main 函数在调用 FuncB 时也使用了 SEH，所以 main 函数会捕捉到这个异常，并进行处理。从调用关系看，由于发生除零异常，CPU 执行完 FuncB 函数之后便继续执行 main 函数了，仿佛是从 FuncB 中飞了出来。这相当于在 FuncB 中多了一个额外的 “函数出口” 而且该出口的位置是不固定的。这种不可预测的 “出口” 是违背结构化编程理念的，会使软件的执行流程变复杂，也给软件调试带来了困难。为了降低异常的负面影响，应该及早捕获和处理异常。
+
+### 嵌套使用终结处理和异常处理
+
+需要注意的是，一个异常保护块 `__try` 不能同时配有终结处理块 `__finally` 和 异常处理块 `__except`，只能通过嵌套的方式来让一段代码同时得到终结处理和异常处理：
+
+```cpp
+#include <excpt.h>
+
+void main(void)
+{
+    __try
+    {
+        __try
+        {
+            int n = 0;
+            int i = 1/n;
+        }
+        __finially
+        {
+            printf("Executing terminating block.\n");
+        }
+    }
+    __except (printf(Executing ExceptiongFilter.\n), EXCEPTION_EXECUTE_HANDLER)
+    {
+        printf("Executing exception handling block.\n");
+    }
+}
+```
+
+异常发生后，将首先执行异常处理块 `__except`, 然后执行终结处理块 `__finally`。
+
+
+## 向量化异常处理 (VEH)
+
+除了结构化异常处理，从 xp 开始，Windows 还支持一种名为向量化异常处理 (Vectored Excepiton Handling) 的异常处理机制，简称为 VEH。与 SEH 既可以用在用户态又可以用在内核态不同，VEH 只能用在用户态程序中。
+
+### 登记和注销
+
+VEH 的基本思想是通过注册以下原型的回调函数来接收和处理异常：
+
+```cpp
+LONG CALLBACK VectoredHandler (PEXCEPTION_POINTERS ExceptionInfo);
+```
+
+其中 ExceptionInfo 是指向 `EXCEPTION_POINTERS` 结构的指针，与 `GetExceptionInformation()` 函数的返回值是相同类型的。VectoredHandler 的返回值是 `EXCEPTION_CONTINUE_EXECUTION`(-1)恢复执行，或者 `EXCEPTION_CONTINUE_SEARCH`(0)继续搜索。
+
+相应的，Windows 公布了两个 API，AddVectoredExceptionHandler 和 RemoveVectoredExceptionHandler 分别用来登记和注销回调函数：
+
+```cpp
+PVOID AddVectoredExceptionHandler(ULONG FirstHandler, PVECTORED_EXCEPTION_HANDLER VectoredHandler);
+
+ULONG RemoveVectoredExceptionHandler(PVOID VectoredHandlerHandle);
+```
+
+参数 FirstHandler 用来指定该回调函数的被调用顺序，为 0 表示希望最后被调用，为 1 表示希望最先被调用，如果注册了多个回调函数，而且 FirstHandler 都为非零值，那么最后注册的会最先被调用。如果注册成功，返回的是一个系统为该异常处理器分配的 `VEH_REGISTRATION` 指针，程序应当保存这个指针，以便以后注销时使用。
+
+可以看到 `VEH_REGISTRATION` 结构其实是链表的一个节点：
+
+```cpp
+typedef struct _VEH_REGISTRATION
+{
+    _VEH_REGISTRATION* next;
+    _VEH_REGISTRATION* prev;
+    PVECTORED_EXCEPTION_HANDLER pfnVeh;
+} VEH_REGISTRATION, * PVEH_REGISTRAION;
+```
+
+NTDLL 中的全局变量 RtlpCalloutEntryList 指向这个链表的头结点
+
+### 调用 VEH
+
+前面几节我们介绍过，在用户态下发生的异常，KiUserExceptionDispatcher 会调用 RtlDispatchException 来寻找异常处理器，在支持 VEH 的系统中，在寻找结构化异常处理器之前，RtlDispatchException 会先调用 RtlCallVectoredExceptionHandlers 给 VEH 优先处理机会。该函数会从前面介绍的 RtlCalloutEntryList 开始遍历 VEH 记录列表。
+
+- 如果 RtlpCalloutEntryList 中的 next 指针指向自身，说明没有注册的 VEH 需要调用，则 RtlCallVectoredExceptionHandlers 返回 FALSE；
+- 如果 RtlpCalloutEntryList 中的 next 指针指向了一个 `VEH_REGISTRATION` 结构，那么 RtlCallVectoredExceptionHandlers 会先调用 RtlEnterCriticalSection 防止其他线程访问链表，然后调用 VEH 回调函数，如果该回调函数返回 `EXCEPTION_CONTINUE_SEARCH`, 那么将会寻找下一个 VEH 回调函数，如果找不到，那么返回 FALSE；
+- 如果一个 VEH 处理器返回了 `EXCEPTION_CONTINUE_EXECUTION`, 那么 RtlCallVectoredExceptionHandlers 返回 TRUE；
+
+### 归纳
+
+我们归纳一下 VEH 与 SEH 的区别与联系。
+
+从应用范围来看，SEH 既可以用于用户态(比如用户程序)代码中，又可以用于内核态(比如驱动程序)代码中。但 VEH 只能用在用户态代码中。另外 VEH 只能在 XP 及更高版本中才能使用。
+
+从优先级角度看，同时注册了 VEH 和 SEH 的代码所触发的异常，VEH 具有更高的优先级。
+
+从登记方式看，SEH 的注册信息是以固定的结构存储在线程栈中的，不同层次的各个 SEH 的注册信息依次被压入到栈中，分布在栈的不同位置上，依靠结构体内的指针相联系，因为人们经常将一个函数所对应的栈区域称为栈帧(Stack Frame)，所以 SEH 的异常处理器又经常被称为基于帧的异常处理器 (frame-based exception handler)；VEH 的注册信息是保存在进程的内存堆中的。
+
+从作用域的角度看，VEH 处理器相对于整个进程都有效，具有全局性；SEH 处理器是动态建立在所在函数的栈帧上的，会随着函数的返回而注销，因此 SEH 只对当前函数或这个函数所调用的子函数有效。
+
+从编译的角度看，SEH 的登记和注销都是依赖编译器编译时产生的数据结构和代码的，VEH 的注册和注销都是通过调用系统 API  显式完成的，不需要编译器特殊处理。
