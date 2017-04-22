@@ -208,3 +208,223 @@ EFaultRepRetVal APIENTRY ReportFault(LPEXCEPTION_POINTERS pep, DWORD dwOpt);
 新的对话框增加了 Send Error Report 按钮，如果用户选择该按钮，那么程序将发送信息给微软公司或者本企业的用来收集错误信息的专用服务器。不论错误报告是否发送成功，StartDwException 都会返回 ffrvOk 给 ReportFault 函数，ReportFault 再将这个返回值传递给 UnhandledExceptionHandler，收到之后会返回 `EXCEPTION_EXECUTE_HANDLER`，告知异常处理器执行异常处理块。如果用户选择的是 Don't Sent 按钮，那么 StartDWException 会直接返回 ffrvOk。也就是说，不论用户是否发送错误报告，异常处理块都会执行。
 
 Windows Vista 改为通过新引入的 WER 系统服务来提示应用程序错误。WER 系统服务收到请求后会启动一个名为 WerFault.exe 的程序来显示错误对话框。
+
+
+## JIT 调试和 Dr.Watson
+
+所谓 JIT 调试(Just-In-Time Debugging)，就是指在应用程序出现严重错误后而启动的紧急调试。因为 JIT 调试建立时，被调试的应用程序内已经发生了严重错误，通常都无法恢复执行，所以 JIT 调试又被称为事后调试(Postmortem Debugging)。
+
+JIT 调试的主要目的是分析和定位错误原因，或者收集和记录错误发生时的现场数据供事后分析。很多调试器都可以作为 JIT 调试器来使用，比如 WinDBG, CDB, NTSD, Visual C++, Dr.Watson 等。其中 Dr.Watson 是 Windows 系统中默认的 JIT 调试器。
+
+### 配置 JIT 调试器
+
+关于 JIT 调试器的配置信息被保存在注册表的如下表键中：
+
+```
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AeDebug
+```
+
+![]( {{ site.url }}/asset/software-debugging-jit-aedebug.png)
+
+它包含了如下几个键值：
+- Debugger : 定义启动调试器的命令行；
+- Auto : 是否自动启动调试器；
+- UserDebuggerHotKey : 用来定义中止到调试器的热键
+
+### 启动 JIT 调试器
+
+在之前的章节中，我们介绍了建立调试会话的两种情况，分别是在调试器中启动被调试进程、将调试器附加在被调试进程中， JIT 调试显然属于后者。这意味着 UnhandledExceptionFilter 必须将被调试进程的进程 ID 告诉 JIT 调试器。因此 UnhandledExceptionFilter 函数要求 Debugger 选项的值应该为如下格式：
+
+```
+jitdebugger.exe -p %ld -e %ld [调试器的其他参数]
+```
+
+UnhandledExceptionFilter 会将进程 ID(第一个 %ld) 和一个事件量句柄(第二个 %ld)作为命令行参数传给 JIT 调试器。
+
+接下来 UnhandledExceptionFilter 会通过 CreateProcess 来创建调试器进程，接着无限期等待事件量。以便调试器能够完成初始化等准备工作。
+
+当 JIT 调试器准备完毕并设置事件量后，UnhandledExceptionFilter 便会返回 `EXECPTION_CONTINUE_SEARCH` 让系统继续搜索其他异常处理器，如果当前异常处理器不是最后一个 SEH，那么系统会评估另外一个 SEH 过滤函数，通常也是 UnhandledExceptionFilter, 而且也会返回 `EXCEPTION_CONTINUE_SEARCH`，这样第一轮分发就结束了，然后发起第二轮分发。此时因为 JIT 调试器已经准备好，所以系统会发异常分发给 JIT 调试器。
+
+Debugger 选项的默认值为 `drwtsn32 -p %ld -e %ld -g` 也就是使用 Dr.Watson 作为 JIT 调试器。你也可以指定其他调试器作为 JIT 调试器，例如 `c:\windbg\windbg.exe -p %ld -e %ld -g` 将 WinDBG 指定为 JIT 调试器。
+
+
+## 顶层异常过滤函数
+
+前面三节我们介绍了 Windows 系统对未处理异常的处理方法。如果应用程序不希望使用这些默认逻辑来处理异常，那么可以注册一个自己的未处理异常过滤函数，并通过 SetUnhandledExceptionFilter API 进行注册。因为这个过滤函数只有未处理异常发生时才会被调用，所以通常被称为 顶层异常过滤函数 (Top Level Exception Filter)。
+
+### 注册
+
+在 Windows XP 以前，SetUnhandledExceptionFilter API 的实现非常简单，它先把 BasepCurrentTopLevelFilter 的值保存起来作为返回值，然后再把新的值赋值给它。BasepCurrentTopLevelFilter 是 KERNEL32.DLL 中定义的一个全局变量，默认值为空。
+
+为了防止 BasepCurrentTopLevelFilter 的值被篡改，从 XP 开始，这个值经过了编码，并且编解码方式不公开。
+
+### C 运行时库的顶层过滤函数
+
+如果当前进程直接或间接调用了微软的 C 运行时库 (MSVCRT.DLL)，那么 C 运行时库在初始化期间会调用 SetUnhanldedExceptionFilter 将当前进程的顶层过滤函数设置为 `msvcrt!__CxxUnhandledExceptionFilter` 函数：
+
+```cpp
+// 伪代码
+
+#define CXX_FRAME_MAGIC 0x19930520
+#define CXX_EXCEPTION 0xe06d7363
+
+LONG WINAPI CxxUnhandledExceptionFilter(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+    PEXCEPTION_RECORD pER;
+    pER = ExceptionInfo->ExceptionRecord;
+
+    if (pER->ExceptionCode == CXX_EXCEPTION && pER->NumberParameters == 3 && pER->ExceptionInformation[0] == CXX_FRAME_MAGIC)
+    {
+        terminate();
+    }
+
+    if (UnDecorator::fGetTempltateArgumentList)
+    {
+        if (_ValidateExecute(UnDecorator::fGetTemplateArgumentList) != 0)
+        {
+            return FUNC_UNK(ExceptionInfo);
+        }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+```
+
+因为 VC 编译器实现的 C++ 异常都有统一的异常代码 0xe06d7363 且参数为 0x19930520, 所以 CxxUnhandledExceptionFilter 可以判断出未处理异常是否是 C++ 异常。如果是，那么它会调用 VC++ 的 terminate() 来进行必要的清理工作。
+
+对于其他异常，CxxUnhandledExceptionFilter 会返回 `EXCEPTION_CONTINUE_SEARCH` 使 UnhandledExceptinFilter 继续向下执行，如果 CxxUnhandledExceptionFilter 返回了 `EXCEPTION_EXECUTE_HANDLER` 或 `EXCEPTION_CONTINUE_EXECUTION` 那么 UnhandledExceptionFilter 会立刻返回。
+
+### 执行
+
+根据我们之前的介绍，可以了解顶层过滤函数被调用有两个前提：有未处理异常发生，而且所在程序未处于调试状态。
+
+在以上两个条件都满足后，是不是我们注册的顶层过滤函数就一定会被调用呢？答案是否定的。因为系统是用一个全局变量而不是一个链表来存储顶层过滤函数的，这意味着可能有其他程序在我们之后调用了 SetUnhandledExceptionFilter，将我们设置的过滤函数覆盖掉。
+
+理论上来说，如果每个模块都能在调用 SetUnhandledExceptinFilter 成功后，把上一个过滤函数记录下来，并在自己的过滤函数处理完之后调用前一个过滤函数，那么每个过滤函数就都能被调用了。但实际上很多顶层过滤函数都没有这么做，为了确保自己的过滤函数能够被调用，某些软件使用了非常不好的做法，比如反复调用 SetUnhandledExceptionFilter，甚至有的软件在自己注册成功后会修改 SetUnhandledExceptionFilter 的 API，使其他模块再也无法成功调用这个 API。
+
+
+## Dr.Watson
+
+Dr.Watson(华生医生) 本来是福尔摩斯探案集中的人物。在 Windows 中， Dr.Watson 是以下几个程序的别称：
+
+- DRWATSON.EXE : 16 位版本的 Windows 中收集和记录错误的小工具；
+- DRWTSN32.EXE : 32 位版本的 Dr.Watson 程序。是系统中默认的 JIT 调试器，具有生成错误报告、产生内存转储文件等功能；
+- DWWIN.EXE : Windows XP 引入的提示应用程序错误和发送错误报告的工具。Windows XP 中的 “应用程序错误” 对话框便是由该程序弹出的，该程序还负责通过网络将错误报告发送到服务器；
+
+DRWATSON.EXE 已经过时，DWWIN.EXE 的主要目的是提示和报告错误，本书的 Dr.Watson 是指与调试关系更为密切的 DRWTSN32.EXE 程序。
+
+DRWTSN32.EXE 的核心功能是当应用程序出现错误时，以 JIT 调试器的身份收集错误信息产生记录文件和错误报告。
+
+### 配置和查看模式
+
+当不带任何参数直接运行 DRWTSN32.EXE 时，它会显示如下的界面：
+
+![]( {{ site.url }}/asset/software-debugging-drwtsn32.png )
+
+该界面可以对 DRWTSN32.EXE 进行配置，其配置信息存储在注册表的如下键中：
+
+```
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\DrWatson
+```
+
+具体的配置就不介绍了，主要是对日志文件、故障转储文件的配置。
+
+界面中还有一个编辑框区域，这里会展示上次出现的错误记录。
+
+值得一提的是我的 Windows7 下没有这个程序，可能是被移除了。
+
+### 安装为 JIT 调试器模式
+
+通过修改注册表键值，或者调用 `drwtsn32.exe -i` 命令，可以将 DRWTSN32.EXE 安装为 JIT 调试器。
+
+在 JIT 调试器模式下，DRWTSN32.EXE 会执行以下动作：
+
+- 第一，如果 VisualNotification 配置为 1，则弹出对话框，提示某程序发生了错误，DRWTSN32.EXE 正在产生错误日志；
+- 第二，如果 SoundNotification 配置为 1，则播放 WaveFile 选项指定的波形文件；
+- 第三，向系统日志写入错误记录。使用系统日志观察工具可以观察这些记录(我的电脑-->管理-->系统工具-->事件查看器-->应用程序)；
+- 第四，如果 CreateCrashDump 为 1，则生成故障转储文件；
+- 第五，生成日志文件，文件名称为 drwtsn32.log, 默认位置为 `Documents and Settings\AllUsers\Application Data\Microsoft\Dr Watson`
+
+
+## DRWTSN32.EXE 的日志文件
+
+drwtsn32.log 中记录了许多错误信息，包括异常信息、系统信息、模块列表、线程状态、函数调用序列、原始栈数据 等信息。这里不做介绍，用到的时候再看吧。
+
+
+## 用户态转储文件
+
+简单地说，用户态转储文件 (User Mode Dump) 就是用于保存应用程序在某一时刻运行状态的二进制文件。与描述整个系统状态的系统转储文件相比，用户态转储文件的描述范围仅限于用户进程，二者的格式也是不同的。
+
+一些文档中用 minidump 来指代用户态转储文件，其实也可以生成很大的用户态转储文件。
+
+### 文件格式概览
+
+为了方便生成和读取，转储文件的格式非常简单，主要由四个部分组成。第一部分是文件头，他是一个固定格式的数据结构 (`MINIDUMP_HEADER`)。第二部分是目录表，目录表中的每个目录项是一个固定长度的名为 `MINIDUMP_DIRECTORY` 的结构，用来描述一个数据流。第三部分便是一个个的数据流。第四部分是不定数量的内存块。下图画出了以上三种数据的布局示意图：
+
+![]( {{ site.url }}/asset/software-debugging-minidump-format.png)
+
+### 数据流
+
+文件头和目录表的意思很明确，这里就不介绍了。下面着重介绍一下数据流的格式。
+
+数据流的格式和长度是与类型有关的，这些信息会记录在目录表中。下图给出了目前已经定义的数据流类型和每种数据流的格式：
+
+![]( {{ site.url }}/asset/software-debugging-minidump-datastream.png )
+
+可以看到，其中包含了线程列表、模块列表、内存列表、异常信息、系统信息、增强线程列表、注释、句柄数据、函数表、卸载模块表、线程信息、内存块信息、句柄操作记录、用户数据等多种信息。
+
+### 产生转储文件
+
+系统提供了 MiniDumpWriteDump() API 来生成转储文件：
+
+```cpp
+BOOL WINAPI MiniDumpWriteDump(
+  __in          HANDLE hProcess,
+  __in          DWORD ProcessId,
+  __in          HANDLE hFile,
+  __in          MINIDUMP_TYPE DumpType,
+  __in          PMINIDUMP_EXCEPTION_INFORMATION ExceptionParam,
+  __in          PMINIDUMP_USER_STREAM_INFORMATION UserStreamParam,
+  __in          PMINIDUMP_CALLBACK_INFORMATION CallbackParam
+);
+```
+
+DumpType 参数可以指定写入信息的类型和选项：
+
+![]( {{ site.url }}/asset/software-debugging-minidump-dumptype.png )
+
+### 读取转储文件
+
+MiniDumpReadDumpStream() API  用来读取转储文件：
+
+```cpp
+BOOL WINAPI MiniDumpReadDumpStream(
+  __in          PVOID BaseOfDump,
+  __in          ULONG StreamNumber,
+  __out         PMINIDUMP_DIRECTORY* Dir,
+  __out         PVOID* StreamPointer,
+  __out         ULONG* StreamSize
+);
+```
+
+### 利用转储文件分析问题
+
+使用 WinDbg 打开一个 dump 文件。打开后，WinDBG 便会显示转储文件的概要信息、注释信息和异常信息：
+
+![]( {{ site.url }}/asset/software-debugging-windbg-open-dump.png )
+
+如果需要进一步定位异常的发生位置，需要导入符号文件，我们可以将 UEF 示例程序的符号文件所在目录设置到 WinDBG 的符号路径中 (File-->Symbol File Path)，然后执行 .reload 指令。
+
+接下来通过 .excr 指令让 WinDBG 显示异常信息：
+
+![]( {{site.url}}/asset/software-debugging-windbg-add-symbol-path.png)
+
+这次可以看到异常发生在 main 函数入口附近。
+
+使用 `~` 指令可以显示线程信息，通过 `~<线程号> s` 指令可以切换当前线程：
+
+![]( {{ site.url }}/asset/software-debugging-windbg-thread-command.png )
+
+使用 `lm` 指令可以显示模块信息，使用 `kv` 指令可以观察栈回溯信息，使用 `!handle` 指令可以观察句柄信息：
+
+![]( {{ site.url }}/asset/software-debugging-windbg-lm-kv.png )
+
