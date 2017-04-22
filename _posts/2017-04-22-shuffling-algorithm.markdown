@@ -78,8 +78,8 @@ void shuffle(std::vector<unsigned int>& cards)
 
 ## 参考
 
-[洗牌算法shuffle](http://www.tuicool.com/articles/qIjqQzb)
-[当随机不够随机：一个在线扑克游戏的教训](http://blog.jobbole.com/64897/)
-[如何测试洗牌算法](http://coolshell.cn/articles/8593.html)
+- [洗牌算法shuffle](http://www.tuicool.com/articles/qIjqQzb)
+- [当随机不够随机：一个在线扑克游戏的教训](http://blog.jobbole.com/64897/)
+- [如何测试洗牌算法](http://coolshell.cn/articles/8593.html)
 
 如何测试洗牌算法 这篇文章中提到了另外几种洗牌的方式，我不是很理解为什么会出现的结果不均匀的现象。
