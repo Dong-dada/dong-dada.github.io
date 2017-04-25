@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "《软件调试》 学习 09 硬错误和蓝屏"
+title:  "《软件调试》 学习 10 硬错误和蓝屏"
 date:   2017-04-25 12:10:30 +0800
 categories: debugging
 ---
