@@ -55,3 +55,5 @@ void foo(int param1, const char* param2, double param3)
 在目标 cpp 文件上右键 --> 选择 Properties --> C/C++ --> Optimization --> Optimization 选项选择 Disabled (/Od)。
 
 ![]( {{ site.url }}/asset/cpp-tips-release-disable-optimization.png )
+
+记得在调试完成后，将优化选项重设为 Maximize Speed (/O2), 以免影响产品发布后的性能。
