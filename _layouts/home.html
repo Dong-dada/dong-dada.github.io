@@ -7,6 +7,17 @@ layout: default
     <h1 class="page-heading"></h1>
 
     {{ content }}
+    <h1>每月总结</h1>
+    <ul class="post-list">
+        {% for post in site.categories.summary reversed %}
+        <li>
+            <h2>
+                <a class="post-link" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+            </h2>
+        </li>
+        {% endfor %}
+    </ul>
+
     <h1>调试</h1>
     <ul class="post-list">
         {% for post in site.categories.debugging reversed %}
