@@ -142,3 +142,173 @@ KeBugCheckEx 的工作过程如下：
 2. 在注册表的 `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\i8042prt\Parameters` 中加入一个 `REG_DWORD` 类型的键值，并取名为 CrashOnCtrlScroll, 值为 1，然后重启系统，再按下 Ctrl + Scroll Lock 键，就可以触发蓝屏；
 3. 有硬件经验的话，可以将内存条的两个数据线短路；
 
+
+## 系统转储文件
+
+之前我们介绍过了用户态转储文件，系统转储文件描述的目标是整个系统，包括操作系统内核，内核态的驱动程序和各个用户进程。
+
+### 分类
+
+系统转储文件有三种类型：
+- 完整转储 (Complete memory dump), 包含物理内存中的所有数据；
+- 内核转储 (Kernel memory dump), 去除了用户进程所使用的内存页，因此大小要比完整转储小得多，对于 Windows XP 系统，其大小为 200MB 左右；
+- 小型内存转储 (Small memory dump), 文件大小默认为 64KB, 如果包含用户数据 (通过 BugCheckSecondaryDumpDataCallback 回调函数写入)，那么可能略大；
+
+### 文件格式
+
+对于所有的转储类型，转储文件的第一页内容的格式是一样的，其开始处是一个名为 `DUMP_HEADER` 的结构，其布局如下表：
+
+![]( {{site.url}}/asset/software-debugging-system-dump-header.png )
+
+从上表可以看出，其中包含了很多关键信息，包括页目录基地址、模块列表地址、进程列表地址、异常结构、上下文结构等。特别是 KdDebuggerDataBlock 的地址，这个结构用来支持内核调试，是内核调试器与内核调试引擎之间的重要数据接口，有了这个地址，调试器就可以通过它来与转储文件建立调试会话，使用类似活动内核调试的方式来分析转储文件。
+
+头页之后的内容便是各个物理内存页的数据，包括实现内存管理的特殊内存页，如保存页目录和页表的内存页等。转储文件读取工具会利用其中的页目录和页表结构模拟地址过程来读取内存页的数据。举例来说，如果某个转储文件的 KdDebuggerDataBlock 字段的地址是 0x818f3c40, 那么我们可以在 WinDBG 中使用如下命令来观察这个值：
+
+![]( {{site.url}}/asset/software-debugging-windbg-db-command.png )
+
+### 产生方法
+
+产生系统转储文件有以下两种方法：
+
+一是使用 WinDBG 调试器的 .dump 命令，这需要在内核调试会话中执行。
+
+二是让系统自己来产生，系统发生蓝屏时，默认会生成系统转储文件。
+
+
+## 分析系统转储文件
+
+### 初步分析
+
+使用 WinDBG 打开书中所提供的示例 dump 文件。一开始可以看到如下信息：
+
+![]( {{site.url}}/asset/software-debugging-system-dump-windbg.png )
+
+根据 WinDBg 的初步分析，崩溃可能是由 RealBug.SYS 模块导致的，并且导致崩溃的代码距离该模块的起始地址 0x4e1 个字节。我们可以用 `lm m real*` 命令来查看模块的起始地址：
+
+```
+kd> lm m real*
+start    end        module name
+fa18b000 fa18bd00   RealBug  T (no symbols)  
+```
+
+其中的 T 表示时间戳，因为 WinDBG 没有加载 RealBug.SYS 映像文件，所以得不到时间戳，只能调试 no symbols。
+
+### 线程和栈回溯
+
+可以通过栈回溯信息来进一步了解转储发生时的线程状态和崩溃原因。
+
+上一节我们介绍过，一旦发起蓝屏后，系统就不会再做线程切换或者执行其他任务，因此进行蓝屏绘制和转储的就是崩溃时的线程。我们可以通过 `.thread` 和 `.process` 命令来获取当前线程结构 (KTHREAD) 和进程结构 (EPROCESS) 的地址：
+
+```
+kd> .thread
+Implicit thread is now 815ef3f0
+kd> .process
+Implicit process is now 8160eb98
+```
+
+可以看到崩溃线程 KTHREAD 结构的地址是 815ef3f0, 崩溃进程 EPROCESS 结构的地址是 8160eb98.
+
+接着，可以通过 `.thread 815ef3f0` 来查看线程的更多信息：
+
+```
+kd> !thread 815ef3f0
+....
+Owning Process            0       Image:         <Unknown>
+Attached Process          8160eb98       Image:         ImBuggy.exe
+....
+```
+
+通过 Attached Process 这行信息可以了解到，崩溃发生于 ImBuggy.exe 这个进程中。
+
+接着使用 `k` 命令可以查看当前线程的栈回溯信息：
+
+```
+kd> k
+  *** Stack trace for last set context - .thread/.cxr resets it
+ChildEBP RetAddr  
+f6869ac0 80607339 nt!KeBugCheck+0x10
+f6869b20 804dac8f nt!Ki386CheckDivideByZeroTrap+0x23
+f6869b20 fa18b4e1 nt!KiTrap00+0x6d
+WARNING: Stack unwind information not available. Following frames may be wrong.
+f6869b9c 815ef600 RealBug+0x4e1
+f6869bcc fa18b54b 0x815ef600
+f6869bdc fa18b62e RealBug+0x54b
+f6869be8 fa18b73e RealBug+0x62e
+f6869c34 804eca36 RealBug+0x73e
+f6869c44 8058b076 nt!IopfCallDriver+0x31
+f6869c58 8058bc62 nt!IopSynchronousServiceTail+0x5e
+f6869d00 805987ec nt!IopXxxControlFile+0x5ec
+f6869d34 804da140 nt!NtDeviceIoControlFile+0x28
+f6869d34 7ffe0304 nt!KiSystemService+0xc4
+0012f8a8 00000000 SharedUserData!SystemCallStub+0x4
+```
+
+注意上述代码中有一个警告 `WARNING: Stack unwind information not available. Following frames may be wrong.` 这是在告诉我们 WinDBG 没有找到 RealBug 模块的符号文件，通过 (File --> Symbol File Path) 对话框将符号目录设置进来之后，再次使用 `k` 命令，会得到如下信息：
+
+```
+kd> k
+  *** Stack trace for last set context - .thread/.cxr resets it
+ChildEBP RetAddr  
+f6869ac0 80607339 nt!KeBugCheck+0x10
+f6869b20 804dac8f nt!Ki386CheckDivideByZeroTrap+0x23
+f6869b20 fa18b4e1 nt!KiTrap00+0x6d
+f6869bcc fa18b54b RealBug!PropDivideZero+0x3f [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 63]
+f6869bdc fa18b62e RealBug!DivideZero+0xb [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 77]
+f6869be8 fa18b73e RealBug!RealBugDeviceControl+0x44 [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 114]
+f6869c34 804eca36 RealBug!RealBugDispatch+0x8e [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 175]
+f6869c44 8058b076 nt!IopfCallDriver+0x31
+f6869c58 8058bc62 nt!IopSynchronousServiceTail+0x5e
+f6869d00 805987ec nt!IopXxxControlFile+0x5ec
+f6869d34 804da140 nt!NtDeviceIoControlFile+0x28
+f6869d34 7ffe0304 nt!KiSystemService+0xc4
+0012f8a8 00000000 SharedUserData!SystemCallStub+0x4
+```
+
+可以看到，这里已经显示了相关的源文件路径，以及对应的代码行数，通过这些信息我们可以更容易地定位到错误所在。
+
+有时候使用 `k` 命令时会显示 `Unable to load image RealBug.SYS, Win32 error 2` 错误，这是因为 WinDBG 没有找到 RealBug.sys 模块文件，把模块的路径通过 (File --> Image File Path) 设置进来之后就可以解决。
+
+### 陷阱帧
+
+当有异常发生时，系统会将当时的状态保存到一个 `KTRAP_FRAME` 结构中，称为陷阱帧。因为很多崩溃与异常有关，所以转储文件中经常包含着陷阱帧数据。可以通过 `kv` 命令来搜索当前栈回溯序列中是否有陷阱帧：
+
+```kv
+kd> kv
+  *** Stack trace for last set context - .thread/.cxr resets it
+ChildEBP RetAddr  Args to Child              
+f6869ac0 80607339 0000007f 815ef600 8156aae8 nt!KeBugCheck+0x10 (FPO: [1,0,0])
+f6869b20 804dac8f f6869b2c 00000046 00000046 nt!Ki386CheckDivideByZeroTrap+0x23 (FPO: [Non-Fpo])
+f6869b20 fa18b4e1 f6869b2c 00000046 00000046 nt!KiTrap00+0x6d (FPO: [0,0] TrapFrame @ f6869b2c)
+f6869bcc fa18b54b 00000008 00000387 f6869be8 RealBug!PropDivideZero+0x3f (FPO: [Non-Fpo]) (CONV: stdcall) [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 63]
+f6869bdc fa18b62e 00000004 f6869c34 fa18b73e RealBug!DivideZero+0xb (FPO: [Non-Fpo]) (CONV: stdcall) [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 77]
+f6869be8 fa18b73e 8158bb38 00000001 00000000 RealBug!RealBugDeviceControl+0x44 (FPO: [Non-Fpo]) (CONV: stdcall) [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 114]
+f6869c34 804eca36 8166dd30 814c5368 806c7fe0 RealBug!RealBugDispatch+0x8e (FPO: [Non-Fpo]) (CONV: stdcall) [c:\dig\training\advdbg\dbglabs\realbug\realbug.c @ 175]
+f6869c44 8058b076 814c53d8 8158bb38 814c5368 nt!IopfCallDriver+0x31 (FPO: [0,0,1])
+f6869c58 8058bc62 8166dd30 814c5368 8158bb38 nt!IopSynchronousServiceTail+0x5e (FPO: [Non-Fpo])
+f6869d00 805987ec 00000068 00000000 00000000 nt!IopXxxControlFile+0x5ec (FPO: [Non-Fpo])
+f6869d34 804da140 00000068 00000000 00000000 nt!NtDeviceIoControlFile+0x28 (FPO: [Non-Fpo])
+f6869d34 7ffe0304 00000068 00000000 00000000 nt!KiSystemService+0xc4 (FPO: [0,0] TrapFrame @ f6869d64)
+0012f8a8 00000000 00000000 00000000 00000000 SharedUserData!SystemCallStub+0x4 (FPO: [0,0,0])
+```
+
+注意上述代码中的 TrapFrame 字段， @ 符号之后就是陷阱帧 `KTRAP_FRAME` 的地址。使用 `.trap` 命令就可以切换到某个异常发生时的状态：
+
+```
+kd> .trap f6869b2c
+ErrCode = 00000000
+eax=00000001 ebx=814c5368 ecx=00000004 edx=00000000 esi=8156aae8 edi=815ef600
+eip=fa18b4e1 esp=f6869ba0 ebp=f6869bcc iopl=0         nv up ei pl zr na pe nc
+cs=0008  ss=0010  ds=0023  es=0023  fs=0030  gs=0000             efl=00000346
+RealBug!PropDivideZero+0x3f:
+0008:fa18b4e1 f77de0          idiv    eax,dword ptr [ebp-20h] ss:0010:f6869bac=00000000
+```
+
+以上寄存器便是异常发生时的状态，第二行的 ErrorCode 是异常的错误码，最后一行的汇编指令就是导致这个异常的指令，可见它是一条除法指令。`[ebp-20h] ss:0010:f6869bac=00000000` 表示除法指令的参数，可以看到这个参数为 0, 也就是发生了除零异常。
+
+### 自动分析
+
+为了简化蓝屏分析，WinDBG 把很多可以自动完成的工作实现在 `!analyze` 命令中了。因此，分析蓝屏问题的第一步通常是先执行这个命令，让 WinDBG 作自动分析，然后再做手动分析。
+
+下图是 `!analyze -v` 命令显示结果的说明，其中 `-v` 开关表示启动最详细的分析方式。
+
+![]( {{site.url}}/asset/software-debugging-dump-analyze.png )
