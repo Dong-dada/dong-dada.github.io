@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "软件调试小知识点"
-date:   2017-05-08 17:58:30 +0800
+date:   2017-03-20 17:58:30 +0800
 categories: debugging
 ---
 
