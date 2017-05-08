@@ -44,16 +44,3 @@ void foo(int param1, const char* param2, double param3)
 	// ...
 }
 ```
-
-
-## 在 release 模式下禁止某个文件被优化的方法
-
-这实际上是 Visual Studio IDE 的一个小技巧。
-
-有时候项目只有 release 版本，没有 debug 版本，或者 debug 版本编译不过，这样本机调试的时候只能用 release 版本，很多变量和过程看不清晰，这个时候可以将要调试的文件设为禁止优化。这样一来就可以像 debug 版本那样观察运行时的详细信息了：
-
-在目标 cpp 文件上右键 --> 选择 Properties --> C/C++ --> Optimization --> Optimization 选项选择 Disabled (/Od)。
-
-![]( {{ site.url }}/asset/cpp-tips-release-disable-optimization.png )
-
-记得在调试完成后，将优化选项重设为 Maximize Speed (/O2), 以免影响产品发布后的性能。
