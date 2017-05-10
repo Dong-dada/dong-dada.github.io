@@ -105,3 +105,12 @@ loop = asyncio.get_event_loop()
 loop.run_until_complete(init(loop))
 loop.run_forever()
 ```
+
+上面代码涉及到如下几个知识点：
+- asyncio 库的使用；
+- aiohttp 库的使用;
+- 协程；
+- 装饰器；
+- 如何获取内网 ip ；
+
+上述知识点的细节不是这篇文章要讨论的内容，以后有空再逐个补充。
