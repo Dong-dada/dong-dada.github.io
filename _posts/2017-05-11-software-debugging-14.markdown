@@ -108,3 +108,28 @@ windbg [-y SymPath] -k com:pipe, port=\\.\pipe\PipeName[,resets=0][,reconnect]
 ![]( {{site.url}}/asset/software-debugging-kernel-debug-windbg-setting.png )
 
 使用虚拟机进行内核调试的优点是简单方便，但也有如下缺点：一是难以调试硬件相关的驱动程序；二是涉及到某些底层操作的函数或指令设置断点时，可能导致虚拟机意外重新启动；三是当目标系统中断到调试器时，虚拟机管理软件可能会占用很高的 CPU。
+
+
+## 启用
+
+尽管内核调试引擎已经包含在每个 Windows 系统中，但出于安全和性能考虑，它默认处于禁止状态。因此在进行内核调试前要先启用它。对于 Vista 之前的 Windows，需要修改 BOOT.INI 文件，对于 Vista，需要修改启动配置数据 (Boot Configuration Data)。
+
+这部分就不介绍了，实际需要时再查找就可以了。
+
+
+## 初始化
+
+本节介绍内核调试引擎初始化的过程。因为这一过程是穿插在 Windows 系统的启动过程中的，所以我们先介绍 Windows 的启动过程。
+
+### Windows 的启动过程概述
+
+计算机开机后，先执行的是系统的固件 (Firmware), 即 BIOS (Basic Input/Output System, 基本输入输出系统) 或 EIF (Extexed Firmware Interface)。BIOS 或 EIF 完成基本的硬件检测和平台初始化工作后，将控制权交给磁盘上的引导程序。
+
+引导程序执行操作系统的加载程序 (OS Loader), 即 NDLDR(Vista 以前) 或 WinLoader.exe (Vista)。
+
+OS Loader 首先对 CPU 做必要的初始化工作，包括从 16 位实模式切换到 32 位保护模式，启用分页机制等，然后通过启动配置信息 (Boot.INI 或 BCD) 得到 Windows 系统的系统目录并加载内核文件 NTOSKRNL.EXE 及其依赖文件。其中包含了用于内核调试通信的硬件扩展 DLL (KDCOM.DLL, KD1394.DLL, KDUSB.DLL) 加载程序会选择加载其中的一个。
+
+OS Loader 接着读取注册表的 System Hive, 加载其中定义的启动类型的驱动程序，包括磁盘驱动程序。
+
+完成上述工作后，OS Loader 会从内核文件 NTOSKRNL.DLL 的 PE 文件头中找到入口函数，即 KiSystemStartup，然后调用它。
+
