@@ -21,76 +21,151 @@ categories: python
 
 这里的 “协作” 体现在，它会执行一段时间就交出执行权，让其他的任务有机会执行，而不是一直独占着执行权直到任务执行完毕。这个跟操作系统的发展史有点儿类似，上古时期的操作系统只是对硬件做了封装，运行于其中的任务是独占式的，必须在这个任务执行结束之后，其他任务才有机会执行；后来又出现了协作式的操作系统，任务可以在运行期间主动交出执行权，让其他任务有机会能够执行；再后来就是抢占式多任务了，由操作系统为任务分配时间片，跟这儿说的协程就没啥关系了。
 
-“协作” 的另外一个含义在于，在协程让出自己的执行权之后，有朝一日它还会再次获取到执行权，继续执行接下来的代码。在这时候，协程必须还保留有原来的上下文 (之前声明的局部变量之类的)。这就要求在切换协程的时候，要对协程的上下文进行暂存和恢复。
+注意，协程 (coroutine) 和 线程 (Thread) 没有直接的关系。不过有人将协程类比为 “用户态的线程”， 这是在说它们的调度过程有些相似 —— 就像操作系统通过分配时间片，让一个核的 CPU 可以跑许多个线程一样，程序对协程进行调度 (其实是协程自己主动让出执行权)，使得在一个线程中可以跑多个任务，所以会把协程类比为 “用户态的轻量级线程”。我觉得这种说法不太好，容易让人产生 “协程是线程的一种特殊情况” 这种误解，线程就是线程，不应该发散它的含义 (Windows 平台中的线程对应于 CPU 所支持的 “任务”，是个确实存在的物理概念)。
 
-更进一步，“协作” 还有另外一层含义，两个协程之间要进行协作，只进行执行权的切换是没啥意思的 (各干各的不叫协作)，它们可以在切换时传递数据。在把控制权交给另一个协程的同时，也把自己的一些数据发过去，让另一个协程帮自己算一算；在收到控制权的时候，同时也收到了处理完的数据。
+上面是我对协程的一些初步理解，我在网上搜到一篇 [文章](http://www.dabeaz.com/coroutines/)，写得挺好，下面的内容大体上是这篇文章的翻译。
 
-从上述讨论可以知道：
-- 协程可以交出自己的执行权；
-- 协程可以重新获取执行权；
-- 协程间切换的时候可以进行数据传递；
 
-具体到 python 里面，我们看看 python 协程的语法是怎样的：
+## python 中的 generator 和 coroutine
+
+python 中的 generator 很容易和 coroutine 相混淆，下面先介绍 generator 然后再介绍 coroutine. 
+
+### generator
+
+generator (生成器)是一种特殊的函数，它能够生成一系列的值 (而不像普通函数那样只能返回一次)。
+
+通常生成器都被用在 for 循环中。
+
+```py
+def CountDown(n):
+    print("Count down from %d" % n)
+    while n > 0:
+        yield n
+        n -= 1
+
+for i in CountDown(5):
+    print(i)
+
+>>> 5 4 3 2 1
+```
+
+调用 generator function 时并不会执行这个函数，而是会返回一个 generator object, 你必须调用 `next()` 才能执行它：
+
+```
+>>> x = CountDown(10)
+>>> x
+<generator object at 0x58490>
+>>> x.next()
+Count down from 10
+10
+>>>
+```
+
+`yield` 操作符将返回一个值，同时 “阻塞” 这个函数，直到下次调用 `next()`。
+
+当 generator return 的时候，生成就结束了，此时调用 `next()` 将触发 StopIteration 异常，for 循环也会终止：
+
+```
+>>> x.next()
+1
+>>> x.next()
+Traceback (most recent call last):
+    File "<stdin>", line 1, in ?
+StopIteration
+>>>
+```
+
+下面的例子展示了生成器的一个有趣的用法，它会每隔一段时间检查一次日志文件中是否有新行，如果有，就返回改行日志：
+
+```py
+def follow(theFile):
+    theFile.seek(0, 2)
+    while True:
+        line = theFile.readline()
+        if not line:
+            time.sleep(0.1)
+            continue
+        yield line
+
+logfile = open("access-log")
+for line in follow(logfile):
+    print(line)
+```
+
+
+### coroutine
+
+python 中 coroutine 的语法与 generator 一样，但从本质上讲它们是两个不同的概念。
+
+generator 的作用在于 “产生值”, 而 coroutine 的作用在于 “消费值“：
 
 ```py
 def grep(pattern):
     print("Looking for %s" % pattern)
-
     while True:
-        line = (yield)  # yield 表达式，用来交出执行权, yield 返回即重新获取执行权
+        line = (yield)
         if pattern in line:
-            print line
+            print(line)
 
-g = grep('python')
-g.next()                # next() 执行协程
-g.send("Yeah, but no, but yeah, but no")    ## send() 执行协程，同时发送数据
+g = grep("python")
+g.next()
+
+g.send("Yeah, but no, but yeah, but no")
 g.send("A series of tubes")
-g.send("hello python")
+g.send("python generators rock!")
 ```
 
-在 python 中，如果一个函数的定义里面包含了 `yield` 表达式，那么这个函数就会被认为是一个协程 (暂不考虑 generator, 它跟 coroutine 不一样，以后会介绍)。
+coroutine 通过类似于 `line = (yield)` 这样的表达式来接收 `send()` 给它的值。
 
-需要注意的是 `g = grep('python')` 这行代码并不会让协程开始执行，而是返回了一个协程实例，你需要调用 `next()` 才能切换到协程去执行。
+跟 generator 一样，coroutine function 不会开始执行，而是返回一个 coroutine object. 
 
-- 协程可以通过 `yield` 将自己的执行权交出去，交付的目标是之前调用 `next()` 或 `send()` 方法的那个子任务；
-- 你可以调用 `next()` 或 `send()` 方法将执行权交给另一个协程；
-- `send()` 方法中的参数将传递给 `yield`；`yield` 后面也可以加上数据，这个数据将作为 `next()` 或 `send()` 的返回值传递出去；
-
-`yield` 是交出，`send()` 是交给，它们虽然都能用于执行权的切换，但切换的方向上有所差别。
-
-## 协程有什么用
-
-跟之前在 lue 里学习协程一样，光看这些定义，真想不出来协程能有什么特别的用处。
-
-搜了一圈别人的说法，其中有种说法 “协程是一种用户态的轻量级线程”，看起来似乎协程跟线程有啥关系，其实不能这么理解。之所以会有这句话，是因为程序对协程的调度有一点像操作系统对线程的调度 —— 就像操作系统通过分配时间片，让一个核的 CPU 可以跑许多个线程一样，程序对协程进行调度 (其实是协程自己主动让出执行权)，使得在一个线程中可以跑多个任务，所以会把协程类比为 “用户态的轻量级线程”。我觉得这种说法不太好，容易让人产生 “协程是线程的一种特殊情况” 这种误解，线程就是线程，不应该发散它的含义 (Windows 平台中的线程对应于 CPU 所支持的 “任务”，是个确实存在的物理概念)。
-
-看了几篇文章都觉得比较含糊，找到一篇 [文章](http://www.dabeaz.com/coroutines/) 写得不错，下面介绍下它的推导过程：
-
-首先，协程可以 消费/处理 一些数据，这跟普通的函数没两样：
+你必须先调用 `next()` 或 `send(None)` 来激活 coroutine 对象，让 coroutine 处于准备接受值的状态 (代码执行到 `line = (yield)`) 那里，这样才能继续调用 `send()` 方法来向 coroutine 发送要消费的值。因为调用 `.next()` 很容易被忘掉，可以用以下的装饰器来装饰 coroutine function:
 
 ```py
-# 用协程来处理数据
-g = grep('python')
-g.next()
-g.send("hello python")
+def coroutine(func):
+    def start(*args, **kwargs):
+        cr = func(*args, **kwargs)
+        cr.next()
+        return cr
+    return start
 
-# 用函数来处理数据
-grep_func("hello python")
+@coroutine
+def grep(pattern):
+    ...
 ```
 
-接着，几个协程可以链式调用，形成一个处理管线 (processing pipelines)：
+coroutine 可能会无限运行，你可以调用 `.close()` 来关闭它。调用 `.close()` 将导致 coroutine 内的 `line = (yield)` 抛出 GeneratorExit 异常：
+
+```py
+@coroutine
+def grep(pattern):
+    print("Look for %s" % pattern)
+    try:
+        while True:
+            line = (yield)
+            if pattern in line:
+                print(line)
+    except GeneratorExit:
+        print("Going away. good bye")
+```
+
+正如之前所介绍的，尽管 coroutine 和 generator 有类似的语法，但你应该把它们理解成是两个不同的概念。generator 只用来生成循环所需要的数据；coroutine 则是用来消费数据，虽然有时候也会在 coroutine 里通过 yield 返回数据，但它跟迭代或循环没有任何关系。
+
+
+## coroutines, pipelines, and Dataflow
+
+### processing pipelines (执行管线)
+
+coroutines 可以用来设置执行管线，只需要通过 `.send()` 将数据 push 给下一个 coroutine 就可以将多个 coroutine 连成序列：
 
 ![]( {{site.url}}/asset/python-coroutine-processing-pipelines.png )
 
-举个代码上的例子：
-
 ```py
-# 把几个协程通过 send 连起来，形成处理管线
 
 from coroutine import coroutine
 import time
 
-# 源头，该函数通过 target 输出 thefile 中包含的日志信息
+# source
 def follow(thefile, target):
     thefile.seek(0,2)      # Go to the end of the file
     while True:
@@ -100,7 +175,7 @@ def follow(thefile, target):
              continue
          target.send(line)
 
-# filter 协程，根据 pattern 过滤发来的数据，如果匹配，则交给 target 继续处理
+# A filter.
 @coroutine
 def grep(pattern,target):
     while True:
@@ -108,75 +183,74 @@ def grep(pattern,target):
         if pattern in line:
             target.send(line)    # Send to next stage
 
-# printer 协程，把数据打印出来
+# A sink.  A coroutine that receives data
 @coroutine
 def printer():
     while True:
          line = (yield)
-         print(line)
+         print line,
 
+# Example use
 if __name__ == '__main__':
     f = open("access-log")
-
-    # 把 follow, grep, printer 这三者连起来，形成一个处理管线
-    follow(f, grep('python', printer()) )
+    follow(f,
+           grep('python',
+           printer()))
 ```
 
-上面的 `@coroutine` 装饰器的作用是简化对 `.next()` 的调用，它的实现大概是：
+入上述代码所示，`follow()` 是这个链条的源头，它将读取到的日志 `send()` 给 `grep()` 进行进一步的处理，`grep()` 对日志进行过滤后，发送给了 `printer()` 来完成日志打印。
+
+### Being Branchy (变为分支)
+
+通过 coroutine, 你可以把数据发送给多个目标：
+
+![]( {{site.url}}/asset/python-coroutine-being-branchy.png )
+
+例如下面的代码将数据广播给多个 coroutine 对象：
 
 ```py
-def coroutine(func):
-    def start(*args, **kwargs):
-        cr = func(*args, **kwargs)
-        cr.next()
-    return start
-
-# 经过 @coroutine 装饰后，就无需调用 next 了：
 @coroutine
-def grep(pattern):
-    #...
+def broadcast(targets):
+    while true:
+        item = (yield)
+        for target in targets:
+            target.send(item)
 
-g = grep('python')
-g.send('hello python')
+f = open("access-log")
+follow(f, broadcast([grep("python", printer()),
+                     grep("ply", printer()),
+                     grep("swig", printer())]))
 ```
 
-再看看普通函数怎么才能连起来形成处理管线：
+![]( {{site.url}}/asset/python-coroutine-being-branchy-example.png )
+
+从上面的例子可以看出，coroutine 可以非常方便地实现数据处理组建的连接，假如你有许多个简单的数据处理组件，你可以通过 `.send()` 讲它们连接成 pipes, branches, merging 等等形式。
+
+### Coroutines vs. Objects
+
+coroutine 有点儿像面向对象中的 handler 对象：
 
 ```py
-def follow(thefile, callback):
-    thefile.seek(0, 2)
+## OO 版本
+class GrepHandler(object):
+    def __init__(self, pattern, target):
+        self.pattern = pattern
+        self.target = target
+    def send(self, line):
+        if self.pattern in line:
+            self.target.send(line)
+
+## coroutine 版本
+@coroutine
+def grep(pattern, target):
     while True:
-        line = thefile.readline()
-        if not line:
-            time.sleep(0.1)
-            continue
-        callback(line)
-
-def grep(pattern, line, callback):
-    if pattern in line:
-        callback(line)
-
-def printer(line):
-    print(line)
-
-if __name__ == '__main__':
-    f = open("access-log")
-
-    def grep_callback(line):
-        printer(line)
-
-    def follow_callback(line):
-        grep('python', line, grep_callback())
-
-    follow(f, follow_callback)
+        line = (yield)
+        if pattern in line:
+            target.send(line)
 ```
 
-可以看到，把普通函数连起来需要使用 callback, 会麻烦一些。python 对匿名函数的支持不太好，在 lua 里写起来会简单一些：
+但 coroutine 更加简单，毕竟它只需要一个函数定义就可以完成。
 
-```
-follow(f, function(line)
-    grep('python', line, function(line)
-        printer(line)
-    end)
-end)
-```
+
+## Coroutines and Event Dispatching
+
