@@ -75,7 +75,7 @@ StopIteration
 >>>
 ```
 
-下面的例子展示了生成器的一个有趣的用法，它会每隔一段时间检查一次日志文件中是否有新行，如果有，就返回改行日志：
+下面的例子展示了生成器的一个有趣的用法，它会每隔一段时间检查一次日志文件中是否有新行，如果有，就返回新日志：
 
 ```py
 def follow(theFile):
@@ -224,7 +224,7 @@ follow(f, broadcast([grep("python", printer()),
 
 ![]( {{site.url}}/asset/python-coroutine-being-branchy-example.png )
 
-从上面的例子可以看出，coroutine 可以非常方便地实现数据处理组建的连接，假如你有许多个简单的数据处理组件，你可以通过 `.send()` 讲它们连接成 pipes, branches, merging 等等形式。
+从上面的例子可以看出，coroutine 可以非常方便地实现数据处理组建的连接，假如你有许多个简单的数据处理组件，你可以通过 `.send()` 将它们连接成 pipes, branches, merging 等等形式。
 
 ### Coroutines vs. Objects
 
@@ -253,4 +253,82 @@ def grep(pattern, target):
 
 
 ## Coroutines and Event Dispatching
+
+coroutine 可用来编写事件处理器，例如以一个 xml parser 为例：
+
+```py
+import xml.sax
+
+class MyHandler(xml.sax.ContentHandler):
+    def startElement(self, name, attrs):
+        print("startElement " + name)
+    def endElement(self, name):
+        print("endElement " + name)
+    def characters(self, text):
+        print("characters " + repr(text)[:40])
+
+xml.sax.parse("somefile.xml", MyHandler())
+```
+
+上面使用了 SAX 这种解析 xml 的方式，它使用了事件驱动的方式来暴露对外接口，这种方式可以用较小内存解析尺寸比较大的 xml 文件，缺点是代码编写起来有点麻烦。
+
+上面的例子只是把事件及其参数打印出来，你可以把这些数据发送给 coroutine 来处理：
+
+```py
+import xml.sax
+
+class MyHandler(xml.sax.ContentHandler):
+    def __init__(self, target):
+        self.target = target
+    def startElement(self, name, attrs):
+        self.target.send( ('start', (name, attrs._attrs)) )
+    def endElement(self, name):
+        self.target.send( ('end', name) )
+    def characters(self, text):
+        self.target.send( ('text', text) )
+```
+
+![]( {{site.url}}/asset/python-coroutine-event-dispatch.png )
+
+接着看看怎么编写 coroutine, 假设现在的需求是把 xml 中的 bus 标签转换成字典形式：
+
+![]( {{site.url}}/asset/python-coroutine-bus-to-dict.png )
+
+那么可以编写下述 coroutine 来处理传入的事件：
+
+```py
+@coroutine
+def buses_to_dicts(target):
+    while True:
+        event, value = (yield)
+
+        if event == 'start' and value[0] == 'bus':
+            busdict = {}
+            fragments = []
+
+            while True:
+                event, value = (yield)
+                if event == 'start' : 
+                    fragments = []
+                elif event == 'text':
+                    fragments.append(value)
+                elif event == 'end':
+                    if value != 'bus':
+                        busdict[value] = "".join(fragments)
+                    else:
+                        target.send(busdict)
+                        break
+```
+
+可以看到上面的代码实现了一个简单的状态机：
+
+![]( {{site.url}}/asset/python-coroutine-state-machines.png )
+
+- **State A** : 寻找 bus 标签；
+- **State B** : 记录 bus 标签的属性；
+
+可以看到由于 coroutine 会记录代码运行的状态，因此它非常适合用来实现状态机。
+
+
+## From Data Processing to Concurrent Programming
 
