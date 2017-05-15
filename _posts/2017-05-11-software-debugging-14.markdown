@@ -133,3 +133,48 @@ OS Loader 接着读取注册表的 System Hive, 加载其中定义的启动类�
 
 完成上述工作后，OS Loader 会从内核文件 NTOSKRNL.DLL 的 PE 文件头中找到入口函数，即 KiSystemStartup，然后调用它。
 
+接下来的启动过程分为下图所示的三个部分。左侧是发生在初始启动进程中的过程，这个初始的进程就是启动后的 Idle 进程。中间是发生在系统进程 (System) 中的所谓执行体阶段 1 初始化过程。右侧是发生在会话管理器进程 (SMSS) 的过程。
+
+![]( {{site.url}}/asset/software-debugging-windows-startup.png )
+
+首先详细看看左侧 KiSystemStartup 函数的执行过程：
+- 调用 HalInitializeProcessor() 初始化 CPU；
+- 调用 KdInitSystem 初始化内核调试引擎；
+- 调用 KiInitializeKernel 开始内核初始化，这个函数会调用 KiInitSystem 来初始化系统的全局数据结构，调用 KeInitializeProcess 来创建并初始化 Idle 进程，调用 KeInitizlizeThread 来初始化 Idle 线程，调用 ExpInitializeExecutive() 进行所谓的执行体阶段 0 初始化，包括调用 MmInitSystem 构建页表和内存管理器的基本数据结构，调用 ObInitSystem 建立名称空间，调用 SeInitSystem 初始化 Token 对象，调用 PsInitSystem 对进程管理器进行阶段 0 初始化，调用 PpInitSystem 让即插即用管理器初始化设备链表；
+
+在 KiInitializeKernel 返回后，KiSystemStartup 函数将当前 CPU 的中断请求级别 (IRQL) 降低到 `DISPATCH_LEVEL`, 然后跳转到 `KiIdleLoop()`, 退化为 Idle 进程中的第一个 Idle 线程。
+
+接下来仔细看一下进程管理器阶段 0 初始化过程中发生了什么：
+- 定义进程和线程对象类型；
+- 建立记录系统中所有进程的链表结构，并使用 PsActiveProcessHead 全局变量指向这个链表，此后 WinDBG 的 !process 命令才能工作；
+- 为初始的进程创建一个进程对象 (PsIdleProcess), 并命名为 Idle；
+- 创建系统进程和线程，并将 Parse1Initialization 函数作为线程的起始地址；
+
+注意最后一步，它衔接着系统启动的下一个阶段，即执行体阶段 1 初始化。阶段 1 初始化占据了系统启动的大多数时间，其主要任务就是调用执行体各机构的阶段 1 初始化函数。其中重要的几个有：
+- 调用 KeStartAllProcessors() 初始化所有 CPU。这个函数会先构建并初始化好一个处理器结构，然后调用硬件抽象层的 HalStartNextProcessor 函数将这个结构赋给一个新的 CPU。新的 CPU 仍然从 KiSystemStartup 开始执行；
+- 再次调用 KdInitSystem 函数，并且调用 KdDebuggerInitialize1 来初始化内核调试通信扩展 DLL (KDCOM.DLL 等)；
+- 在这一阶段结束前，它会创建第一个使用映像文件创建的进程，即会话管理器进程 (SMSS.EXE)
+
+会话管理器进程会初始化 Windows 子系统，创建 Windows 子系统进程和登录进程 (WinLogin.EXE), 后者会创建 LSASS (Local Security Authority Subsystem Service) 进程和系统服务进程 (Services.EXE) 并显示登录界面，至此启动过程基本完成。
+
+### 第一次调用 KdInitSystem
+
+从之前的初始化流程图中可以看出，系统在启动过程中会两次调用内核调试引擎的初始化函数 KdInitSystem. 第一次是在系统内核开始执行后由入口函数 KiSystemStartup 调用。这次调用时，KdInitSystem 会执行以下动作：
+- 初始化调试器数据链表，使用变量 KdpDebuggerDataListHead 指向这个链表；
+- 初始化 KdDebuggerDataBlock 数据结构，该结构包含了内核基地址、模块链表指针、调试器数据链表指针等重要数据，调试器需要读取这些信息以了解目标系统；
+- 根据参数指针指向的 `LOADER_PARAMETER_BLOCK` 结构寻找调试有关的选项，然后保存到变量中；
+- 对于 XP 之后的版本，调用 `KdDebuggerInitialize()` 来对通信扩展模块进行阶段 0 初始化；
+
+此外，KdInitSystem 第一次调用过程中会初始化以下全局变量：
+- KdPitchDebugger: 标识是否显式抑制内核调试；
+- KdDebuggerEnabled: 标识内核调试是否被启用；
+- KdDebugRoutine: 函数指针，用来记录内核调试引擎的异常处理回调函数，当内核调试引擎处于活动状态时，它指向 KdTrap 函数，否则指向 KdpStub 函数；
+- KdpBreakpointTable: 结构数组，用来记录断点，每个元素都是一个 `BREAKPOINT_ENTRY` 结构，用来描述一个断点；
+
+### 第二次调用 KdInitSystem
+
+在目前的实现中，KdInitSystem 的阶段 1 初始化只是简单地调用 KeQueryPerformanceCounter 来对变量 KdPerformanceCounterRate(性能计数器频率) 初始化，然后返回；
+
+### 通信扩展模块的阶段 1 初始化
+
+在阶段 1 初始化中，系统会调用通信扩展模块的 KdDebuggerInitialize1 函数来让通信扩展模块得到阶段 1 初始化的机会。
