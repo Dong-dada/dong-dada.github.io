@@ -332,3 +332,86 @@ def buses_to_dicts(target):
 
 ## From Data Processing to Concurrent Programming
 
+根据之前的介绍，我们有如下了解：
+- coroutine 跟 generator 类似，但他们是两个不同的概念；
+- 你可以将一系列小的处理组件连接起来, (通过 `.send()`)；
+- 你可以通过设置 pipelines, dataflow graphs 等来处理数据；
+
+### 基本的并发 Concurrency
+
+如下图所示，你可以引入额外的层，来把 coroutine 打包到线程或子进程中：
+
+![]( {{site.url}}/asset/python-coroutine-package-coroutine-inside-thread.png )
+
+如上图所示，用 `queue` 来代替 `.send()` 可以将数据发送给其他线程中的 coroutine, 用 `pipe` 来代替 `.send()` 可以将数据发送给其它子进程中的 coroutine.
+
+下面的例子展示了将数据发送给 Thread 的用法：
+
+```py
+# 新开一个线程，在该线程中执行 target coroutine
+@coroutine
+def threaded(target):
+    # 创建消息队列
+    messages = Queue()
+
+    # 创建并运行一个线程，该线程不断从消息队列中取出消息，然后交给 target coroutine 去执行
+    def run_target():
+        while True:
+            item = message.get()
+            if item is GeneratorExit:
+                target.close()
+                return
+            else:
+                target.send(item)
+    Thread(target=run_target).start()
+    
+    # 向消息队列中 put 消息，线程随后会从消息队列中取出消息并交给 target coroutine 去执行
+    try:
+        while True:
+            item = (yield)
+            message.put(item)
+    except GeneratorExit:
+        message.put(GeneratorExit)
+
+xml.sax.parse("allroutes.xml", EventHandler(
+    buses_to_dicts(
+        threaded(
+            filter_on_field("route", "22", 
+                filter_on_field("direction", "North Bound", 
+                    bus_locations()
+                )
+            )
+        )
+    )
+))
+```
+
+![]( {{site.url}}/asset/python-coroutine-thread-target.png )
+
+下面的例子展示了将数据发送给 sub-process 的用法：
+
+```py
+@coroutine
+def sendto(f):
+    try:
+        while True:
+            item = (yield)
+            pickle.dump(item, f)
+            f.flush()
+    except StopIteration:
+        f.close()
+
+def recvfrom(f):
+    try:
+        while True:
+            item = pickle.load(f)
+            target.send(item)
+    except EOFError:
+        target.close()
+```
+
+![]( {{site.url}}/asset/python-coroutine-sub-process-target.png )
+
+通过上述例子可以看到，coroutine 可以把一个任务的具体实现与其执行环境隔离开来。例如其中的 `filter_on_field()` 任务，它本身作为一个 coroutine 可以在另一个线程或子进程中执行；
+
+但要注意的是，上述做法很可能会让你的程序变慢！据原作者说可能会慢 50% !
