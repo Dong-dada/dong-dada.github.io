@@ -141,6 +141,13 @@ ident
 
 # 线程是否活着
 is_alive()
+
+# 线程是否是 daemon 线程，python 进程会在所有 non-daemon 都退出的时候退出
+# 主线程的 daemon 属性值为 False, 它是 non-daemon
+# 如果子线程 daemon 设为 True, 那么主线程退出，程序就退出了
+# 反之如果子线程 daemon 设为 False, 那么即使主线程退出，程序也不会结束 
+# daemon 的初始值继承自父线程，也就是 False
+daemon 
 ```
 
 对比 `_thread` 模块而言，Thread 对象中提供了线程名这个属性，并且增加了 `join()` 方法可以等待线程结束，下面是使用 Thread 的例子：
@@ -420,17 +427,91 @@ print("main %d" % threading.current_thread().ident)
 
 ## Queue
 
+具体内容可参考 [官方文档](https://docs.python.org/3/library/queue.html)
+
+python 的 `queue` 模块实现了多生产者，多消费者队列。它适合于存储需要在多个线程中进行数据交换，这个过程是线程安全的。
+
+`queue` 模块里提供了三种队列，分别是：
+- **queue.Queue** : 先进先出队列(FIFO);
+- **queue.LifoQueue** : 先进后出队列(LIFO);
+- **queue.PriorityQueue** : 优先级队列;
+
+上述所有队列中都包含了如下方法：
+
+```py
+# 构造方法，maxsize 指出了队列的容量
+queue.Queue(maxsize = 0)
+
+# 获取当前队列中元素的个数
+Queue.qsize()
+
+# 是否为空
+Queue.empty()
+
+# 是否填满
+Queue.full()
+
+# 向队列中添加一个元素，block = True 表示如果队列已满，该函数会阻塞 timeout 长的时间，然后抛出 queue.Full 异常
+Queue.put(item, block = True, timeout = None)
+
+# 等价于 Queue.put(item, block = False)
+Queue.put_nowait(item)
+
+# 从队列中获取元素，clock = True 表示如果队列为空，该函数会阻塞 timeout 长的时间，然后抛出 queue.Empty 异常
+Queue.get(block = True, timeout = None)
+
+# 等价于 Queue.get(block = False)
+Queue.get_nowait()
+
+# 用在消费者中，跟 join 配合使用。每次从 queue 里 get 一个数据并
+# 完成对该数据的处理后，就调用一次 task_done, 当所有数据都处理完后，join 才会返回。
+Queue.task_done()
+
+# 阻塞直到队列中所有数据都被处理完。
+# Queue 内部会维护一个计数，每 put 一个元素，该技术 +1, 每调用一次  task_done 该计数 -1
+# 计数为 0 时，join 才会返回。
+Queue.join()
+```
 
 ## GIL
 
+Python(特指 CPython, 也就是 C 写的 python 解释器，是大多数机器上默认安装的解释器) 中有一个 GIL 的概念，常常被提及。
 
-## 线程池
+GIL 的全称是 Global Interpreter Lock，全局解释器锁。这个锁并不是 python 自己的概念，而是 CPython 这个解释器中特有的。官方对它的定义是：
+> In CPython, the global interpreter lock, or GIL, is a mutex that prevents multiple native threads from executing Python bytecodes at once. This lock is necessary mainly because CPython’s memory management is not thread-safe. (However, since the GIL exists, other features have grown to depend on the guarantees that it enforces.)
+
+翻译过来，GIL 是一个互斥锁，其作用是阻止多个线程同时执行 python 子节码。换句话说，python 里的子节码，同一时刻只能由一个线程来执行，这就相当于单线程来运行子节码一样，加上上下文切换带来的开销，可能多线程程序的效率还没有单线程高。
+
+从实现原理上说，CPython 会在执行一定量的子节码之后主动释放 GIL 锁，类似于如下的伪代码：
+
+```py
+while True:
+    acquire GIL
+    for i in 1000:
+        do_bytecode()
+    release GIL
+```
+
+可能正是这个原因造成了之前条件变量代码的问题：
+
+```py
+for i in range(10):
+    cond.acquire()
+    num += 1
+    if num == 6:
+        cond.notify()
+    cond.release()
+    time.sleep(0.001)    # 没有这一句就会有问题，其原因估计跟 GIL 有关
+```
+
+如果没有 `time.sleep()` 这行代码，`cond.notify()` 通知之后，等待的线程不会被立刻唤醒。之所以会这样，有可能是因为这段子节码仍然在运行中，没有走到 GIL 锁释放的那一步，这导致等待的那个线程虽然等待到了条件变量，但无法拿到 GIL 锁，无法执行 python 子节码。
+
+也许 `time.sleep()` 能够让解释器释放 GIL 锁，所以上述改动才能生效，当然，这些都是我的推测。
+
+GIL 锁对于计算密集型的多线程程序来说造成的影响很大，多线程还不如单线程来的快。但对于 IO 密集型的程序来说，还是有帮助的，比如两个线程都等待 IO 操作的结果，IO 操作还是并行的，不会受到 GIL 的影响。
 
 
 ## 参考
 
 [理解Python并发编程一篇就够了 - 线程篇](http://www.dongwm.com/archives/%E4%BD%BF%E7%94%A8Python%E8%BF%9B%E8%A1%8C%E5%B9%B6%E5%8F%91%E7%BC%96%E7%A8%8B-%E7%BA%BF%E7%A8%8B%E7%AF%87/)
-
-
-
-
+[Python 的 GIL 究竟是什么鬼](http://python.jobbole.com/81822/)
