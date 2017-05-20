@@ -89,3 +89,18 @@ ThreadFunc 这个函数会在多个线程中被调用，如果你在这个函数
 ![Breakpoints 设置 ThreadID Filter]( {{site.url}}/asset/debugging-tips-breakpoints-filter-threadid.png )
 
 新增加的这个断点只会命中到 9766 这个线程中，这就可以方便下一步调试了。
+
+
+## DebugView 的过滤规则
+
+之前没注意到过，以为 DebugView 过滤的时候只会过滤 “以 xxx 开头的日志输出”，今天试了一下，发现规则应该是 “过滤日志里包含 xxx 的输出”，也就是说过滤条件可以是输出字符串的任意一部分。
+
+另外 DebugView 的日志开头是有一个进程 id 的，你可以把它加入到过滤条件里面，从而达到只过滤指定进程日志的效果。
+
+另外 DebugView 是可以添加命令行参数的，你可以在命令行中输入 `dbgview.exe /?` 来查看它支持的命令行参数有哪些，例如下面的命令行将 dbgview 最小化到托盘区，并指定将日志输出到文件中。
+
+```
+dbgview.exe /t /l C:\dbgview.log
+```
+
+也许可以根据 DebugView 输出的日志进行一些简单的定制，不过 DebugView 输出的日志太简单了，想想也没啥可定制的。。。
