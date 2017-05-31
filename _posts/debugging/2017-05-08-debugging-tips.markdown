@@ -104,3 +104,12 @@ dbgview.exe /t /l C:\dbgview.log
 ```
 
 也许可以根据 DebugView 输出的日志进行一些简单的定制，不过 DebugView 输出的日志太简单了，想想也没啥可定制的。。。
+
+
+## 在 VS 中查看寄存器的值
+
+有时候需要在 VS 中查看寄存器的值，这时可以通过菜单 Debug --> Windows --> Registers 来打开寄存器窗口：
+
+![]( {{site.url}}/asset/software-debugging-tips-show-registers-window.png )
+
+这样就可以看到寄存器的值了。
