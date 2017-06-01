@@ -573,6 +573,8 @@ void main()
 
 ### 感受缓冲区溢出
 
+下面的代码需要用 VC6 编译，因为 VC8 加入了缓冲区检查功能，无法观察到该现象。
+
 ```cpp
 int main(int argc, char* argv[])
 {
@@ -586,7 +588,7 @@ int main(int argc, char* argv[])
 }
 ```
 
-上述代码声明了一个 szInput 局部变量用来存储用户输入的内容，我们运行这个程序，然后输入 `987654321012345`，程序会打印出我们输入的字符串，但紧接着会出现应用程序错误对话框：
+上述代码声明了一个 szInput 局部变量用来存储用户输入的内容，我们用 VC6 调试这个程序，然后输入 `987654321012345`，程序会打印出我们输入的字符串，但紧接着会出现应用程序错误对话框：
 
 ![]( {{site.url}}/asset/software-debugging-buffer-overflow-example.png )
 
@@ -639,3 +641,123 @@ int main(int argc, char* argv[])
 
 可以看到，上述恶意代码调用 MessageBox API 弹出了一个对话框。
 
+
+## 变量检查
+
+我们之前介绍的两个缓冲区溢出的例子，都是在 VC6 下实现的。随后的 VC 编译器逐步引入了一系列功能来帮助应用程序检查缓冲区溢出，包括用于精确检查每个局部变量是否溢出的变量检查功能，以及用于保护函数返回地址的安全 Cookie 功能。
+
+把之前的例子放到 VC8 里面运行，结果会出现如下错误框：
+
+![]( {{site.url}}/asset/software-debugging-variable-check-error-dlg.png )
+
+可以看到编译器插入的代码检测到了缓冲区溢出，而且还指出了发生溢出的变量名是 buffer，那么编译器插入了什么样的代码，是如何检查的呢？以下是 VC8 编译出的 HandleInput 函数的反汇编代码：
+
+![]( {{site.url}}/asset/software-debugging-variable-check-handle-input-disasm.png )
+
+观察上述反汇编代码，可以看出 VC8 与 VC6 编译产生的代码有以下几点明显不同：
+- VC8 为每个函数的 Debug 版本所分配的默认局部变量比 VC6 更长，VC6 通常是 64 字节，而 VC8 分配的是 192 字节。即使一个函数内部没有任何语句，编译器也会在栈帧中为这个默认局部变量分配空间；
+- VC8 会在紧邻栈帧指针的位置分配 4 个字节用于存放安全 Cookie (13 ~15 行)。安全 Cookie 就像一个护栏，用于保护紧邻的栈帧指针和函数返回地址。安全 Cookie 一旦损坏，就说明函数内已经发生了缓冲区溢出，栈帧数据很可能已经受损。在函数的出口 VC8 会插入代码 (43 ~ 45 行) 检查 Cookie 的完好性；
+- 在给每个局部变量分配空间时，VC8 会给每个变量多分配 8 个字节，前面放 4 个，后面放 4 个，这 8 个字节总被初始化为 0xCC，这样每个变量都有了前后两个屏障，一旦屏障受损，说明该变量附近发生了溢出；
+- VC8 默认使用 `_RTC_CheckEsp` 函数来检查栈指针的平衡性，其原理与 VC6 使用的 `_chkesp` 完全相同。只是对于被调用函数清理栈的调用协定 (`__stdcall`)，VC8 会在调用这个函数前先记录下栈指针的值，调用函数之后进行检查(25, 29, 30 行)；
+- 对于有可能发生缓冲区溢出的函数，在函数返回前，VC8 会调用 `_RTC_CheckStackVars` 做变量检查，也就是检查每个变量前后的屏障字段是否完好。如果发现屏障字段不再是 0xCCCCCCCC，则调用错误报告函数报告错误；
+
+在以上措施中，我们把插入和检查安全 Cookie 称为安全检查 (Security Check)。检查栈指针和针对每个变量的检查是运行期检查 (runtime check) 的一部分，之前我们已经介绍过运行期检查。
+
+下面介绍变量检查的工作原理，下一节介绍 Cookie 检查。
+
+变量检查过程分为三个步骤：
+- 在分配局部变量时，为每个局部变量多分配 8 个字节的额外空间，并用 0xCC 填充，这些 0xCC 字节称为栅栏字节；
+- 为了在运行期间能够知道每个变量的长度、位置和名称，编译器会产生一个变量描述表，用来记录局部变量的详细信息；
+- 在函数返回前，调用 `_RTC_CheckStackVars` 函数，根据变量描述表逐一检查其中的每个变量，如果发现变量前后的栅栏字节发生变化则报告检查失败；
+
+以下是 `_RTC_CheckStackVars` 的伪代码：
+
+![]( {{site.url}}/asset/software-debugging-variable-check-rtc-check-stack-vars.png )
+
+其中的 `_RTC_framedesc` 就是变量描述表。
+
+如果 `_RTC_CheckStackVars` 函数发现变量前后的栅栏被破坏，那么便会调用 `_RTC_StackFailure` 报告错误。
+
+VC8 编译器引入了 `/RTCs` (s 代表 stack) 选项来启用包括变量检查功能在内的栈检查机制。不过在 VC8 生成的项目文件中，为调试版本设置的默认选项使用的通常是 `/RTC1`，它是 `RTCsu` 的等价形式，即同时启用 RTCs 和 RTCu。
+
+### RTCu 检查变量是否初始化
+
+例如下面的代码：
+
+```c
+int n, j;
+j = n;
+```
+
+如果启用了 RTCu 选项，编译器会为变量 n 定义一个标志变量，位于栈帧中 Debug 版默认局部变量上方。标志变量为 bool 类型，但其前后也会加上变量屏障，因此它会占用 12 字节的栈空间。标志变量用来记录变量是否被初始化，在函数入口处，这个值会被设为 0；在对该变量赋值的地方，编译器会加入代码将该标记设为 1；在访问该变量的地方会加入如下代码来发出警告：
+
+![]( {{site.url}}/asset/software-debugging-variable-check-rtcu.png )
+
+其中第 1 行判断初始化标志是否为 0，避免重复发出警告。第 4 行调用 `__RTC_UnInitUse` 来发出警告。
+
+
+## 基于 Cookie 的安全警告
+
+VC8 在编译可能发生缓冲区溢出的函数时，会定义一个特别的局部变量，该局部变量会被分配在栈帧中所有其他局部变量和站帧指针与函数返回地址之间。这个变量专门用来保存 Cookie, 因此我们将它称为 Cookie 变量。
+
+Cookie 变量是一个 32 位整数，它的值是从全局变量 `__security_cookie` 得到的。该全局变量定义在 C 运行时库中，在 CRT 源代码目录的 gs_cookie.c 文件中可以看到其定义：
+
+```c
+#ifdef _WIN64
+#define DEFAULT_SECURITY_COOKIE 0x00002B992DDFA232
+#else  /* _WIN64 */
+#define DEFAULT_SECURITY_COOKIE 0xBB40E64E
+#endif  /* _WIN64 */
+
+DECLSPEC_SELECTANY UINT_PTR __security_cookie = DEFAULT_SECURITY_COOKIE;
+
+DECLSPEC_SELECTANY UINT_PTR __security_cookie_complement = ~(DEFAULT_SECURITY_COOKIE);
+```
+
+可以看到 `__security_cookie` 在 32 位下的默认值是 0xBB40E64E。在程序的启动函数中还会调用 `__security_init_cookie` 来对该变量进行初始化：
+
+```c
+int _tmainCRTStartup(void)
+{
+    __security_init_cookie();
+
+    return __tmainCRTStartup();
+}
+```
+
+`__security_init_cookie` 函数定义在 `gs_support.c` 文件中，其中 Cookie 初始化的代码如下所示：
+
+```c
+GetSystemTimeAsFileTime(&systime.ft_struct);
+cookie = systime.ft_struct.dwLowDateTime;
+cookie ^= systime.ft_struct.dwHighDateTime;
+cookie ^= GetCurrentProcessId();
+cookie ^= GetCurrentThreadId();
+cookie ^= GetTickCount();
+
+QueryPerformanceCounter(&perfctr);
+cookie ^= perfctr.LowPart;
+cookie ^= perfctr.HighPart;
+
+__security_cookie = cookie;
+__security_cookie_complement = ~cookie;
+```
+
+可以看到 Cookie 是通过当前系统时间，再与进程 ID, 线程 ID, 系统 TickCount 和性能计数器进行逐位异或 计算的来的。这是为了让 Cookie 有较好的随机性。
+
+编译器在为一个函数插入 Cookie 时，它还会与当时的 EBP 寄存器的值做一次异或操作，然后再保存到栈上的 Cookie 变量中。
+
+与 EBP 异或有两个好处：
+- 进一步提高 Cookie 的随机性，因为 `__security_cookie` 是程序启动时初始化的，进程生命周期内只会初始化一次。通过异或操作可以让每次进入函数的 Cookie 都不相同；
+- 可以起到检查 EBP 不被破坏的作用，在检查 Cookie 变量时，先将 `__security_cookie` 再与 EBP 异或一次，然后比较两次的 Cookie 值是否相同就可以判断 EBP 是否被破坏；
+
+为了降低对可执行文件大小和运行性能的影响，`__security_check_cookie` 函数是直接用汇编写的，整个函数只有 4 条汇编指令，没有使用任何变量和改变寄存器。
+
+在 VC8 中，缓冲区安全检查是默认启用的，但也可以在编译选项中加入 /GS 来显式启用安全检查，或者加入 /GS- 来禁用安全检查。
+
+
+## 本章总结
+
+下表归纳了编译器在产生栈和函数调用有关的代码时所加入的支持软件调试的机制，以及这些机制在调试版本和发布版本中的可用性：
+
+![]( {{site.url}}/asset/software-debugging-compiler-stack-support.png )
