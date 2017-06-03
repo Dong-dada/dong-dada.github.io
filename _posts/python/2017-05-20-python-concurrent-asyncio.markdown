@@ -11,11 +11,12 @@ categories: python
 本文基于 python 3
 
 本文参考自：
+- [A Web Crawler With asyncio Coroutines](http://aosabook.org/en/500L/a-web-crawler-with-asyncio-coroutines.html)
+- [A Web Crawler With asyncio Coroutines 译文](http://ls-a.me/translation/crawler/)
 - [asyncio](https://docs.python.org/3/library/asyncio.html)
-- [一个使用 asyncio 协程的爬虫(一)](http://mp.weixin.qq.com/s?__biz=MzA3NDk1NjI0OQ==&mid=2247483875&idx=1&sn=66b10f67c8f2cb2002fa16d9022540be&chksm=9f76ad55a8012443cd1c58c82a5f8a40178b29e04179ae7122f122116531bf1d8a96e736a275#rd)
-- [一个使用 asyncio 协程的爬虫(二)](http://mp.weixin.qq.com/s?__biz=MzA3NDk1NjI0OQ==&mid=2247483875&idx=2&sn=753243326c3486228881c9810eb43f0e&chksm=9f76ad55a80124439cdcd5a37e6d4ce8ec6bc95a4848474f4e089f56039b82d8c8d9516fbc42#rd)
 - [单台服务器并发 TCP 连接数到底可以有多少](http://www.52im.net/thread-561-1-1.html)
 - [高性能网络编程(二)：上一个10年，著名的C10K并发连接问题](http://www.52im.net/thread-566-1-1.html)
+- [什么是 yield from](http://blog.csdn.net/u010161379/article/details/51645264)
 
 ## asyncio 解决了什么问题
 
@@ -49,7 +50,7 @@ while (!done)
 }
 ```
 
-可以看到上面的逻辑非常简单，就是用一个 while 循环不断等待 `poll` 返回，返回后就调用对应的 handler。
+可以看到上面的逻辑非常简单，就是用一个 while 循环不断等待 `poll` 返回(代表有连接处于可用状态)，返回后就调用对应的 handler 去处理该连接。
 
 ### python 的 selector
 
@@ -58,46 +59,46 @@ while (!done)
 python 中提供了 selector 来实现类似的功能，请看如下代码：
 
 ```py
-# coding:utf-8
+#coding:utf-8
 
 from selectors import DefaultSelector, EVENT_WRITE
 import socket
 
+selector = DefaultSelector()
+stopped = False
+
+# 创建 socket 对象，并设置为非阻塞模式
+sock = socket.socket()
+sock.setblocking(False)
+
+# 开启连接
+try:
+    sock.connect(("www.baidu.com", 80))
+except BlockingIOError:
+    pass
+
+# 连接后的回调函数
 def connected():
-    """ selector 的回调函数 """
+    print("connected!")
     selector.unregister(sock.fileno())
-    print('connected!')
 
-def loop():
-    """ Event Loop """
-    while True:
-        # 调用 selector.select() 会阻塞，直到事件被触发
-        events = selector.select()
-        for event_key, event_mask in events:
-            # 从 event 里取出 callback 并回调它
-            callback = event_key.data
-            callback()
+    global stopped
+    stopped = True
 
-if __name__ == '__main__':
+# 把 sock 的文件描述符注册给 selector
+selector.register(sock.fileno(), EVENT_WRITE, connected)
 
-    selector = DefaultSelector()
-
-    # 创建非阻塞的 socket, 这样调用 sock.connect 时不会阻塞
-    sock = socket.socket()
-    sock.setblocking(False)
-    try:
-        sock.connect(('127.0.0.1', 80))
-    except BlockingIOError:
-        pass
-
-    # 将 文件描述符 和 回调函数注册给 selector
-    selector.register(sock.fileno(), EVENT_WRITE, connected)
-
-    # 启动 loop
-    loop()
+# 事件循环
+while not stopped:
+    events = selector.select()
+    for event_key, event_mask in events:
+        callback = event_key.data
+        callback()
 ```
 
 相比于原先的 Event Loop 的实例代码，这里增加了一个回调函数的逻辑，便于将 selector 返回的事件分发给对应的 handler 函数。
+
+上述代码中的 stopped 全局变量用于标识是否结束，这里我们的处理比较简单，连接成功后就可以退出事件循环了。如果不设置这个标记的话，`selector.select()` 会在 connected 注销后因为没有注册的文件描述符而抛出异常。
 
 ### callback 编程模型的困难
 
@@ -105,93 +106,86 @@ if __name__ == '__main__':
 
 例如编写一个爬虫代码，`socket.connect()` 只是第一步。随后我们还得向服务器发送一个 GET 请求，为了避免这一步被阻塞，我们得注册另外一个回调函数。GET 之后，它不能一次读取完所有请求，所以还得再一次注册，如此反复。
 
-我们把这个过程写出来，看看实际的代码会有多难写。
-
-首先，我们有一个未获取 url 的集合，和一个已获取 url 的集合：
+下面是基于 callback 方式编写的爬虫代码：
 
 ```py
-urls_todo = set(['/'])
-seen_urls = set(['/'])
-```
+#coding:utf-8
 
-之前说过，会有很多回调，我们把这些回调放在一个 Fetcher 对象中：
+from selectors import DefaultSelector, EVENT_WRITE, EVENT_READ
+import socket
 
-```py
-class Fetcher:
-	def __init__(self, url):
-		self.url = url
-		self.sock = None
-		self.response = b''
-
-	def fetch(self):
-		self.sock = socket.socket()
-		self.sock.setBlocking(False)
-
-		try:
-			self.sock.connect(('xkcd.com', 80))
-		catch BlockingIOError:
-			pass
-		
-		selector.register(self.sock.fileno(), EVENT_WRITE, self.connected)
-	
-	def connected(self, key, mask):
-		pass
-```
-
-connected 回调中需要发送 GET 请求：
-
-```py
-def connected(key, mask):
-	print('connected!')
-	# 先注销之前注册的 connected 回调
-	selector.unregister(key.fd)
-
-    # 发送 GET 请求
-	request = 'GET {} HTTP/1.0\r\nHost: xkcd.com\r\n\r\n'.format(self.url)
-	self.sock.send(request.encode('ascii'))
-
-	# 注册回调，用于处理 GET 请求
-	selector.register(key.fd, EVENT_READ, self.read_response)
-```
-
-接着编写 `read_response` 回调，来处理服务器对 GET 请求的响应：
-
-```py
-def read_response():
-	global stopped
-
-	chunk = self.sock.recv(4096)
-	if chunk:
-		self.response += chunk
-	else:
-		# 同样的，先注销 read_response 回调
-		selector.unregister(key.fd)
-
-		# 解析出新的链接
-		links = self.parse_links()
-		for link in links.difference(seen_urls):
-			urls_todo.add(link)
-			# 用 Fetcher 抓取这个链接中的内容
-			Fetcher(link).fetch()
-		
-		seen_urls.update(links)
-		urls_todo.remove(self.url)
-		if not urls_todo:
-			# 没有需要处理的链接了，将 stopped 设为 True
-			stopped = True
-```
-
-stopped 变量用于控制程序何时退出：
-
-```py
+selectors = DefaultSelector()
+urls_todo = set([])
+seen_urls = set([])
 stopped = False
 
+class Fetcher:
+    def __init__(self, url):
+        self.response = b''
+        self.url = url
+        self.sock = None
+        urls_todo.add(url)
+
+    def fetch(self):
+		# 先发起连接
+        self.sock = socket.socket()
+        self.sock.setblocking(False)
+
+        try:
+            self.sock.connect(("www.baidu.com", 80))
+        except BlockingIOError:
+            pass
+        
+        selectors.register(self.sock.fileno(), EVENT_WRITE, self.connected)
+
+    def connected(self, key, mask):
+		# 连接完成后发起请求来抓取页面
+        print('connected!')
+        selectors.unregister(key.fd)
+        
+        request = "GET {} HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n".format(self.url)
+        self.sock.send(request.encode("ascii"))
+
+        selectors.register(key.fd, EVENT_READ, self.read_response)
+
+    def read_response(self, key, mask):
+        global stopped
+
+        chunk = self.sock.recv(4096)
+        if chunk:
+            self.response += chunk
+        else:
+            print("read_response finish!\n" + self.response.decode())
+            selectors.unregister(key.fd)
+            
+			# 该页面抓取完成后，分析页面中的其它链接，并创建一个新的 Fetcher 来抓取这些链接
+            links = self.parse_links()
+            for link in links.difference(seen_urls):
+                urls_todo.add(link)
+                Fetcher(link).fetch()
+            
+            seen_urls.update(links)
+            urls_todo.remove(self.url)
+            if not urls_todo:
+                stopped = True
+
+    def parse_links(self):
+        return set([])
+
+# 事件循环
 def loop():
-	while not stopped:
-		events = selector.select()
-		for event_key, event_mask in events:
-			callback = event_key.data
-			callback(event_key, event_mask)
+    while not stopped:
+        events = selectors.select()
+        for event_key, event_mask in events:
+            callback = event_key.data
+            callback(event_key, event_mask)
+
+# 开始抓取 www.baidu.com/duty/ 页面
+fetcher = Fetcher('/duty/')
+fetcher.fetch()
+
+# 启动事件循环
+loop()
 ```
 
 上面的例子暴露出了异步编程的一大问题：意大利面代码。
@@ -199,20 +193,43 @@ def loop():
 为了接受异步事件，你不得不编写许多回调函数。同时还需要在类成员中记录状态信息，也就是 url, sock, response 这些数据。而如果我们用同步代码来完成上述逻辑，那么将非常简单直白：
 
 ```py
-# Blocking version.
+#coding:utf-8
+
+import socket
+
+urls_todo = set([])
+
+def parse_links(response):
+    return set([])
+
 def fetch(url):
+    # 创建 socket 并连接
     sock = socket.socket()
-    sock.connect(('xkcd.com', 80))
-    request = 'GET {} HTTP/1.0\r\nHost: xkcd.com\r\n\r\n'.format(url)
+    sock.connect(('www.baidu.com', 80))
+
+    # 发起请求
+    request = 'GET {} HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n'.format(url)
     sock.send(request.encode('ascii'))
+
+    # 接收数据
     response = b''
     chunk = sock.recv(4096)
     while chunk:
         response += chunk
         chunk = sock.recv(4096)
-    # Page is now downloaded.
+    print(response.decode())
+
+    # 处理数据
     links = parse_links(response)
-    q.add(links)
+    for link in links:
+        urls_todo.add(link)
+
+    urls_todo.remove(url)
+
+while not urls_todo:
+    url = '/duty/'
+    urls_todo.add(url)
+    fetch(url)
 ```
 
 上面的同步代码无需保存 url, sock, response 这些数据，这是因为这些数据被保存到了函数的栈上，在 socket 操作结束后，会继续执行对应的处理代码，我们认为这样的代码具有“连续性”，这种连续性是由编译器(解释器)来实现的。而回调函数的栈是分离的，没有连续性。
@@ -283,7 +300,7 @@ dis.dis(foo)
 
 注意第 2 行 `CALL_FUNCTION` 这个子节码，它会创建一个新的栈帧，并利用这个栈帧递归地调用 `PyEval_EvalFrameEx` 来执行 bar 函数的子节码。如果你对 C 语言中函数调用栈帧的概念有了解，你会发现 python 实现函数调用的方法与 C 语言是一样的，都是利用了栈。
 
-然而，跟 C 语言中的函数栈不一样的是，**python 中的栈是在堆中分配的**。你可以把 python 的函数栈理解成是在堆中 new 出来的一块内存，这块内存可以留着不释放。这跟 C 语言的函数栈不一样，C 的函数栈是通过栈顶置针来控制栈大小的，所以退出函数的时候栈空间一定会被释放掉。
+然而，跟 C 语言中的函数栈不一样的是，**python 中的栈是在堆中分配的**。你可以把 python 的函数栈理解成是在堆中 new 出来的一块内存，这块内存可以留着不释放。这跟 C 语言的函数栈不一样，C 的函数栈是通过栈顶指针来控制栈大小的，退出函数的时候栈空间一定会被释放掉。
 
 下面的代码通过 `inspect` 模块来获取到 bar 函数的栈帧，然后打印它的两个成员 `f_code` 和 `f_back`：
 
@@ -307,9 +324,163 @@ dis.dis(foo)
 'foo'
 ```
 
-在 C 语言编写的 python 解释器中，用 PyFrameObject 来表示一个函数的栈帧，它的 `f_back` 成员指向调用者， `f_code` 指向子节码：
+在 C 语言编写的 python 解释器中，用 PyFrameObject 来表示一个函数的栈帧，它的 `f_back` 成员指向调用者的 PyFrameObject 对象， `f_code` 指向该栈帧的子节码：
 
 ![]( {{site.url}}/asset/python-asyncio-pyframeobject.png )
 
+如上图所示，PyCodeObject 代表了函数的字节码，相当于 C 语言中一个函数编译后的二进制代码；而 PyFrameObject 代表了该函数的栈帧，相当于 C 语言在运行时动态产生的函数栈。PyCodeObject 必须利用 PyFrameObject 才能正确运行，因为 PyFrameObject 中包含了 PyCodeObject 中所需要使用的参数、局部变量、返回值等内容。
+
 ### python 生成器的原理
 
+```py
+>>> def gen_fn():
+...     result = yield 1
+...     print('result of yield: {}'.format(result))
+...     result2 = yield 2
+...     print('result of 2nd yield: {}'.format(result2))
+...     return 'done'
+...     
+```
+
+python 在把上述 `gen_fn` 编译成字节码的过程中，一旦它看到 yield 语句就知道这是一个生成器函数，而不是普通的函数，它会设置一个标记记录在 `gen_fn.__code__.co_flags` 变量中，你可以通过如下代码来验证该标记：
+
+```py
+>>> # The generator flag is bit position 5.
+>>> generator_bit = 1 << 5
+>>> bool(gen_fn.__code__.co_flags & generator_bit)
+True
+```
+
+当你调用 `gen_fn` 时，python 看到这个标记，就不会运行它而是创建一个生成器：
+
+```py
+>>> gen = gen_fn()
+>>> type(gen)
+<class 'generator'>
+```
+
+创建的生成器在 C 中用 PyGenObject 来表示，它包含了一个 PyFrameObject 对象，和一个 PyCodeObject 对象：
+
+![]( {{site.url}}/asset/python-asyncio-pygenobject.png )
+
+如果多次调用 `gen_fn` 来创建新的生成器，那么每个生成器都指向同一个 PyCodeObject 对象，但每个生成器都指向各自的 PyFrameObject 对象。在生成器函数彻底执行结束前，PyFrameObject 将一直存在，换句话说，PyCodeObject 所需要的局部变量、参数、返回值等信息将一直保存在生成器的 PyFrameObject 对象中。
+
+PyFrameObject 中有一个成员 `f_lasti` 记录了当前指令指针的位置，类似于汇编中的 EIP 指针。每次调用 yield 的时候，`f_lasti` 都会指向最后运行的那行字节码，下次调用 send 就可以根据 `f_lasti` 的值来恢复到上次运行的位置。
+
+正因为这样，生成器可以在任何时候，任何函数中恢复运行。
+
+### 通过生成器来优化基于 callback 的意大利面代码
+
+正如本文最开始介绍的，要使用 I/O 多路复用，需要有一个 event loop:
+
+```py
+def loop():
+	while not stopped:
+		events = selector.select()
+		for event_key, event_mask in events:
+			callback = event_key.data
+			callback(event_key, event_mask)
+```
+
+在之前的做法中，每当 selector 有返回(代表连接可用)，就调用对应的 callback。因为向 selector 注册的事件类型有好几种 (连接完毕、接收到数据等), 我们不得不为每种事件都设置对应的 callback 函数，并且需要通过类封装来记录中间状态。
+
+现在有了生成器，它可以被暂停，被恢复，并且在暂停和恢复期间中间状态会保存到栈中。根据这些特点，我们可以用一个生成器来完成之前 Fetcher 的工作：
+- 每次 `selector.select()` 返回后，都将事件分发到同一个生成器上，分发的方式是调用生成器的 `send()` 函数来恢复生成器的执行；
+- 生成器中通过 yield 将操作分为多个步骤，例如 connect 完成后 yield, 接着执行 request, 完成后 yield, 接着完成解析，对于解析后的链接，创建新的生成器，交给 event loop 继续分发；
+
+按照上述思路可以编写出下面的代码：
+
+```py
+#coding:utf-8
+
+from selectors import DefaultSelector, EVENT_WRITE, EVENT_READ
+import socket
+
+selector = DefaultSelector()
+stopped = False
+
+the_gen = None
+undo_urls = set([])
+seen_urls = set([])
+
+def parse_links(response):
+    return set(['/duty/baozhang.html'])
+
+def fetch(url):
+    
+    # 创建 socket 并连接
+    sock = socket.socket()
+    sock.setblocking(False)
+
+    try:
+        sock.connect(("www.baidu.com", 80))
+    except BlockingIOError:
+        pass
+    
+    # 把当前生成器注册给 selector
+    global the_gen
+    selector.register(sock.fileno(), EVENT_WRITE, the_gen)
+
+    # 返回，event loop 会在连接可用时调用 send
+    yield
+
+    print("connected!")
+    selector.unregister(sock.fileno())
+
+    request = "GET {} HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n".format(url)
+    sock.send(request.encode("ascii"))
+
+    selector.register(sock.fileno(), EVENT_READ, the_gen)
+
+    # 返回，event loop 会在连接可用时调用 send
+    yield
+
+    response = b''
+
+    while True:
+        chunk = sock.recv(4096)
+        if chunk:
+            response += chunk
+            # 返回，event loop 会在连接可用时调用 send
+            yield
+        else:
+            break
+
+    print('response: \n' + response.decode())
+    selector.unregister(sock.fileno())
+
+    undo_urls.remove(url)
+    seen_urls.add(url)
+
+    links = parse_links(response)
+    for link in links.difference(seen_urls):
+        # 创建一个新的生成器来处理解析出的链接
+        undo_urls.add(link)
+        the_gen = fetch(link)
+        the_gen.send(None)
+
+    if not undo_urls:
+        global stopped
+        stopped = True
+
+def loop():
+    while not stopped:
+        events = selector.select()
+        for event_key, event_mask in events:
+            # 通过 send() 方法来分发事件给生成器
+            gen = event_key.data
+            try:
+                gen.send(None)
+            except StopIteration:
+                break
+
+# 启动生成器
+undo_urls.add('/duty/')
+the_gen = fetch('/duty/')
+the_gen.send(None)
+
+# 启动事件循环
+loop()
+```
+
+上面的代码看起来很长，但是没有了 Fetcher 类，没有了多个回调函数，如果忽略 `yield`, `register`, `unregister` 等代码，fetch 函数就像是编写同步代码一样。
