@@ -33,20 +33,20 @@ I/O 多路复用技术经常跟 Event Loop 联系在一起。类似于下面的�
 ```c
 while (!done)
 {
-	int timeout_ms = max(1000, GetNextTimedCallback());
-	int retval = ::poll(fds, ndfs, timeout_ms); 	// poll 将等待多个 文件描述符，直到其中某个可用
-	if (retval < 0)
-	{
-		// 处理错误，回调用户的 error handler
-	}
-	else
-	{
-		// 处理到期的 timers, 回调用户的 timer handler
-		if (retval > 0)
-		{
-			// 处理 IO 事件，回调用户的 IO event handler
-		}
-	}
+    int timeout_ms = max(1000, GetNextTimedCallback());
+    int retval = ::poll(fds, ndfs, timeout_ms); 	// poll 将等待多个 文件描述符，直到其中某个可用
+    if (retval < 0)
+    {
+        // 处理错误，回调用户的 error handler
+    }
+    else
+    {
+        // 处理到期的 timers, 回调用户的 timer handler
+        if (retval > 0)
+        {
+            // 处理 IO 事件，回调用户的 IO event handler
+        }
+    }
 }
 ```
 
@@ -127,7 +127,7 @@ class Fetcher:
         urls_todo.add(url)
 
     def fetch(self):
-		# 先发起连接
+        # 先发起连接
         self.sock = socket.socket()
         self.sock.setblocking(False)
 
@@ -139,7 +139,7 @@ class Fetcher:
         selectors.register(self.sock.fileno(), EVENT_WRITE, self.connected)
 
     def connected(self, key, mask):
-		# 连接完成后发起请求来抓取页面
+        # 连接完成后发起请求来抓取页面
         print('connected!')
         selectors.unregister(key.fd)
         
@@ -158,7 +158,7 @@ class Fetcher:
             print("read_response finish!\n" + self.response.decode())
             selectors.unregister(key.fd)
             
-			# 该页面抓取完成后，分析页面中的其它链接，并创建一个新的 Fetcher 来抓取这些链接
+            # 该页面抓取完成后，分析页面中的其它链接，并创建一个新的 Fetcher 来抓取这些链接
             links = self.parse_links()
             for link in links.difference(seen_urls):
                 urls_todo.add(link)
@@ -244,11 +244,11 @@ while not urls_todo:
 
 ```py
 def foo():
-	# ...
-	yield	# 中断执行，让其他协程有机会运行
-	# ...
-	yield   # 中断执行，让其他协程有机会运行
-	# ...
+    # ...
+    yield	# 中断执行，让其他协程有机会运行
+    # ...
+    yield   # 中断执行，让其他协程有机会运行
+    # ...
 ```
 
 python 3.4 的 asyncio 模块里有一个叫 aiohttp 的包，它利用协程这一机制，可以把异步操作写得跟同步一样：
@@ -256,8 +256,8 @@ python 3.4 的 asyncio 模块里有一个叫 aiohttp 的包，它利用协程这
 ```py
 @asyncio.coroutine
 def fetch(self, url):
-	response = yield from self.session.get(url)
-	body = yield from response.read()
+    response = yield from self.session.get(url)
+    body = yield from response.read()
 ```
 
 看起来是不是很简单？相对于线程而言，协程的开销也很小，python 中每个线程需要占用 50k 内存，而协程只需要 3k。
@@ -277,10 +277,10 @@ def fetch(self, url):
 import dis
 
 def foo():
-	bar()
+    bar()
 
 def bar():
-	pass
+    pass
 
 dis.dis(foo)
 
@@ -375,11 +375,11 @@ PyFrameObject 中有一个成员 `f_lasti` 记录了当前指令指针的位置�
 
 ```py
 def loop():
-	while not stopped:
-		events = selector.select()
-		for event_key, event_mask in events:
-			callback = event_key.data
-			callback(event_key, event_mask)
+    while not stopped:
+        events = selector.select()
+        for event_key, event_mask in events:
+            callback = event_key.data
+            callback(event_key, event_mask)
 ```
 
 在之前的做法中，每当 selector 有返回(代表连接可用)，就调用对应的 callback。因为向 selector 注册的事件类型有好几种 (连接完毕、接收到数据等), 我们不得不为每种事件都设置对应的 callback 函数，并且需要通过类封装来记录中间状态。
