@@ -416,12 +416,18 @@ def fetch(url):
         sock.connect(("www.baidu.com", 80))
     except BlockingIOError:
         pass
-    
-    # 把当前生成器注册给 selector
-    global the_gen
-    selector.register(sock.fileno(), EVENT_WRITE, the_gen)
 
-    # 返回，event loop 会在连接可用时调用 send
+    # 连接完成后回调此方法，在这里调用生成器的 send 方法，让生成器继续执行
+    def connect_finish():
+        try:
+            global the_gen
+            the_gen.send(None)
+        except StopIteration:
+            pass
+
+    selector.register(sock.fileno(), EVENT_WRITE, connect_finish)
+
+    # 返回
     yield
 
     print("connected!")
@@ -430,9 +436,16 @@ def fetch(url):
     request = "GET {} HTTP/1.0\r\nHost: www.baidu.com\r\n\r\n".format(url)
     sock.send(request.encode("ascii"))
 
-    selector.register(sock.fileno(), EVENT_READ, the_gen)
+    # 请求完成后回调此方法，在这里调用生成器的 send 方法，让生成器继续执行
+    def request_finish():
+        try:
+            global the_gen
+            the_gen.send(None)
+        except StopIteration:
+            pass
+    selector.register(sock.fileno(), EVENT_READ, request_finish)
 
-    # 返回，event loop 会在连接可用时调用 send
+    # 返回
     yield
 
     response = b''
@@ -441,7 +454,7 @@ def fetch(url):
         chunk = sock.recv(4096)
         if chunk:
             response += chunk
-            # 返回，event loop 会在连接可用时调用 send
+            # 返回
             yield
         else:
             break
@@ -456,6 +469,7 @@ def fetch(url):
     for link in links.difference(seen_urls):
         # 创建一个新的生成器来处理解析出的链接
         undo_urls.add(link)
+        global the_gen
         the_gen = fetch(link)
         the_gen.send(None)
 
@@ -467,12 +481,8 @@ def loop():
     while not stopped:
         events = selector.select()
         for event_key, event_mask in events:
-            # 通过 send() 方法来分发事件给生成器
-            gen = event_key.data
-            try:
-                gen.send(None)
-            except StopIteration:
-                break
+            callback = event_key.data
+            callback()
 
 # 启动生成器
 undo_urls.add('/duty/')
@@ -483,4 +493,4 @@ the_gen.send(None)
 loop()
 ```
 
-上面的代码看起来很长，但是没有了 Fetcher 类，没有了多个回调函数，如果忽略 `yield`, `register`, `unregister` 等代码，fetch 函数就像是编写同步代码一样。
+上面的代码看起来很长，但是没有了 Fetcher 类 (因为无需记录中间状态)，没有了多个回调函数，如果忽略 `yield`, `register`, `unregister` 等代码，fetch 函数就像是编写同步代码一样。
