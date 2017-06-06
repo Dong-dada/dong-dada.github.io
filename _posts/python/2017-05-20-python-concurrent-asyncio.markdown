@@ -494,3 +494,233 @@ loop()
 ```
 
 上面的代码看起来很长，但是没有了 Fetcher 类 (因为无需记录中间状态)，没有了多个回调函数，如果忽略 `yield`, `register`, `unregister` 等代码，fetch 函数就像是编写同步代码一样。
+
+### 另一种写法
+
+上一小节的代码是我根据自己的理解写的，比较直白，就是将 select 的事件通过 send 方法分发到对应的生成器上。[原文](http://ls-a.me/translation/crawler/#building-coroutines-with-generators) 的写法不太一样。
+
+对比一下代码，发现我的代码里有一个不好的地方，`the_gen` 是一个全局变量。之所以要有这个全局变量，是因为在生成器内部无法直接获取到生成器本身，所以不得不通过全局变量来记录它，这样才能在 `connect_finish` 回调中调用它。
+
+原文首先实现了一个 Future 类，这个类用来表示协程正在等待的事件，每次协程进入等待的时候，都会通过 `yield future` 来返回一个新的 Future 对象，外部可以通过向这个对象注册回调函数的方式来接收到事件触发的通知：
+
+```py
+class Future:
+    def __init__(self):
+        self.result = None
+        self._callbacks = []
+
+    def add_done_callback(self, fn):
+        self._callbacks.append(fn)
+
+    def set_result(self, result):
+        self.result = result
+        for fn in self._callbacks:
+            fn(self)
+```
+
+协程内部收到事件后，会调用 `set_result` 来通知外部：
+
+```py
+def fetch():
+    sock = socket.socket()
+    sock.setblocking(False)
+    try:
+        sock.connect(('xkcd.com', 80))
+    except BlockingIOError:
+        pass
+
+    Future future
+
+    def connect_finish():
+        # 这里不再直接调用 send, 而是通过 future 把事件告诉外部，由外部去调用 send
+        future.set_result(None)
+    
+    selector.register(sock.fileno(), EVENT_WRITE, connect_finish)
+
+    # 把 future 传给外部，外部可以借由它来得到事件通知
+    yield future
+
+    selector.unregister(sock.fileno())
+    print('connected!')
+
+    # ...
+```
+
+另外还需要定义一个 Task 类，这个类接收协程返回的 Future 对象，监听 Future 对象发来的事件，并调用协程的 send 方法来驱动协程继续运行：
+
+```py
+class Task:
+    def __init__(self, coro):
+        self.coro = coro
+        self.step(None)
+
+    def step(self, future):
+        try:
+            # 驱动协程运行到下一条 yield 的位置
+            # 协程会返回一个新的 future 对象，以便 Task 对这个对象进行监听
+            result = (future and future.result) or None
+            next_future = self.coro.send(result)
+        except StopIteration:
+            return
+        
+        # 监听 future 对象，收到事件后调用 step 继续驱动协程
+        next_future.add_done_callback(self.step)
+
+# 通过 Task 类来驱动协程运行
+Task(fetch('/duty/'))
+
+loop()
+```
+
+可以看到上述写法中无需使用全局变量来记录生成器，因为调用生成器、监听事件的代码都放到了 Task 类中。
+
+需要注意的是，协程每次调用 `yield future` 都应该返回一个新的 future 对象，因为我们设计的 Future 对象没有 `remove_done_callback()` 类似的接口，不能重复使用。
+
+### 通过 yield from 提取子协程
+
+`yield from` 语法可以让一个生成器委托另一个生成器。
+
+例如下面这个简单的生成器：
+
+```py
+def gen_fn():
+    result = yield 1
+    print('result of yield: {}'.format(result))
+    resutl2 = yield 2
+    print('result of 2nd yield: {}'.format(result2))
+    return 'done'
+```
+
+通过 `yield from`, 你可以在另一个生成器中调用它：
+
+```py
+def caller_fn():
+    gen = gen_fn()
+    rv = yield from gen
+    print("return value of yield-from: {}".format(rv))
+
+caller = caller_fn()
+```
+
+`yield from gen` 将把对 `caller_fn` 的 `send()` 调用委托给 `gen_fn` 来执行：
+
+```py
+caller.send(None)
+# 返回 1
+
+caller.gi_frame.f_lasti
+# 返回 15
+
+caller.send('hello')
+# 输出 result of yield: hello
+# 返回 2
+
+caller.gi_frame.f_lasti  # 注意 caller_fn 一直停留在 yield from gen 这个语句处
+# 返回 15
+```
+
+`caller_fn()` 执行到 `yield from gen` 之后，会一直停在这里，直到 `gen_fn` 这个生成器进行了 `return` 操作，`gen_fn` 的返回值 `'done'` 就是 `yield from gen` 的返回值 `rv`：
+
+```py
+# 继续调用 send, gen_fn 返回，caller_fn 的 yield from gen 语句也返回
+caller.send('goodbye')
+
+# 输出 result of 2nd yield: goodbye
+# 输出 return value of yield-from: done
+#
+# Traceback (most recent call last):
+#  File "<input>", line 1, in <module>
+# StopIteration
+```
+
+可以看到 `yield from` 就像是一个管道，把对 `caller_fn` 的 `send` 调用都转给了 `gen_fn`, 同时 `gen_fn` 的 `yield` 操作也都转发给了外部。
+
+借由 `yield from`, 我们可以像提取子函数那样提取子协程 —— 调用方将一直停在 `yield from` 语句上，直到子协程返回，并且调用方的 `send` 都会转发给子协程去处理。
+
+对于我们的 fetch 函数：
+
+```py
+def fetch(url):
+    # ... connection logic from above, then:
+    sock.send(request.encode('ascii'))
+
+    while True:
+        f = Future()
+
+        def on_readable():
+            f.set_result(sock.recv(4096))
+
+        selector.register(sock.fileno(),
+                            EVENT_READ,
+                            on_readable)
+        chunk = yield f
+        selector.unregister(sock.fileno())
+        if chunk:
+            self.response += chunk
+        else:
+            # Done reading.
+            break
+```
+
+我们先提取一个读取一块数据的子协程 `read`：
+
+```py
+def read(sock):
+    f = Future()
+
+    def on_readable():
+        f.set_result(sock.recv(4096))
+    
+    selector.register(sock.fileno(), EVENT_READ, on_readable)
+
+    chunk = yield f
+
+    selector.unregister(sock.fileno())
+    return chunk
+```
+
+在 `read` 的基础上，`read_all` 读取整个信息：
+
+```py
+def read_all(sock):
+    response = []
+
+    chunk = yield from read(sock)
+
+    while chunk:
+        response.append(chunk)
+        chunk = yield from read(sock)
+    
+    return b''.join(response)
+``` 
+
+对 `read_all` 调用 `send` 相当于对 `read` 调用，这时 `read` 会返回一个 future, 跟我们之前的逻辑一样，交给外部的 task 去监听。
+
+换一个角度看上面的代码，它们看起来就像是在做阻塞 I/O 的普通函数一样。
+
+现在，我们可以在 fetch 中直接调用 `read_all` ：
+
+```py
+def fetch(url):
+    # ...
+
+    sock.send(request.encode('ascii'))
+    response = yield from read_all(sock)
+```
+
+### 这就是 asyncio
+
+我们已经完成了对asyncio协程探索。我们深入观察了生成器的机制，实现了简单的future和task。我们指出协程是如何利用两个世界的优点：比线程高效，比回调清晰。当然真正的asyncio比我们这个简化版本要复杂的多。真正的框架需要处理 zero-copy I/O, 公平调度，异常处理和其他大量特性。
+
+使用asyncio编写协程代码比你现在看到的要简单的多。在前面的代码中，我们从基本原理去实现协程，所以你看到了回调，task和future，甚至非阻塞套接字和select调用。但是当用asyncio编写应用，这些都不会出现在你的代码中。我们承诺过，你可以像这样下载一个网页：
+
+```py
+@asyncio.coroutine
+def fetch(self, url):
+    response = yield from self.session.get(url)
+    body = yield from response.read()
+```
+
+
+## 使用 asyncio 写一个网络爬虫
+
