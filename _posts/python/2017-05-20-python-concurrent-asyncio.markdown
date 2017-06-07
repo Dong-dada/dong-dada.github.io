@@ -741,24 +741,24 @@ import aiohttp
 
 # async def 用于声明一个协程
 async def Fetch(url):
-	loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
     # 创建一个 session, 后续进行 http 请求都使用这个 session 来进行
-	session = aiohttp.ClientSession(loop=loop)
+    session = aiohttp.ClientSession(loop=loop)
 
     # 发起 GET 请求
-	response = await session.get(url)
+    response = await session.get(url)
 
     # 读取 body
-	body = await response.read()
+    body = await response.read()
 
     # 退出前释放 response
-	await response.release()
+    await response.release()
 
     # 退出前关闭 session
-	session.close()
+    session.close()
 
-	return body
+    return body
 
 # 在事件循环中运行 Fetch 协程
 loop = asyncio.get_event_loop()
@@ -777,16 +777,16 @@ loop.run_until_complete(Fetch("http://baike.baidu.com/item/python"))
 import asyncio
 
 async def Work():
-	LOGGER.debug("Work Enter")
+    LOGGER.debug("Work Enter")
     # ...
 
 async def Main():
-	loop = asyncio.get_event_loop()
-	workers = [asyncio.Task(Work(), loop=loop) for _ in range(10)]
-	await asyncio.sleep(1)
+    loop = asyncio.get_event_loop()
+    workers = [asyncio.Task(Work(), loop=loop) for _ in range(10)]
+    await asyncio.sleep(1)
 
-	for worker in workers:
-		worker.cancel()
+    for worker in workers:
+        worker.cancel()
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(Main())
@@ -811,23 +811,23 @@ import asyncio
 from asyncio import Queue
 
 async def Work(q):
-	await asyncio.sleep(1)
-	num = await q.get()
-	q.task_done()
+    await asyncio.sleep(1)
+    num = await q.get()
+    q.task_done()
 
 async def Main():
-	loop = asyncio.get_event_loop()
+    loop = asyncio.get_event_loop()
 
-	q = Queue(loop=loop)
-	await q.put(1)
-	q.put_nowait(2)
+    q = Queue(loop=loop)
+    await q.put(1)
+    q.put_nowait(2)
 
-	workers = [asyncio.Task(Work(q), loop=loop) for _ in range(10)]
+    workers = [asyncio.Task(Work(q), loop=loop) for _ in range(10)]
 
-	await q.join()
+    await q.join()
 
-	for worker in workers:
-		worker.cancel()
+    for worker in workers:
+        worker.cancel()
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(Main())
