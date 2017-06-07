@@ -13,6 +13,7 @@ categories: python
 本文参考自：
 - [A Web Crawler With asyncio Coroutines](http://aosabook.org/en/500L/a-web-crawler-with-asyncio-coroutines.html)
 - [A Web Crawler With asyncio Coroutines 译文](http://ls-a.me/translation/crawler/)
+- [500lines crawler](https://github.com/aosabook/500lines/tree/master/crawler)
 - [asyncio](https://docs.python.org/3/library/asyncio.html)
 - [单台服务器并发 TCP 连接数到底可以有多少](http://www.52im.net/thread-561-1-1.html)
 - [高性能网络编程(二)：上一个10年，著名的C10K并发连接问题](http://www.52im.net/thread-566-1-1.html)
@@ -723,4 +724,122 @@ def fetch(self, url):
 
 
 ## 使用 asyncio 写一个网络爬虫
+
+[500lines](https://github.com/aosabook/500lines) 中有一个 crawl 项目，利用 asyncio, aiohttp 模块编写了一个网络爬虫。也正是本文要分析的对象。
+
+### asyncio 的基本使用
+
+在开始编写爬虫前，必须先简单介绍一下 asyncio 库的使用方法，一边写一边介绍不太好。
+
+正如我们之前介绍的内容，通过 yield from 语法可以委托一个生成器来完成某项操作，因此我们可以像封装子函数那样封装子协程。asyncio 库主要被设计用来完成网络 IO 操作，它提供的功能大多是通过子协程的方式来封装的。下述代码使用 asyncio, aiohttp 库实现了拉取指定网页的功能：
+
+```py
+#coding:utf-8
+
+import asyncio
+import aiohttp
+
+# async def 用于声明一个协程
+async def Fetch(url):
+	loop = asyncio.get_event_loop()
+
+    # 创建一个 session, 后续进行 http 请求都使用这个 session 来进行
+	session = aiohttp.ClientSession(loop=loop)
+
+    # 发起 GET 请求
+	response = await session.get(url)
+
+    # 读取 body
+	body = await response.read()
+
+    # 退出前释放 response
+	await response.release()
+
+    # 退出前关闭 session
+	session.close()
+
+	return body
+
+# 在事件循环中运行 Fetch 协程
+loop = asyncio.get_event_loop()
+loop.run_until_complete(Fetch("http://baike.baidu.com/item/python"))
+```
+
+上述代码中的 `async def` 关键字用于声明一个协程，`await` 关键字等价于 `yield from` 也就是调用子协程。可以看到代码中所使用的 asyncio, aiohttp 模块的功能全部是使用协程而非子函数来封装的，必须通过 `await` 来调用。这是 asyncio 库有别于普通库的一大特点。
+
+注意上面代码中并没有我们之前提到过的 Future, Task 类，实际上 `session.get()`, `response.read()` 子协程在执行过程中会对外抛出 Future 对象，无须我们自己抛出 Future。
+
+### asyncio.Task
+
+上一小节的代码只能获取一个网页，效果跟同步代码没啥区别。我们希望能够同时抓取多个网页，这时候可以使用 asyncio.Task 对象：
+
+```py
+import asyncio
+
+async def Work():
+	LOGGER.debug("Work Enter")
+    # ...
+
+async def Main():
+	loop = asyncio.get_event_loop()
+	workers = [asyncio.Task(Work(), loop=loop) for _ in range(10)]
+	await asyncio.sleep(1)
+
+	for worker in workers:
+		worker.cancel()
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(Main())
+```
+
+上述代码中创建了 10 个 asyncio.Task 对象，这意味着 10 个 Work 子协程 “同时” 运行。这里的同时指的是，当某个 Work 协程因为进行 IO 操作而阻塞的时候，事件循环会继续运行，把 I/O 事件分发到其它协程上。
+
+正如我们之前自己封装的 Task 对象一样， asyncio.Task 需要有一个 coroutine 协程来初始化，它会监听这个 coroutine 返回的 Future 所抛出的事件，从而驱动协程继续运行。
+
+创建多个 asyncio.Task 对象，意味着创建多个协程，每个协程都有各自的函数栈，彼此独立。这些 Task 对象会接收到自己的 coroutine 返回的 Future 对象，然后监听 Future 的完成事件，并在事件完成时调用 coroutine 的 send 方法驱动协程执行下一步操作。这一系列操作都是独立的，不会彼此影响。
+
+### asyncio.Queue
+
+Queue 是 asyncio 中提供的一个阻塞队列，它也是基于协程技术实现的，因此 get,put 方法都需要使用 await 语法来等待。当队列为空时，`await q.get()` 将阻塞当前协程，当队列满时，`await q.put(xxx)` 也会阻塞协程。
+
+此外它还提供了 `join()` 和 `task_done()` 方法，这两个方法需要配合使用，每次从队列中 `get()` 一个数据，并处理完这个数据后，都调用 `task_done()` 方法来递减内步计数。可以在协程里使用 `await q.join()` 方法来等待，直到队列中所有数据都处理完毕时，代码才会继续执行。
+
+请看如下代码：
+
+```py
+import asyncio
+from asyncio import Queue
+
+async def Work(q):
+	await asyncio.sleep(1)
+	num = await q.get()
+	q.task_done()
+
+async def Main():
+	loop = asyncio.get_event_loop()
+
+	q = Queue(loop=loop)
+	await q.put(1)
+	q.put_nowait(2)
+
+	workers = [asyncio.Task(Work(q), loop=loop) for _ in range(10)]
+
+	await q.join()
+
+	for worker in workers:
+		worker.cancel()
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(Main())
+```
+
+注意一定要用 await 来调用 get, put, task_done, join 等方法。
+
+Queue 还有一个 `q.put_nowait()` 方法，它不经过协程的处理，直接把数据 put 到队列中。
+
+### 500lines crawler
+
+明白了上述几点，500lines 的 [crawler](https://github.com/aosabook/500lines/tree/master/crawler) 项目就非常好理解了。
+
+这里暂时就不介绍 crawler 的代码了，有兴趣可以 clone 下来看一下，非常简洁直白。
 
