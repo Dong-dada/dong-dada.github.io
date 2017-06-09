@@ -281,3 +281,97 @@ Flags 为 7, 表明该块处于占用 (Busy) 状态, SegmentIndex 为 0，表明
 ```
 
 其中堆块的起始地址就是 `HEAP_ENTRY` 结构的地址。
+
+
+## 低碎片堆
+
+在堆上的内存空间被反复分配和释放一段时间后，堆上的可用空间可能被分割得支离破碎，当再试图从这个堆上分配空间时，即使可用空间加起来的总额大于请求的空间，但是因为没有一块连续的空间可以满足要求，那么分配请求就会失败，这种现象被称为堆碎片 (Heap Fragmentation)。
+
+堆碎片与磁盘碎片的形成机理是一样的，但却比磁盘碎片的影响更大，因为多个磁盘碎片加起来仍可以满足磁盘分配需求，但堆碎片是无法累加起来满足内存分配要求的，因为堆函数返回的必须是地址连续的一块空间。
+
+针对堆碎片问题，Windows XP 引入了低碎片堆 (Log Fragmentation Heap)，简称 LFH。首先，LFH 将堆上的可用空间划分成 128 个桶位 (Bucket)，编号为 1~128, 每个桶位的空间大小依次递增, 1 号桶为 8 个字节, 128 号桶为 16384 字节 (即 16KB)。当需要从 LFH 上分配空间时，堆管理器会根据堆函数参数中所请求的字节将满足要求的最小可用桶分配出去。例如，如果应用程序请求 7 个字节，而且 1 号桶空闲，那么就将 1 号桶分配给它，如果 1 号桶被占用，那么便尝试分配 2 号桶。
+
+另外，LFG 为不同编号区域的桶规定了不同的粒度，桶的容量越大，分配桶时的粒度也越大，比如 1~32 号桶的粒度是 8 字节，这意味着这些桶的最小分配单位是 8 字节，不足 8 字节的分配请求也会分配给 8 字节，下表列出了 LFG 各个桶位的分配粒度和最佳适用范围：
+
+![]( {{site.url}}/asset/software-debugging-lfh-bucket.png )
+
+通过 HeapSetInformation API 可以对一个已经创建好的 Win32 堆启用低碎片堆支持。调用 HeapQueryInformation API 可以查询一个堆是否启用了 LFH。
+
+关于 LFH 堆的一篇文章：
+[关于LFH堆](http://blog.csdn.net/hanzz2007/article/details/6805075)
+
+
+## 堆的调试支持
+
+为了帮助发现内存有关的问题，堆管理器提供了一系列功能来辅助调试；
+- 堆尾检查 (Heap Tail Checking), 简称 HTC, 是在堆块的末尾附加额外的标记信息 (通常为 8 个字节)，用于检查堆块是否发生溢出，其原理与我们上一章介绍的防止栈上缓冲区溢出的栅栏字节类似。
+- 释放检查 (Heap Free Checking), 简称 HFC, 是在释放堆块时对堆进行各种检查，可以防止多次释放同一个堆块；
+- 参数检查，对传递给堆管理器的参数进行更多的检查；
+- 调用时验证 (Heap Validation on Call), 简称 HVC, 即每次调用堆函数时都对整个堆进行验证和检查；
+- 堆块标记 (Heap Tagging), 即为堆块增加附加标记 (Tag), 以记录堆块的使用情况或其他信息；
+- 用户态栈回溯 (User mode Stack Trace), 简称 UST, 即将每次调用的堆函数的函数调用信息 (Calling Stack) 记录到一个内存数据库中；
+- 专门用于调试的页堆 (Debug Page Heap), 简称 HPH 堆；
+
+### 全局标志
+
+创建堆时，堆管理器根据当前进程的全局标志来决定是否启用堆的调试功能。操作系统的进程加载器在加载一个进程时会从注册表中读取进程的全局标志，具体来说是在注册表的 `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options` 表键下寻找以改程序名命名的子键，如果存在，那么读取该子键下面的 GlobalFlags 键值。
+
+![]( {{site.url}}/asset/software-debugging-heap-debug-global-flags.png )
+
+如果在调试器中运行程序，并且该程序没有设置全局标志的话，那么会默认将全局标志设为 0x70, 也就是启用 htc, hfc, hpc 这三个堆调试功能。
+
+### 释放检查
+
+很多堆损坏的情况是由于错误的释放动作导致的，比如多次释放同一个堆块，或者从一个堆释放本不属于这个堆的堆块。堆释放检查 (HFC) 功能可以比较有效地发现这类问题。
+
+为了说明 HFC 的作用，我们在 VC6 中编写如下程序：
+
+```c
+#include <stdio.h>
+#include <windows.h>
+
+int main(int argc, char* argv[])
+{
+    void* p;
+    BOOL bRet;
+    HANDLE hHeap;
+
+    hHeap = HeapCreate(0, 4096, 0);
+    p = HeapAlloc(hHeap, 0, 20);
+    
+    bRet = HeapFree(hHeap, 0, p);
+    printf("HeapFree return  first, %d\n", bRet);
+
+    bRet = HeapFree(hHeap, 0, p);
+    printf("HeapFree return second, %d\n", bRet);
+
+    bRet = HeapValidate(hHeap, 0, NULL);
+    printf("HeapValidate return bRet = %d, \n", bRet);
+
+    bRet = HeapDestroy(hHeap);
+    printf("HeapDestry return bRet = %d, \n", bRet);
+
+    return getchar();
+}
+```
+
+直接运行 Debug 或 Release 版本，命令行窗口在输出如下内容后停止了输出，CPU 占用变得很高：
+
+![]( {{site.url}}/asset/software-debugging-heap-hfp-sample.png )
+
+第一行输出表明第一次执行 HeapFree 成功了，第二行输出表明第二次执行 HeapFree 明显发生了错误，但堆管理器并没有返回 False 来报告这个错误。直到执行 HeapValidate 对堆做全面检查的时候，该函数遇到了问题，出现了类似于死循环的症状。
+
+下面启用堆释放检查功能，这可以通过 gflag 工具来实现，它会帮助我们修改注册表，打开 CTest.exe 的 HFC 功能：
+
+```
+gflags -i CTest.exe +hfc
+```
+
+此时再次执行 CTest.exe, 得到的结果是：
+
+![]( {{site.url}}/asset/software-debugging-heap-hfp-sample2.png )
+
+可以看到第二次 HeapFree 尝试释放一个已经释放的堆时，被及时制止了，因此 HeapValidate 能够正常执行。
+
+堆释放检查可以发现并制止不正常的堆释放操作。但它也会启用带有全面检查功能的分配和释放函数，导致堆的分配和释放速度急速下降。
+
