@@ -375,3 +375,191 @@ gflags -i CTest.exe +hfc
 
 堆释放检查可以发现并制止不正常的堆释放操作。但它也会启用带有全面检查功能的分配和释放函数，导致堆的分配和释放速度急速下降。
 
+
+## 栈回溯数据库
+
+当调试内存问题时，很多时候我们希望知道每个内存块是由哪段代码或哪个函数分配的，而且最好有这个函数被调用的完整过程，这样便可以大大提高定位错误代码的速度。堆管理器所实现的用户态栈回溯 (User-Mode Stack Trace, 简称 UST) 机制就是为了实现这个目的而设计的。
+
+### 工作原理
+
+如果当前进程的全局标志中包含了 UST 标志 (`FLG_USER_STACK_TRACE_DB`, 0x1000), 那么堆管理器会为当前进程分配一块大的内存区，并建立一个 `STACK_TRACE_DATABASE` 结构来管理这块内存区，然后使用全局变量 `ntdll!RtlpStackTraceDataBase` 指向这块内存结构。
+
+这个内存区被称为用户态栈回溯数据库 (User-Mode Stack Trace Database), 简称栈回溯数据库或 UST 数据库。下图显示了 UST 数据库的头结构：
+
+![]( {{site.url}}/asset/software-debugging-heap-ust-struct.png )
+
+上述结构中最重要的是 Buckets 这个指针数组，数组中的每个元素都指向一个桶位。堆管理器在存放栈回溯记录时，先计算这个记录的哈希值，然后对桶位数求余，将得到的值作为这个记录所在的桶位。位于同一个桶位的多个记录是以链表的方式链接在一起的。每个栈回溯记录是一个 `RTL_STACK_TRACE_ENTRY` 结构。下图列出了该结构的各个字段：
+
+![]( {{site.url}}/asset/software-debugging-heap-stack-trace-entry-struct.png )
+
+可以看到 BackTrace 这个数组中记录了发起堆块分配请求的函数调用栈。
+
+建立了 UST 数据库后，当堆块分配函数再被调用的时候，堆管理器便会将当前栈回溯信息记录到 UST 数据库中。
+
+### DH 和 UMDH 工具
+
+可以使用 DH.EXE (Display Heap) 和 UMDH.EXE (User-Mode Dump Heap) 工具来查询包括 UST 数据库在内的堆信息。
+
+尽管这两个工具的用法不尽相同，但它们的基本功能和工作原理是基本一致的。都是利用堆管理器的调试功能将堆信息显示出来或转储到文件中。
+
+例如，通过以下命令可以将进程 5622 的堆信息转储到文件 DH_5622.dmp 中：
+
+```
+C:\>set _NT_SYMBOL_PATH=D:\symbols
+C:\>dh -p 5622
+```
+
+尽管以 .dmp 为后缀，但 DH 生成的文件就是文本文件，内部包含了进程中所有堆的列表和 UST 数据库中的所有栈回溯记录；
+
+可以针对应用程序运行的不同时间点生成多个转储文件，然后使用 dhcmp.exe 工具比较这些文件的差异，利用这种方法可以为定位内存泄漏提供线索。WinDBG 工具包中的 UMDH 将转储和比较的功能都集成在一个工具中，因此更适合使用它来定位内存泄漏。
+
+### 定位内存泄漏
+
+下面介绍使用 UMDH 来定位内存泄漏的基本步骤。
+
+首先，使用 gflags 工具启用 ust 功能，也就是在程序所在目录执行 `gflags /i CTest.exe +ust`.
+
+然后运行 CTest.exe 程序，并使用 UMDH 工具对其进行第一次采样，也就是执行 `c:\windbg\umdh -p:1228 -d -f:u1.log -v`
+
+接着继续运行 CTest.exe, 使其执行内存分配，然后使用 UMDH 工具对其进行第二次采样，也就是执行 `c:\windbg\umdh -p:1228 -d -f:u2.log -v`
+
+最后，使用 UMDH 比较两个采样文件，也就是执行 `c:\windbg\umdh -h u1.log u2.log -v`：
+
+![]( {{site.url}}/asset/software-debugging-heap-memory-leak-umdh.png )
+
+UMDH 会将比较结果用以下格式显示出来：
+
+```
++ 字节差异 (新字节数 - 旧字节数) 新的发生次数 allocs BackTrace UST记录的索引号
++ 发生次数差异 (新次数值 - 旧次数值) BackTrace UST记录的索引号 allocations 栈回溯列表
+```
+
+对应到比对结果上，可以看出 UMDH 共发现了一个差异，第 9~18 行报告了这一差异的详情。
+
+第 9 行的含义是，索引号为 BackTraceA2 的 UST 记录在两次采样中新增了 100 字节，新的字节数为 11308, 上次字节数为 11208。这一记录所代表的函数调用发生了 20 次。
+
+第 10 行的含义是，BackTraceA2 所代表的调用过程在两次采样间新增 1 次，新的发生次数是 20 次，上次发生次数为 19 次。
+
+最后一行的含义是，第 2 次采样比第 1 次采样增加了 128 个字节，其中 100 字节属于用户数据区，28 字节属于堆的管理信息。其中 8 字节属于 `HEAD_ENTRY` 结构，另 20 字节为堆末尾的自动填充和 `HEAP_ENTRY_EXTRA` 结构。
+
+
+## 堆溢出和检测
+
+我们在上一章讨论过，如果堆分配在栈上的缓冲区写入超过其容量的数据，就可能将存放在栈上的栈帧指针、函数返回地址等信息覆盖掉，即所谓的栈缓冲区溢出。
+
+类似的，对于分配在堆上的缓冲区也可能因为访问其分配空间以外的区域而导致溢出，即所谓的堆缓冲区溢出，有时也简称为堆溢出。
+
+### 堆缓冲区溢出
+
+根据我们前面的介绍，堆被划分成很多堆块 (chunk), 每个堆块又可以分为用于管理该堆块的控制数据和该堆块的用户数据区两个部分。对于已经分配的堆块，用户数据前面是 `HEAP_ENTRY` 结构，后面可能会有 `HEAP_ENTRY_EXTRA` 结构。对于空闲的堆块，起始处是一个 `HEAP_FREE_ENTRY` 结构。
+
+因为堆上的用户数据和控制数据是混合存放的，并不是把所有的控制数据放在一个单独的地方特殊保护起来的，因此如果访问用户数据区之前或之后的数据都可能将控制数据覆盖掉。这就是堆缓冲区溢出。
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow.png )
+
+如上图所示, p0 是堆块起始处, p1 到 p2 是用户数据区, HeapAlloc 会将地址 p1 以返回值的形式返回给用户，假设应用程序使用 pMem 来记录这个地址。
+
+p2 到 p3 是可能存在的 `HEAP_ENTRY_EXTRA` 结构, p3 开始就是下一个堆块。
+
+正常情况下，用户使用 pMem 只应该访问 p1 到 p2 的空间。但是因为指针操作不当, pMem 访问了 p1 以前的空间，就有可能破坏当前堆块的控制结构或者上一个堆块的数据，更严重时可能会破坏堆的段结构 (`HEAP_SEGMENT`) 或者整个堆的管理结构 (`HEAP`), 这种情况称为下溢 (underflow). 同理，如果 pMem 访问了 p2 以后的空间，程序便可能破坏存放在堆尾的管理信息和下一个堆块的数据，这种情况称为上溢 (overflow).
+
+下面通过一个小程序来进一步说明：
+
+```c
+#include <windows.h>
+
+int main(int argc, char* argv[])
+{
+    char* p1;
+    char* p2;
+    HANDLE hHeap;
+
+    // 创建一个大小为 1024 字节的堆
+    hHeap = HeapCreate(0, 1024, 0);
+
+    // 分配一个大小为 9 字节的堆块
+    p1 = (char*)HeapAlloc(hHeap, 0, 9);
+
+    // 循环访问堆块，存在溢出
+    for (int i = 0; i < 50; ++i)
+    {
+        *p1 = i;
+        p1 ++;
+    }
+
+    // 再分配一个堆块
+    p2 = (char*)HeapAlloc(hHeap, 0, 1);
+    printf("Allocation after overflow got 0x%x\n", p2);
+
+    HeapDestroy(hHeap);
+    return 0;
+}
+```
+
+在 HeapCreate 处加入断点，查看 hHeap 的值为 0x00390000, 这个值就是堆内存区的起始地址，即 HEAP 结构的地址，在 WinDBG 中通过 `!heap` 命令可以查看这个堆的信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow-sample.png )
+
+可以看到堆中已经有 4 个堆块，三个是占用堆块，一个是空闲堆块。这三个占用堆块是用于存放管理数据的。空闲堆块的起始地址为 0x00391e98, 我们用 dt 命令来查看该空闲堆块的信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow-sample2.png )
+
+可以看到除了 16 字节的控制数据外，用户数据区都被填充为 0xFEEEFEEE (free)。
+
+单步执行第一个 HeapAlloc 语句，执行完之后观察返回的指针 p1, 其值为 0x00391ea0. 
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow-sample3.png )
+
+此时内存的情况如上图中中间所示的情况：
+- 其中前两行是 `HEAP_ENTRY` 结构，
+- 第 3,4 行加上第 5 行的第一个字节是堆管理器分配给应用程序的 9 个字节，它们被填充为 baadf00d (bad food); 
+- 之后的 5~7 行是堆管理器为了支持溢出检测而多分配的几个字节。
+- 第 7,8 行中的 0xfeee 是堆尾补齐用的未使用字节 (unused bytes), 
+- 第 9,10 行的 8 个字节是 `HEAP_ENTRY_EXTRA` 结构，因为没有启用 UST 功能，它的值都是 0;
+- 第 11 行开始是新的空闲块，也就是说，堆管理器将刚刚的空闲块分配一部分来满足我们的需要，然后把空闲块的位置向后调整了；
+
+继续执行代码到第二次调用 HeapAlloc 处，此时的内存情况变成了上图右侧的部分。
+
+因为我们向申请空间的 9 个字节的缓冲区写入了 50 个字节的数据，因此缓冲区严重溢出，不仅覆盖掉了本堆块堆尾的内容，而且将本堆块后面空闲堆块的 `HEAP_FREE_ENTRY` 结构完全覆盖了。此时再执行 !heap 命令：
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow-sample4.png )
+
+可以看到对于空闲块的描述完全混乱了，使用 dt 命令观察位于 0x00391ec0 处的 `HEAP_ENTRY_EXTRA` 结构：
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow-sample5.png )
+
+可见所有信息都失常了，特别是最后 FreeList 的两个指针也被覆盖为无效的值。
+
+这时候执行 HeapAlloc 语句，试图再次分配内存，会得到访问异常：
+
+![]( {{site.url}}/asset/software-debugging-heap-overflow-sample6.png )
+
+此时寄存器 ebx 的值为 0x2f2e2d2c, 这正是由于缓冲区溢出而覆盖到 `HEAP_FREE_ENTRY` 中的值，访问这个地址就会导致访问异常。
+
+事实上，上面的异常是这样导致的，当第二次 HeapAlloc 被执行时，堆管理器接收到调用后会遍历空闲链表，寻找满足的空闲堆块，因为这个块的 Flags 字段被标识为占用块，所以堆管理器需要通过 Flink 指针访问下一个节点，因此访问到了 0x2f2e2d2c 这个地址。
+
+值得说明的是，如果溢出时覆盖到链表指针处的数据是有效的内存地址，而且堆块的标志仍然是空闲，那么堆管理器下次分配堆块时便会从该块分割出一个堆块，然后调整空闲块的位置，这时需要更新链表指针，但因为此时指针已经指向了被修改过的地址，所以这时就会导致堆管理器向新的地址写入数据。如果精心设计新的地址和写入内容，那么便可能意外修改系统的数据，导致系统执行意外的代码，所谓的堆溢出攻击便是基于类似的原理实施的。
+
+### 调用时验证
+
+为了及时发现堆中的异常情况，可以让堆管理器在堆函数每次被调用时对堆进行检查，这便是堆的调用时验证 (Heap Validataion on Call) 功能，简称 HVC.
+
+HVC 功能默认关闭，可以通过 `gflag /i CTest.exe +hvc` 来启用，或者在 WinDBG 中执行 `!gflag +hvc` 来启用。
+
+启用该功能后，在 WinDBG 中打开并执行之前的 HeapOver 程序，就会得到如下信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-hvc-sample.png )
+
+这是因为在堆发生溢出后又调用 HeapAlloc 函数时触发了堆管理器的验证功能，该功能检测到专用的空闲链表中位于 0x00391EC0 的元素被标志位占用后，触发断点异常并中断到了调试器中。使用 kn 命令可以观察到详细的调用过程：
+
+![]( {{site.url}}/asset/software-debugging-heap-hvc-sample2.png )
+
+其中 RtlValidateHeap 函数便是用来验证堆的函数，它会执行一系列检查，对堆的头信息、段信息和堆块进行全面检查。
+
+### 堆尾检查 (Tail Check)
+
+除了使用 HVC 功能，也可以使用堆尾检查 (Heap Tail Check, HTC) 功能来发现堆溢出。该功能的原理是在每个堆块的用户数据后面多分配 8 个字节的固定内容，通常为连续 8 个字节的 0xAB。如果该内容被破坏，便说明发生了溢出。
+
+要让堆管理器检查这段内容是否被破坏，还需要启用其他两种调试检查：释放检查和参数检查。其目的是让堆管理器使用支持调试检查的 slowly 系列函数，如 RtlFreeHeapSlowly 和 RtlAllocHeapSlowly, 这里简称为慢速堆函数。这些函数在执行时会调用包含检查功能的释放和分配函数，如 RtlDebugFreeHeap 和 RtlDebugAllocHeap. 
+
+注意这种机制只有在堆被释放的时候才会触发检查，这时候去判断内容是否被破坏。
