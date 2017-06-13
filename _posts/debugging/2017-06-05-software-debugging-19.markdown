@@ -563,3 +563,120 @@ HVC 功能默认关闭，可以通过 `gflag /i CTest.exe +hvc` 来启用，或�
 要让堆管理器检查这段内容是否被破坏，还需要启用其他两种调试检查：释放检查和参数检查。其目的是让堆管理器使用支持调试检查的 slowly 系列函数，如 RtlFreeHeapSlowly 和 RtlAllocHeapSlowly, 这里简称为慢速堆函数。这些函数在执行时会调用包含检查功能的释放和分配函数，如 RtlDebugFreeHeap 和 RtlDebugAllocHeap. 
 
 注意这种机制只有在堆被释放的时候才会触发检查，这时候去判断内容是否被破坏。
+
+
+## 页堆
+
+利用堆尾检查可以在释放堆块时发现堆溢出，或者在调用其他函数 (比如再次分配内存) 时，检查到堆结构被破坏，但这些检查都是滞后的。
+
+为了解决这一问题， Windows 2000 引入了用于支持调试的页堆 (Debug Page Heap), 简称 DPH. 一旦启用该机制，那么堆管理器会在堆块后增加专门用来检测溢出的栅栏页 (Fense Page), 这样一旦用户数据区溢出触及栅栏页便会立刻触发异常。
+
+NTDLL.DLL 中有很多包含 dpb 字眼的函数，这些函数便是用于实现 DPH 功能的。
+
+### 总体结构
+
+与之前介绍的普通堆不同，页堆是单独的一个堆，其总体结构见下图：
+
+![]( {{site.url}}/asset/software-debugging-heap-debug-page-heap.png )
+
+左侧矩形是页堆的主体部分，右侧是附属的普通堆，其主要目的是为了满足系统代码的需要，以节约页堆上的空间。
+
+页堆上的空间大多是以内存页来组织的，第一个内存页 (0x016d0000 ~ 0x016d1000, 4KB) 用来伪装普通堆的 HEAP 结构，但大多空间被填充为 0xEEEEEEEE, 只有少数字段 (Flags 和 ForceFlags 是有效的)，这个内存页的属性是只读的，因此可以用于检测到应用程序意外写 HEAP 结构的错误。
+
+第二个内存页的开始处是一个 `DPH_HEAP_ROOT` 结构，该结构中包含了 DPH 堆的基本信息和各种链表，是描述和管理页堆的重要资料。
+
+`DPH_HEAP_ROOT` 结构之后的一段空间用来存储堆块节点，称为堆块节点池，其大小为 4 个内存页 (16KB) 减去 `DPH_HEAP_ROOT` 结构的大小。为了防止堆块的管理信息被覆盖，除了在堆块的用户数据区前面存储堆块信息外，页堆还会在节点池为每个堆块记录一个 `DPH_HEAP_BLOCK` 结构，简称 DPH 节点结构。
+
+节点池后的一个内存页用来存放同步用的关键区对象，即 `_RTL_CRITICAL_SECTION` 结构。`DPH_HEAP_BLOCK` 结构的 HeapCritical 字段记录着关键区对象的地址。
+
+### 启用和观察页堆
+
+使用 `gflags /p /enable CTest.exe /full` 或 `gflags /i CTest.exe +hpa` 命令即可对指定程序启用 DPH. 
+
+可以在 WinDBG 中通过 `!gflag /p` 命令查看当前进程是否已经启用了页堆，也可以通过观察全局变量 `ntdll!RtlpDebugPageHeap` 的值，如果启用，这个值应该为 1. 
+
+我们使用之前的测试代码来观察页堆的效果：
+
+```c
+#include <Windows.h>
+
+int main(int argc, char* argv[])  
+{
+    char* p;
+    HANDLE hHeap;
+    
+    hHeap = HeapCreate(0, 1024, 0);
+
+    p = (char*)HeapAlloc(hHeap, 0, 9);
+    for (int i = 0; i < 50; ++i)
+    {
+        *(p+i) = i;
+    }
+
+    if (!HeapFree(hHeap, 0, p))
+    {
+        printf("Free %x from %x failed!", p, hHeap);
+    }
+
+    if (!HeapDestroy(hHeap))
+    {
+        printf("Destroy heap %x failed!", hHeap);
+    }
+
+    return 0;
+} 
+```
+
+在 WinDBG 中执行上述程序，先打断点到 HeapCreate 处，在这里可以看到 hHeap 的值为 0x016d0000, 使用 !heap -p 命令来查看一下当前进程的堆列表：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample.png )
+
+"+" 号后面是 Page Heap 的句柄，可以看到对于每个 DPH 堆，堆管理器都会为其创建一个普通的堆。比如 0x016d0000 堆的普通堆是 0x017d0000.
+
+我们使用 `!heap -p -h 016d0000` 命令来查看这个 DPH 堆的详细信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample2.png )
+
+可以看到这个时候 DPH 堆上还没有分配堆块，普通堆上分配了一个管理堆块。
+
+### 堆块结构
+
+跟普通堆块相比，页堆的堆块结构有很大不同。每个堆块都至少占用两个内存页，多分配的一个内存页专门用来检测溢出，我们将其称为栅栏页 (Fense Page). 栅栏页的工作原理和我们之前介绍的用于实现栈自动增长的保护页类似。它的属性被设置为不可访问，因此，一旦用户数据区发生溢出触及到栅栏页时便会引发异常，如果程序正在被调试，那么调试器可以立刻收到异常，迅速定位到导致溢出的代码。
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-chunk-struct.png )
+
+上图是 DPH 中堆块的布局，值得注意的是，剩余空间是在用户数据区的上面而不是下面，这是为了让栅栏页能够紧邻用户数据区。另外，每个页堆的堆块都对应于堆块节点池中的一个 `DPH_HEAP_BLOCK` 结构体。
+
+继续执行之前的代码，单步执行到 HeapAlloc 处，返回的指针为 0x016d6ff0, 这个地址减去 `DPH_BLOCK_INFORMATION` 结构的大小 (32字节) 便得到了 `DPH_BLOCK_INFORMATION` 结构的地址。我们用 dt 命令来查看这个结构的信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample3.png )
+
+结构中的 StartStamp 和 EndStamp 字段是为了检查结构完好性设置的。可以看到这个堆块的请求大小是 9 个字节，实际字节数是 0x1000, 也就是 4KB. 
+
+使用 dd 命令直接观察堆块的内存数据，可以看到：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample4.png )
+
+这跟之前的 DPH 堆块结构图示对应的，第一行都是 0, 这个是填充的剩余空间，位于用户数据区的上面，第 2,3 行是 `DPH_BLOCK_INFORMATION` 结构；第 4 行开始的 9 个字节是用户数据区，后面的是为了满足分配粒度而填充的字节；第 5 行是栅栏页的数据，因为这块数据无法访问，所以 WinDBG 显示的是 ? 号。
+
+这个时候再看看这个 DPH 堆的信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample5.png )
+
+可以看到已经新分配了一个堆块，堆块的 `DPH_HEAP_BLOCK` 结构地址为 0x016d110c, 我们用 dt 命令来观察一下这个结构：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample6.png )
+
+其中的 StackTrace 指向的是用于记录分配这个堆块的栈回溯信息的 `_RTL_TRACE_CLOCK` 结构，可以用 dds 命令将其翻译为函数符号：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample7.png )
+
+### 检测溢出
+
+在 WinDBG 中继续运行程序，可以发现程序立刻中断到了调试器中：
+
+![]( {{site.url}}/asset/software-debugging-heap-dph-sample8.png )
+
+可以看到程序发生了访问违规异常，且要访问的地址是 0x016d7000, 这正是我们之前分析时看到的栅栏页地址。
+
+查看 EAX 寄存器的值可知，此时变量 i 的值为 16, 这说明 for 循环在执行到第 17 次时引发了堆缓冲区溢出。
