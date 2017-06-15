@@ -750,6 +750,23 @@ _active_heap = __heap_select();
 - 读取 `__MSVCRT_HEAP_SELECT` 和 `__GLOBAL_HEAP_SELECTED` 这两个环境变量，如果读到了有效设置，就采用设置的模式；
 - 使用 `_GetLinkerVersion` 函数获取链接器的版本号，如果版本号大于等于 6(VC6) 那么选择 SBH 模式，否则使用旧的 SBH 模式；
 
+### CRT 堆与运行时库的关系
+
+关于 CRT 堆的创建，还有一点要说的就是它跟 DLL, 运行时库的静态链接/动态链接 之间的关系。
+
+如果使用了动态链接，那么 CRT 的初始化代码 (`_heap_init`) 是存在于 msvcr90.dll 里面的 (以 VS2008 为例)。主程序里并没有初始化 CRT 的代码, 而是在加载 msvcr90.dll 时，由 msvcr90.dll 来初始化 CRT 的。这个时候程序的 CRT 堆是由 msvcr90.dll 来创建的。
+
+如果使用了静态链接，那么运行时库的代码和资源都会被复制到主程序中，这时会由主程序来初始化 CRT 并创建 CRT 堆。
+
+假设现在有一个 CText.exe, 它运行后会加载 DllTest.dll, 我们来看看它们链接运行时库的方式不同，会有多少个 CRT 堆被创建：
+- CTest.exe 和 DllTest.dll 都使用了动态链接的方式来加载同一个运行时库 msvcr90.dll. 这种情况下只会有一个 CRT 堆；
+- CTest.exe 动态链接了 msvcr90.dll, DllTest.dll 动态链接了 msvcr140.dll, 这种情况下因为两个模块使用的运行时库不同，会有两个 CRT 堆，分别是它们的运行时库创建的；
+- CTest.exe 静态链接了 VS2008 的运行时库，DllTest.dll 动态链接了 msvcr90.dll, 虽然二者链接的运行时库都是 VS2008 的，但仍然会有两个 CRT 堆。CTest 自己会执行 `_heap_init()` 创建出一个堆，DllTest.dll 则因为动态加载 msvcr90.dll 而间接创建一个 CRT 堆；
+- CTest.exe 和 DllText.dll 都使用静态链接的方式来加载同一个运行时库，这种情况下二者各自执行 `_heap_init()` 创建出了两个 CRT 堆；
+- CTest.exe 和 DllText.dll 都使用静态链接的方式来加载运行时库，但二者加载的运行时库不同，一个是 VS2008 的，另一个是 VS2015 的, 这种情况会有两个 CRT 堆；
+
+可见上述问题的关键在于 `_heap_init()` 代码所在的位置。
+
 ### CRT 堆的终止
 
 与进程的其他堆一样，销毁 CRT 堆是作为系统销毁进程的最后动作之一进行的。尽管 heapinit.c 中存在 `__heap_term` 的函数，但正常情况下，该方法是不会被执行的。
@@ -757,3 +774,112 @@ _active_heap = __heap_select();
 当进程退出时，WinDBG 还是可以得到最后的控制机会，尽管这个时候进程的主线程已经退出了，但我们还是可以在 WinDBG 中使用 !heap 命令观察进程的各个堆 (包括 CRT 堆)。
 
 系统会在清理进程的地址空间时自动销毁进程的所有堆，因此 `__heap_term` 不被调用也不会有资源泄漏问题；
+
+
+## CRT 堆的调试堆块
+
+为了支持调试内存分配有关的问题，CRT 特别设计了供调试器使用的堆块结构和函数，分别简称为 CRT 堆的调试堆块和调试函数。与普通堆块相比，调试堆块中增加了很多用于调试的信息，因此堆块所占用的空间更大了。
+
+当编译 Debug 版本的 C/C++ 应用程序时，编译器会默认使用 CRT 堆的调试函数和调试堆块结构。dbgheap.c 中包含了 CRT 堆调试函数的实现细节、头文件 crtdbg.h 中定义了 CRT 调试函数所公开的常量、数据结构和函数原型、头文件 dbgint.h 中定义了 CRT 调试函数内部使用的数据结构和函数。
+
+### _CrtMemBlockHeader 结构
+
+可以把 CRT 堆的调试堆块分为以下四个部分：
+- 管理信息区，即 `_CrtMemBlockHeader` 结构，该结构的最后一个字段是 4 个字节的栅栏字节；
+- 用户数据区；
+- 栅栏字节，又被称为 “不可着陆区” No mans land, 长度为 4 个字节；
+- 填充字节，用于满足分配粒度要求；
+
+以下是 `_CrtMemBlockHeader` 结构的定义：
+
+```c
+typedef struct _CrtMemBlockHeader
+{
+    struct _CrtMemBlockHeader * pBlockHeaderNext;
+    struct _CrtMemBlockHeader * pBlockHeaderPrev;
+    char *                      szFileName;
+    int                         nLine;
+    size_t                      nDataSize;
+    int                         nBlockUse;
+    long                        lRequest;
+    unsigned char               gap[nNoMansLandSize];
+    /* followed by:
+     *  unsigned char           data[nDataSize];
+     *  unsigned char           anotherGap[nNoMansLandSize];
+     */
+} _CrtMemBlockHeader;
+```
+
+其中 `pBlockHeaderNext` 和 `pBlockHeaderPrev` 分别指向后一个和前一个块的 `_CrtMemBlockHeader` 结构。`szFileName` 记录源文件名，`nLine` 记录源代码的行号，`nDataSize` 记录用户数据区的字节数，`nBlockUse` 表示该块的类型，`lRequest` 是堆块分配的一个流水号，`gap` 就是用户数据区的栅栏字节；
+
+### 块类型
+
+CRT 的调试堆块可以为如下 5 中类型之一：
+
+```c
+/* Memory block identification */
+#define _FREE_BLOCK      0      // 空闲块
+#define _NORMAL_BLOCK    1      // 常规块
+#define _CRT_BLOCK       2      // CRT 内部使用的块
+#define _IGNORE_BLOCK    3      // 堆检查时应该忽略的块
+#define _CLIENT_BLOCK    4      // 客户块，高 16 位可以进一步定义子类型
+```
+
+其中 `_IGNORE_BLOCK` 用于屏蔽 CRT 的检查功能，比如在做堆块转储 (dump) 时，这样的块会被跳过。
+
+### 分配堆块
+
+我们来看看 dbgheap.c 中各个函数间的调用关系：
+
+![]( {{site.url}}/asset/software-debugging-heap-crt-debug-func.png )
+
+可以看到所有的分配函数最终都会调用到 `_heap_alloc_base` 函数，它与 release 版本中的 `_heap_alloc` 实际上是一样的：
+
+```c
+#ifdef _DEBUG
+#define _heap_alloc _heap_alloc_base
+#endif  /* _DEBUG */
+```
+
+关键在于调用 `_heap_alloc_base` 之前的那些中间函数。重点是 `_heap_alloc_dbg` 这个函数。它的执行过程如下：
+
+- 调用 `_mlock(_HEAP_LOCK)` 锁定堆；
+- 进入一个 `__try` 块，对应的 `__finally` 块中有 `_munlock(_HEAP_LOCK)` 来保证释放堆的锁；
+- 如果当前请求计数 `_lRequestCurr` 等于 `_crtBreakAlloc`, 那么调用 `_CrtDbgBreak()` 中断到调试器，这是为了支持内存分配断点 (分配内存若干次后中断) 而提供的机制；
+- 如果内存分配挂钩函数的函数指针 `_pfnAllocHook` 不为空，那么调用该指针指向的函数，如果该函数返回值为 0, 那么便调用 RPT0 或 RPT2 来报告错误；
+- 检查 nBlockUse 参数，如果不是合法的堆块类型，那么调用 RPT0 报告错误；
+- 计算堆块的大小，其算法是在请求大小的基础上加上 `_CrtMemBlockHeader` 结构的大小和栅栏字节的大小；
+- 调用 `_heap_alloc_base` 分配堆块；
+- 递增记录在 `_lRequestCurr` 的堆块分配次数计数；
+- 设置 `_CrtMemBlockHeader` 的各个字段；
+- 填充栅栏字节；
+- 填充用户区，使用 0xCD 来填充；
+- 返回执行用户数据区的指针；
+
+从上面过程我们可以知道，使用 CRT 调试堆块时，每次都会多增加 36 字节的额外开销。
+
+无论 CRT 堆使用了哪种工作模式，这些底层分配函数都会为新的堆块再做一次封装，在原来的基础上增加新的管理结构。这与 OSI 模型中的网络包结构很类似，下面的层总是会对上层的数据再包装，使用户数据被层层包裹起来。
+
+
+## CRT 堆的调试功能
+
+这一节介绍基于 CRT 调试堆块，CRT 所能支持的各种调试功能。
+
+### 内存分配序号断点
+
+根据上一节的介绍，CRT 堆会维护一个名为 `_lRequestCurr` 的变量，记录当前分配堆块的序号。CRT 还定义了一个全局变量 `_crtBreakAlloc`，每次分配 CRT 调试堆块时，都会递增 `_lRequestCurr`, 然后比较它是否与 `_crtBreakAlloc` 相等，如果相等就中断到调试器。这种针对内存分配序号的断点被称为内存分配序号断点 (Breakpoint on an Allocation Number)。
+
+每个 CRT 调试堆块的 `_CrtMemBlockHeader` 结构都记录了这个堆块的序号。如果希望下次执行程序分配到这个堆块时中断到调试器，那么可以将这个序号设置到 `_crtBreakAlloc` 变量中。
+
+### 分配挂钩
+
+如果希望对内存操作做更多的跟踪和记录，那么可以定义一个内存分配挂钩函数 (allocation hook function)。然后调用 CRT 的 `_CrtSetAllocHook` 将其保存到全局变量 `_pfnAllocHook` 中。
+
+### 自动和手动检查
+
+调试版本的 CRT 设计了一个名为 `_CrtCheckMemory` 的函数用于检查 CRT 堆的完好性。它执行的步骤主要如下：
+
+- 检查全局变量 `_crtDbgFlag` 中是否包含 `_CRTDBG_ALLOC_MEM_DF` 标记，如果不包含，那么直接返回；
+- 调用 `_mlock(_HEAP_LOCK)` 锁定 CRT 堆。
+- 调用 `_heapchk()` 函数，其作用是根据堆的工作模式调用堆本身的检查函数，例如系统模式会调用 HeapValidate API 进行检查；
+- 根据 `_pFirstBlock` 指针遍历堆中的所有堆块，逐一进行检查。首先检查是否是有效的堆块类型，然后检查栅栏字节是否被破坏，对于空闲堆块，还会检查自动填充的 0xDD 是否被破坏；
