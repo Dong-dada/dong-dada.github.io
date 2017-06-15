@@ -883,3 +883,124 @@ CRT 的调试堆块可以为如下 5 中类型之一：
 - 调用 `_mlock(_HEAP_LOCK)` 锁定 CRT 堆。
 - 调用 `_heapchk()` 函数，其作用是根据堆的工作模式调用堆本身的检查函数，例如系统模式会调用 HeapValidate API 进行检查；
 - 根据 `_pFirstBlock` 指针遍历堆中的所有堆块，逐一进行检查。首先检查是否是有效的堆块类型，然后检查栅栏字节是否被破坏，对于空闲堆块，还会检查自动填充的 0xDD 是否被破坏；
+
+
+## 堆块转储
+
+所谓堆块转储，就是将堆中的所有或一部分堆块以某种方式输出来供分析和检查。CRT 提供了一系列函数来实现不同功能的堆块转储，包括转储所有堆块、转储从某一时刻开始的堆块等。
+
+### 内存状态和检查点
+
+CRT 使用如下结构来描述某一时刻 CRT 堆的状态：
+
+```c
+typedef struct _CrtMemState
+{
+    struct _CrtMemBlockHeader* pBlockHeader;    // 堆中第一个堆块的地址
+    unsigned long lCounts[_MAX_BLOCKS];         // 每种类型堆块的总数
+    unsigned long lSize[_MAX_BLOCKS];           // 每种类型堆块的总大小；
+    unsigned long lHighWaterCount;              // 分配的最大堆块的大小
+    unsigned long lTotalCount;                  // 分配的所有堆块的大小之和；
+} _CrtMemState;
+```
+
+只需调用 `_CrtMemCheckpoint` 函数即可将当时 CRT 堆的情况统计到 `_CrtMemState` 结构中。程序在不同时刻调用该函数即可得到不同时刻的堆状态。比较这些状态可以帮助我们了解堆的变化信息。
+
+CRT 提供了 `_CrtMemDifference` 函数，它可以将两个状态的比较结构放入到参数 stateDiff 指向的第三个 `_CrtMemState` 结构中。
+
+`_CrtMemDumpStatistics` 函数可以吧 `_CrtMemState` 结构的信息以文字的形式通过 RPT 宏输出到 `_CRT_WARN` 信息所对应的目的地 (调试窗口或文件中)。
+
+### _CrtMemDumpAllObjectsSince
+
+上述函数可以将从某一检查点以来的所有堆块转储到 `_CRT_WARN` 所对应的目标输出中。
+
+它的工作原理是通过 `_CrtMemCheckpoint` 中的指针来遍历所有堆块，从而输出每个堆块的信息。
+
+例如下图中输出了两个堆块信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-crt-chunk-dump.png )
+
+注意上图中包含了分配该堆块的源文件和行号。
+
+### 转储挂钩
+
+上面介绍的堆块转储信息中，只包含用户数据区的前 16 个字节。可不可以将用户数据以结构化的方式显示出来呢？
+
+其做法如下：
+- 为对象结构设计一个子类型，以便可以通过子类型号确认一个堆块中存储的是这个数据类型；
+- 在类中重载 new 操作符，是的创建该类的对象时会分配指定子类型的用户块 (`_CLIENT_BLOCK`)；
+- 定义并实现一个转储挂钩函数，用于将用户数据以结构化的形式显示出来。
+- 调用 `_CrtSetDumpClient` 函数，将上述挂钩函数注册进去；
+
+
+## 泄露转储
+
+可以把解决内存泄漏问题分为两个步骤，第一步是定位到泄露的堆块，第二步是定位到泄露堆块是哪一段代码分配的。
+
+### _CrtDumpMemoryLeaks
+
+CRT 设计了一个名为 `_CrtDumpMemoryLeaks` 的函数来检测和报告发生在 CRT 堆中的内存泄漏。它会输出如下信息：
+
+![]( {{site.url}}/asset/software-debugging-heap-crt-memory-leaks.png )
+
+它的实现是调用了 `_CrtMemCheckpoint` 取得当前堆的统计信息，然后检查一下三个条件：
+- 用户类型 (`_CLIENT_BLOCK`) 的堆块数不等于 0;
+- 常规类型(`_NORMAL_BLOCK`) 的堆块数不等于 0；
+- CRT 类型(`_CRT_BLOCK`) 的堆块数不等于 0，而且 CRT 调试标志变量 `_crtDbgFlag` 含有 `_CRTDBG_CHECK_CRT_DF` 标志。
+
+如果以上三个条件有一个满足，那么就认为有内存泄漏，接着调用 `_CrtMemDumpAllObjectsSince` 打印当前所有堆块的信息；
+
+### 何时调用
+
+从以上讨论看来，无论何时调用 `_CrtDumpMemoryLeaks`, 都会将堆中满足条件的块认为是内存泄漏。这肯定会造成误判，我们应该在所有用户代码都执行完毕的时候再调用这个函数。
+
+在 main 函数末尾调用是不行的，因为全局变量的析构是在 main 函数执行完成后才会调用的。
+
+CRT 设计了一个 `_CrtSetDbgFlag` 函数，这个函数会设置一个标记 `_CRGDBG_LEAK_CHECK_DF`. CRT 的退出函数会在执行完终结器 (包含对全局对象的析构) 后，再调用 `_CrtDumpMemoryLeaks`.
+
+### 定位导致泄露的源代码
+
+下面我们看看如何利用上述函数报告的信息定位导致内存泄漏的源代码。
+
+解决内存泄漏的根本方法是将泄露的内存块在合适的时机释放，这就要先知道这块内存是何时分配的，或者说是哪段代码分配的。
+
+解决这一问题的一个方法是根据转储信息中的堆块序号设置内存分配断点，然后重新执行程序，但这必须保证程序执行的稳定性，如果两次执行时堆块分配的顺序不一致，就无定位了。
+
+第二种方法是让 CRT 转储出的堆块信息中包含源程序文件的文件名和行号。回忆 `_CrtMemBlockHeader` 结构，它里面已经包含了 `szFileName` 和 `nLine` 字段。但有些堆块转储出来却不包含源代码信息，这是为什么呢？
+
+其原因是顶层的分配函数中没有向下提供这样的信息，比如 malloc 函数的实现：
+
+![]( {{site.url}}/asset/software-debugging-heap-crt-debug-malloc.png )
+
+显而易见，malloc 调用 `_nh_malloc_dbg` 时把最后两个参数都设为 0, 这两个参数便是 `szFileName` 和 `nLine`。所以 `_CrtMemBlockHeaer` 里的这两个参数也都是 0.
+
+要解决以上问题，可以采取如下两种方法：
+
+方法一： 在代码中直接调用调试版本的分配函数或 new 操作符：
+
+```c
+p1 = (char*)_malloc_dbg(40, _NORMAL_BLOCK, __FILE__, __LINE__);
+p2 = (char*)::operator new(15, _NORMAL_BLOCK, __FILE__, __LINE__);
+```
+
+方法二： 定义 `_CRTDBG_MAP_ALLOC` 标志，这需要在包含 `crtdbg.h` 头文件前定义：
+
+```c
+#define _CRTDBG_MAP_ALLOC
+#include <crtdbg.h>
+```
+
+这样 crtdbg.h 中的宏定义就会使编译器将程序中的 malloc 调用当做宏来解析，直接编译为对 `_malloc_dbg` 函数的调用。
+
+最后需要说明的是，本节介绍的定位内存泄漏的方法只适用于调试版本，而且检查的是 CRT 堆，并不检查程序自己创建的其他堆。
+
+
+## 本章总结
+
+Win32 堆和 CRT 堆都提供了丰富的调试支持，下表归纳了 Win32 堆和 CRT 堆的常用调试功能：
+
+![]( {{site.url}}/asset/software-debugging-heap-win32-crt-debug-support.png )
+
+下表归纳了常见的字节模式和它们的用途：
+
+![]( {{site.url}}/asset/software-debugging-heap-fill-bytes.png )
