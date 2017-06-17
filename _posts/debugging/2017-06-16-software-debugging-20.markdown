@@ -174,11 +174,150 @@ int main()
 }
 ```
 
-### 执行异常处理函数
+## __try{}__except() 结构
 
-以下是异常发生后，系统调用和执行 `_raw_seh_handler` 函数的过程：
+之前我们介绍了用手工方法来登记异常处理器，现在看看编译器怎样将 `__try{}__except()` 编译为对应的异常处理代码。
 
-![]( {{site.url}}/asset/software-debugging-exception-raw-seh-handler.png )
+概括说来，`__try{}__except()` 结构就是将手动方法中的函数和嵌入式汇编代码简化成高级语言中的标记符和表达式。具体说来, `__try{}` 中的被保护块对应于我们手工添加的登记和注销代码；`__except()` 中的过滤表达式对应于我们在 `_raw_seh_handler` 中编写的 `if` 判断语句：
 
+![]( {{site.url}}/asset/software-debugging-exception-try-except.png ) 
 
+可以看到使用 `__try{}__except()` 大大简化了异常处理代码的编写，但其在汇编级别跟我们的代码没啥差别。
 
+### __try{}__except() 结构的编译
+
+先看一个用 C/C++ 编写的 TrySeh 函数：
+
+```c
+int TrySeh(int n)
+{
+    __try
+    {
+        n = 1/n;
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        n = 0x122;
+    }
+    return n;
+}
+```
+
+以下是该函数编译后的汇编代码：
+
+![]( {{site.url}}/asset/software-debugging-exception-try-seh-sample.png )
+
+可以看到第 3~8 行是在登记 异常处理器。
+
+有一点值得注意的是这里自动安装了一个异常处理器 `_except_handler3`, 它是编译器统一使用的异常处理函数，VC6 使用的是 `_except_handler3`, VS2005 使用的是 `_except_handler4`。这就有个问题，统一的异常处理器是如何满足不同 SEH 异常代码块的需要的呢？答案是通过传递给 `_except_handler3` 的参数来区分。
+
+但异常处理函数在分发过程中时没有带上我们需要的参数的： RtlDispatchException --> ExecuteHandler --> ExecuteHandler2 --> `_except_handler3` 那么这些参数是怎么传递过去的呢？
+
+答案在汇编代码的第 5~7 行，可以看到编译器往栈上压入了一个 trylevel 整数和一个 `scopetable_entry` 指针。这样在栈上实际上就形成了一个如下图所示的 `_EXCEPTION_REGISTRATION` 结构：
+
+```c
+struct _EXCEPTION_REGISTRATION
+{
+    // 指向前一个 _EXCEPTION_REGISTRATION 结构
+    struct _EXCEPTION_REGISTRATION* prev;
+
+    // 处理函数，也就是 _except_handler3
+    void (*handler)(PEXCEPTION_RECORD, PEXCEPTION_REGISTRATION, PCONTEXT, PEXCEPTION_RECORD);
+
+    // 以下是增加的字段
+    struct scopetable_entry* scopetable;    // 范围表的起始地址
+    int trylevel;                           // 行数当前 __try 块的编号
+    int _ebp;                               // 栈帧的基地址
+}
+```
+
+接下来我们看看传给 `_except_handler3` 的新增字段起什么作用。
+
+### 范围表
+
+为了描述程序代码中的 `__try{}__except()` 结构，编译器会在编译每个使用此结构的函数时为其建立一个数组，并存储在模块文件的数据区中，通常被称为异常处理范围表。数组的每个元素都是一个 `scopetable_entry` 结构，用来描述一个 `__try{}__except()` 结构：
+
+```c
+struct scopetable_entry
+{
+    DWORD   previousTryLevel;   // 上一个 __try{} 结构的编号
+    FARPROC lpfnFilter;         // 过滤表达式的起始地址
+    FARPROC lpfnHandler;        // 异常处理块的起始地址
+}
+```
+
+观察上一小节中汇编代码的第 4 行，可以看到这次压入的 `scopetable_entry` 结构的地址是 `0x004070e0`, 再来看看它里面存储的内容：
+
+![]( {{site.url}}/asset/software-debugging-exception-try-seh-sample2.png )
+
+可以看到过滤表达式 lpfnFilter 的地址是 `0x0040103b`, 也就是代码中第 20,21 行的内容，其对应的指令是 `mov eax,1`, 这与我们用 C 语言编写的过滤表达式 `EXCEPTION_EXECUTE_HADNLER`(1) 正好对应。
+
+而异常处理块 lpfnHandler 的地址是 `0x00401041`, 也就是代码中第 22,23 行的内容。其指令与我们用 C 语言编写的异常处理代码也是对应的。
+
+### TryLevel 
+
+编译器是以函数为单位来登记异常处理器的，在函数的入口处进行登记，在出口处注销。如果有多个 `__try` 块，当异常发生的时候，如何判断发生异常的代码属于哪一个 `__try` 块呢？
+
+这就需要对每个 `__try` 块进行编号，然后用一个全局变量来记录当前处于哪个 `__try` 块中，这个局部变量被称为 trylevel, 也就是栈上 `_EXCEPTION_REGISTRATION` 结构的 trylevel 字段。
+
+这个编号是从 0 开始的，常量 `TRYLEVEL_NONE(-1)` 代表当前不在任何 `__try` 结构中。也就是说 trylevel 变量被初始化为 -1, 执行到 `__try` 结构中时便将当前 `__try` 块的编号赋值给它，离开 `__try` 块后，trylevel 会被重置为 -1.
+
+查看汇编代码中的第 3 行，可以看到 trylevel 被初始化为 -1, 当执行到 `__try` 块中时，会将 trylevel 设置为 0 (第 14 行)，再函数出口处(第 24 行)，又将 trylevel 设置为 -1.
+
+我们来看看下面更复杂的情况：
+
+```c
+int TryLevel(int n)
+{
+    __try
+    {
+        n = n - 1;
+        __try
+        {
+            n = 1/n;
+        }
+        __except(EXCEPTION_CONTINUE_SEARCH)
+        {
+            n = 0x221;
+        }
+
+        n++;
+        __try
+        {
+            n = 1/n;
+        }
+        __except(EXCEPTION_CONTINUE_SEARCH)
+        {
+            n = 0x222;
+        }
+    }
+    __except(EXCEPTION_EXECUTE_HANDLER)
+    {
+        n = 0x223;
+    }
+
+    return n;
+}
+```
+
+上述代码中包含了 4 个 `__try` 块，对应有 4 个 `scopetable_entry` 结构：
+
+![]( {{site.url}}/asset/software-debugging-exception-try-seh-sample3.png )
+
+上图是异常处理表中每个元素的值，其中第 2 列就是 `scopetable_entry` 的 previousTryLevel 字段，可以看到第 1, 4 行的第 2 列都是 -1, 表明第 1,4 个 `__try` 块是顶层 try 块, 而第 2,3 行的第 2 列是 0, 表明他们是第一个 try 块的子块。
+
+### __try{}__except() 结构的执行
+
+我们来看看异常发生后 `_except_handler3` 中会执行那些操作：
+
+第一，将第二个参数 pRegistrationRecord 从系统默认的 `EXCEPTION_REGISTRATION_REOCRD` 强制扩展为包含扩展字段的 `_EXCEPTION_REGISTRATION` 结构。
+
+第二，从 pRegistrationRecord 中取出 trylevel 的值并且赋值给一个局部变量 nTryLevel, 然后根据 nTryLevel 找到对应的 `scopetable_entry` 结构；
+
+第三，从 `scopetable_entry` 结构中取出 lpfnFilter 字段，如果不为空，则调用该函数，如果为空，则调到第 5 步；
+
+第四，如果 lpfnFilter 的返回值不是 `EXCEPTION_CONTINUE_SEARCH`, 则准备执行 lpfnHandler 字段所指定的函数，并且不再返回。否则直接调到第 5 步：
+
+第五，判断 `scopetable_entry` 结构的 previousTryLevel 字段，如果不等于 -1, 那么将 previousTryLevel 赋值给 nTryLevel 并返回到第 2 步继续循环；如果 previousTryLevel 等于 -1，那么执行第 6 步；
+
+第六，返回 `DISPOSITION_CONTINUE_SEARCH`，让系统 (RtlDispatchException) 继续寻找其它异常处理器。
