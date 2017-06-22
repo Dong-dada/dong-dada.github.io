@@ -325,3 +325,143 @@ PE 文件中调试信息的产生过程，概括起来可以分为如下三个�
 
 ![]( {{site.url}}/asset/software-debugging-symbol-generate-pe-debug-info.png )
 
+
+## PDB 文件
+
+不论是 OBJ 文件，PE 文件，还是 DBG 文件，它们存储调试信息的方式都有一个共同点，那就是将同一类信息组织成一个数据块，然后将这个数据块的位置和大小等信息登记在目录表中。这些数据块以及子块之间是相互紧邻的。这就带来一个问题，如果某个数据块需要增大，那么很可能会影响到其他数据块的位置，这不仅会导致额外的移动工作，而且难以支持并发访问，不能让多个线程同时增删数据块的内容。
+
+### 复合文件
+
+所谓复合文件 (Compound File) 就是使用管理磁盘的方式来组织文件中的不同类型数据，就好像是将包含多个文件的磁盘数据移植到一个文件中，所以有时又被称为包含文件系统的文件。复合文件中的每个文件都被称为一个数据流 (stream), 使用复合文件的好处有：
+
+- 可以方便地增加和减小每个数据流的大小，改变某个数据流的大小不会影响其他数据流；
+- 可以使用类似于读写文件的方式来读写数据流；
+- 更好的并发支持，不同进程、线程可以访问文件的不同部分，互不干扰；
+
+复合文件是随着 OLE 和 COM 技术的兴起而发展起来的，今天已经广泛应用在各个领域，包括 Office 软件使用的各种文件。复合文件技术的另一个名字是结构化存储 (Structed Storage), Windows 的复合文件 API 和接口中都包含了 Stg, 例如 ReadClassStg, WriteClassStg, IStorage, StgCreateDocfile 等。
+
+### PDB 文件布局
+
+PDB 文件是建立在复合文件技术之上的。
+
+目前使用的 PDB 文件主要有两种版本，一种是 VC6 使用的 PDB2, 另一种是 Visual Studio 2005 使用的 PDB7。
+
+下图画出了 PDB 文件的布局：
+
+![]( {{site.url}}/asset/software-debugging-symbol-pdb-file-layout.png )
+
+可以看到它主要由以下几部分组成：
+- PDB 签名字符串；
+- 4 字节的 Magic DWORD；
+- PDB 头结构 `PDB_HEADER`；
+- 用于存放流目录 (Stream Directory) 的跟数据流 (Root Stream) 所在的页号数组 (PDB2) 或者这个数组所在的页号 (PDB7)；
+- 页分配表，又称为 bit allocation array, 每个二进制位用于标识一个页的使用情况，0 标识已经使用，1 标识空闲；
+- 数据页；
+- 用于存放流目录的根数据流；
+
+### PDB_HEADER 
+
+以下是 PDB2 中的头结构：
+
+```c
+typedef struct _PDB_HEADER20
+{
+    DWORD   dwPageSize;     // 页大小
+    WORD    wStartPage;     // 数据页的起始页号
+    WORD    wFilePages;     // 以页为单位的文件大小
+    PDB_STREAM  RootStream; // 流目录表信息
+} PDB_HEADER20, *PPDB_HEADER20;
+```
+
+### 根数据流——流目录
+
+PDB 文件是以数据流的形式来组织数据的，每个数据流可以看做是复合文件中的一个子文件。类似于文件系统中的文件目录，PDB 文件的流目录用于记录文件中的各个数据流。
+
+流目录本身也是用一个数据流来存储的，这个数据流就是所谓的根数据流 (Root Stream)。`PDB_HEADER` 结构的 RootStream 字段用来描述根数据流，它是一个 `PDB_STREAM` 结构：
+
+```c
+typedef struct __PDB_STREAM
+{
+    DWORD dwStreamSize;     // 流目录表的字节数
+    PWORD pwStreamPages;    // 页号数组的地址
+} PDB_STREAM, *PPDB_STREAM, **PPPDB_STREAM;
+```
+
+pwStreamPages 指向一个数组，这个数组记录了这个数据流所拥有的数据页的页号。
+
+根数据流的起始处是一个 `PDB_ROOT` 结构，用来标识文件中文件流的个数，其定义如下：
+
+```c
+typedef struct __PDB_ROOT
+{
+    WORD    wCount;     // 文件流的总数
+    WORD    wReserved;  // 保留
+} PDB_ROOT;
+```
+
+`PDB_ROOT` 之后便是对每个数据流的描述，而且描述的第一个数据流通常就是根数据流自身。
+
+### 页分配表
+
+页分配表用来标识文件中数据页的使用情况，它的每个二进制位代表其所对应的页是否已经使用个，0 代表使用，1 代表空闲。页分配表通常位于 PDB 文件的第二个页。
+
+### 访问 PDB 文件的方式
+
+第一，使用 DBGHELP API。它是微软提供的用于支持调试的一套 API，包括处理映像文件 (ImageXXXX), 读取调试符号 (SymXXX), 和处理故障转储文件 (MiniDumpXXX) 等。所有 DbgHelp API 都是由 DbgHelp.dll 模块输出的。Windows 的 system32 目录中预装了 DbgHelp.dll, 但这个文件通常没有 WinDBG 所包含的版本高。
+
+第二，使用 Visual Studio 所附带的 DIA (Microsoft Debug Interface Access) SDK, DIA 使用了 COM 技术并以接口的形式提供服务。重要的接口有 IDiaDataSource, IDiaSymbol, IDiaEnumXXX 等。
+
+
+## PDB 文件中的数据表
+
+PDB 文件是以表格的形式 (关系数据库) 来存储调试信息的，每条消息占据表格的一行，通过类型字段来区分不同种类的信息。一个典型的 PDB 文件中通常包括了多个数据表，用来存放不同类型的数据。通过 DIA SDK 的 IDiaEnumTables 可以枚举出 PDB 文件中的各个表，例如：
+
+```c
+Symbols(29863)      // 符号表
+SourceFiles(261)    // 源文件表
+Sections(326)       // 节贡献表
+SegmentMap(5)       // 段信息表
+InjectedSource(13)  // 注入代码表
+FrameData(53)       // 帧数据表
+```
+
+### 符号表
+
+符号文件的首要用途是支持调试，所以其中主要包含的是供调试器实现跟踪和分析所使用的各种程序标志 (Identifier), 即通常所说的符号。
+
+符号表中的符号又被进一步分成很多类型，分别用来描述不同类型的调试信息。每一种类型由一个类型 ID 来标识，称为 SymTag, 所有的 SymTag 都定义在 CVCONST.H 头文件中的 SymTagEnum 枚举类中：
+
+![]( {{site.url}}/asset/software-debugging-symbol-symtagenum.png )
+
+### 源文件表
+
+源文件表中包含了编译可执行文件时所使用的源文件的基本信息。这里说的源文件包括头文件、资源文件、预编译头文件、以及 CRT 库文件 (lib) 的源文件和头文件等。
+
+源文件表的每条记录都描述一个文件，可以分为如下几类：
+
+- CPP 文件和头文件；
+- 预编译头文件，如 xxx.pch；
+- 资源文件，如 xxx.res；
+- 通过 include 来包含的头文件，例如 windef.h；
+- 库文件 (lib) 的源程序文件；
+
+### 节贡献表
+
+一个映像文件是由很多个节 (section) 组成的，每个节的数据又来自于不同的编译素材 (Compiland)。节贡献表 (Section Contribution Table) 描述了构成节的各个数据块 (称为 Section Contrib) 的信息。包括：
+
+- 数据块所属的节，RVA、偏移、长度；
+- 数据块的来源，即来自于哪个编译素材；
+- 这个块的内容特征，如是否包含代码，是否可以执行，是否包含初始化或未初始化的数据等；
+
+### 段信息表
+
+当一个可执行映像被加载到内存中执行时，它的各个节 (section) 会被映射到所在进程的某个段 (segment)，段信息表便描述了这种映射关系：
+
+![]( {{site.url}}/asset/software-debugging-symbol-segment-information-table.png )
+
+### 帧数据表
+
+PDB 文件中的帧数据表是专门来存储帧信息的，下表列出了 PDB 文件中包含的帧信息类型和描述对象：
+
+![]( {{site.url}}/asset/software-debugging-symbol-stack-frame-information-table.png )
+
