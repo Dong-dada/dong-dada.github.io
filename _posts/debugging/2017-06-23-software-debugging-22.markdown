@@ -682,3 +682,174 @@ bc|bd|be 断点 ID
 WinDBG 支持使用一个调试器来调试多个进程，这些进程可以在一个系统上，也可以在多个系统上。
 
 这里不多做介绍了，具体可以参考原文。
+
+
+## 观察栈
+
+本章介绍如何在 WinDBG 调试器中观察和分析栈。
+
+### 显示栈回溯
+
+因为函数调用指令 CALL 会将函数的返回地址记录在栈上，因此通过从栈顶向下遍历每个栈帧来追溯函数调用过程，这个过程被称为栈回溯 (Stack Backtrace)。
+
+WinDBG 的 k 系列命令提供了栈回溯功能。
+
+首先是最基本的 k 命令:
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-k.png )
+
+清单中的每一行描述当前线程的用户态栈上的一个栈帧。最上面一行描述的是程序指针对应的函数。总体看来，函数的调用顺序是由下至上的，下面的函数调用上面的函数。
+
+横向来看，第一列是栈帧的基地址，所以这一行的标题是 ChildEBP；第二列是函数的返回地址，也就是父函数的指令地址；第三列是函数名以及执行位置；第三列之后是源文件信息，如果不想看到这些信息，可以加上 L 开关，即 `k L`
+
+kb 命令可以显示放在栈上的前 3 个参数。如：
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-kb.png )
+
+中间三列被称为子函数参数 (Args to Child)。不管函数的实际参数有几个，这里始终显示 3 个。第一个位于 EBP+8 处，第二个位于 EBP+C 处，第三个位于 EBP+0x10 处。如果要观察第四个参数，可以使用 `dd EBP+0x14` 依次类推。严格来说，这只是放在栈上的前三个参数，对于使用快速调用协定的函数来说，某些参数是通过寄存器来传递的，因此栈上的前三个参数很可能不是真正的前三个参数。
+
+如果符号文件中包含了私有符号信息，那么可以使用 kp 命令根据符号文件中的函数原型信息来帮助我们自动查找参数：
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-kp.png )
+
+可以看到，kp 命令把参数和参数值都用函数原型的格式显示出来，显然更利于理解。如果希望每个参数占一行的话，可以把 P 大写，即 kP。
+
+kv 命令可以在 kb 命令的基础上增加显示 FPO (栈指针省略)信息和调用协议:
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-kv.png )
+
+除了以上命令，还有 kn 命令，它会在每行前显示栈帧的序号。另外还可以在命令上加上 f 开关，这样 WinDBG 会显示每两个相邻栈帧的内存距离：
+
+![]( {{site.url}}/asset/software-debugging-windbg-k-f.png )
+
+第二列就是相邻栈帧的基地址差值，这个数值越大，说明函数需要的栈空间越多。
+
+### 观察栈变量
+
+大多数局部变量都是分配在栈上的，观察函数的栈帧就可以看到这个函数在栈上的局部变量。可以使用 dd 命令加上栈帧地址来观察栈帧的原始内存，但这样不太方便理解。WinDBG 的 dv 命令可以帮助我们以更友好的方式显示栈上的局部变量。
+
+当断点命中时，执行 dv 命令，可以看到此时栈上的局部变量信息：
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-dv.png )
+
+第一列是符号类型，prv 是 private 的缩写，表示这个信息是通过私有符号产生的；第二列是变量类型，param 表示函数参数，local 表示局部变量；第三列是变量在内存中的地址；第四列是使用栈帧基地址 EBP 表示的变量起始地址，因为栈是向低方向生长的，所以参数位于 EBP 的正偏移方向，局部变量位于 EBP 的负偏移方向；第五列是变量类型；第六列是变量名称；而后是等号和变量取值。
+
+如果要观察父函数的局部变量，可以使用 .frame 命令加上父函数的帧号将局部上下文切换到那个栈帧，然后再使用 dv 命令。例如：
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-dv-frame.png )
+
+
+## 分析内存
+
+### 显示内存区域
+
+WinDBG 的 d 系列命令可以用来显示指定地址的内存区域，这些命令的格式是：
+
+```
+d{a|b|c|d|D|f|p|q|u|w|W} [Options] [Range]
+dy{b|d} [Options] [Range]
+d [Options] [Range]
+```
+
+其中大括号中的字母用来指定数据的显示方式，a 表示 ASCII 码，b 表示字节和 ASCII 码，c 表示 DWORD 和 ASCII 码，d 表示 DWORD, D 表示双精度浮点数，f 表示单精度浮点数，p 表示按照指针宽度显示，q 表示四字 (8 字节)，u 表示 UNICODE 字符，w 表示字，W 表示字和 ASCII 码，yb 表示二进制和字节，yd 表示二进制和双字，Range 参数用来指定要显示的内存范围，可以有以下几种表示方法：
+
+第一种方法是起始地址加空格加终止地址，比如 `dd 0012fd9c 0012fda8` 命令以双字格式显示从 0012fd9c 到 0012fda8 结束的 16 字节内存数据：
+
+```
+0:000> dd 0012fd9c 0012fda8
+0012fd9c cccccccc cccccccc cccccccc cccccccc
+```
+
+第二种方法是起始地址加上空格加上 L 加元素个数，使用这种方式可以把上述命令写为 `dd 0012fd9c L4`；
+
+第三种方式是终止地址加空格加 L 加符号和对象个数。使用这种方式可以把上面的命令写为 `dd 0012fda8 L-4`
+
+### 显示字符串
+
+对于以 0 结尾的字符串，可以使用 da 或 du 命令来显示它的内容，前者用于单字节字符集的字符串，后者用于 UNICODE 字符集的字符串。例如：
+
+```
+0:000> du 003a2e9c
+003a2e9c "C:\dig\dbg\author\code\chap28\db"
+003a2edc "gee\Debug\dbgee.exe"
+```
+
+### 显示数据类型
+
+WinDBG 的 dt 命令用来显示数据类型和按照类型来显示内存中的数据，dt 的含义是 Dump symbolic Type Information. Dt 是个比较复杂的指令，下面逐步介绍。
+
+首先，可以使用 dt 来显示一个数据结构，其格式是：
+
+```
+dt [模块名!]类型名
+```
+
+其中类型名可以包含通配符 *。例如：
+
+```
+0:000> dt -rl _TEB
+ntdll!_TEB
+    +0x000 NtTib    : _NT_TIB
+    +0x000 ExceptionList : Ptr32 _EXCEPTION_REGISTRATION_RECORD
+    +0x004 StackBase : Ptr32 Void
+    +0x008 StackLimit : Ptr32 Void
+```
+
+如果不想显示整个结构，只想显示某些字段，那么可以在命令后面使用 -ny 开关附加搜索选项，例如：
+
+```
+0:000> dt _TEB -ny LastError
+ntdll!_TEB
+    +0x034 LastErrorValue : Uint4B
+```
+
+dt 命令的第二种用法是在上一种用法的基础上增加内存地址，让 dt 按照类型显示指定地址的变量，例如使用 `dt _PEB 7fffd000` 命令可以把内存地址 7fffd000 处的数据按照 `_PEB` 结构显示出来。
+
+dt 命令的第三种用法是显示类型的实例，包含全局变量，静态变量和函数，比如一下命令显示 dbgee 的 g_szGlobal 全局变量：
+
+```
+0:000> dt dbgee!g_szGlobal
+[14]  "A global value"
+```
+
+### 搜索内存
+
+一个典型的 Windows 程序实际使用的内存空间通常在几百 KB 到几十 MB 之间。即使是几百 KB, 手工在这么大的内存范围寻找某个内容也是很困难的，这时候可以让 WinDBG 的 s 命令来帮忙，s 命令有三种用法：
+
+第一种用法是在指定的内存范围内搜索任何 ASCII 或 UNICODE 字符串，其格式如下：
+
+```
+s -[[flags]]sa|su Range
+```
+
+其中 range 用来指定内存范围，sa 开关用来搜索 ASCII 字符串，su 用来搜索 UNICODE 字符串。Flags 用来指定搜索选项，比如可以用 l 加一个整数来指定字符串的最小长度，使用 s 将搜索结果保存起来，然后使用 r 在保存的结果中搜索。
+
+例如，以下命令搜素 `nt!PsInitialSystemProcess` 变量所指向地址开始的 512 个字节范围内任何长度不小于 5 的 ASCII 字符串：
+
+```
+lkd> s-[15]sa poi(nt!PsInitialSystemProcess) 1200
+8a672764 "System"
+```
+
+第二种用法是在指定内存地址范围内搜索与指定对象相同类型的对象，这里的对象指包含虚拟函数表的使用面向对象语言编写的类对象，其格式为：
+
+```
+s -[[flags]]v Range Object
+```
+
+s 命令的第三种用法是在指定范围内搜索某一内容模式，其语法格式为：
+
+```
+s [-[[flags]]type] Range pattern
+```
+
+其中 type 指定搜索内容的数据类型，它决定了匹配搜索内容的方式，可以为字母 b(字节), w(字), d(双字), q(四字), a(ASCII 字符串) 或者 u(Unicode 字符串)之一；Range 用来指定搜索范围，Pattern 用来指定要搜索的内容：
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-s-w.png )
+
+或者也可以用字符串来搜索，比如：
+
+![]( {{site.url}}/asset/software-debugging-windbg-command-s-u.png )
+
+### 修改内存
+

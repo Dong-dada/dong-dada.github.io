@@ -117,6 +117,66 @@ loop.run_forever()
 
 ## 编写 ORM
 
+### 封装基本的数据库操作
+
+再编写 ORM 之前，我们先把基本的数据库操作封装一下，便于接下来的操作。
+
+首先创建一个连接池，避免频繁打开和关闭数据库连接：
+
+```py
+async def create_pool(loop, **kw):
+    logging.info('create database connection pool...')
+    global __pool
+    __pool = await aiomysql.create_pool(
+        host=kw.get('host', 'localhost'),
+        port=kw.get('port', 3306),
+        user=kw['user'],
+        password=kw['password'],
+        db=kw['db'],
+        charset=kw.get('charset', 'utf8'),
+        autocommit=kw.get('autocommit', True),
+        maxsize=kw.get('maxsize', 10),
+        minsize=kw.get('minsize', 1),
+        loop=loop
+    )
+```
+
+接着定义 select 语句：
+
+```py
+async def select(sql, args, size=None):
+    log(sql, args)
+    global __pool
+    with (await __pool) as conn:
+        cur = await conn.cursor(aiomysql.DictCursor)
+        await cur.execute(sql.replace('?', '%s'), args or ())
+        if size:
+            rs = await cur.fetchmany(size)
+        else:
+            rs = await cur.fetchall()
+        await cur.close()
+        logging.info('rows returned: %s' % len(rs))
+        return rs
+```
+
+insert, update, delete 语句可以定义一个通用的 execute() 函数：
+
+```py
+async def execute(sql, args):
+    log(sql)
+    with (await __pool) as conn:
+        try:
+            cur = await conn.cursor()
+            await cur.execute(sql.replace('?', '%s'), args)
+            affected = cur.rowcount
+            await cur.close()
+        except BaseException as e:
+            raise
+        return affected
+```
+
+### ORM 介绍
+
 所谓 ORM(Object-Relational Mapping), 其作用是将表结构与类对象映射起来，能够更加直白简单地表示对表的操作。例如下面代码用 User 对象来封装对 User 表的操作，避免手动编写 SQL 语句，简化了逻辑：
 
 ```py
@@ -147,7 +207,7 @@ class User():
         pass
 ```
 
-## 封装 Model 基类
+### 封装 Model 基类
 
 上述做法有一个缺点，如果我们需要操作 blog 表，就需要另外封装一个 Blog 类，我们得再为这个 Blog 类编写 save, update 等方法，这造成了代码的重复。
 
@@ -296,3 +356,61 @@ class ModelMetaclass(type):
 
 `ModelMetaclass.__new__()` 利用 attrs 读取到类成员信息之后，将表的列信息记录到了 `__mappings__` 属性里，并拼接出 sql 语句，记录到了 `__select__`, `__insert__`, `__update__`, `__delete__` 等属性中。接着就可以在 Model 类中使用这些信息了：
 
+```py
+class Model(dict, metaclass=ModelMetaclass):
+
+    def __init__(self, **kw):
+        super(Model, self).__init__(**kw)
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except KeyError:
+            raise AttributeError(r"'Model' object has no attribute '%s'" % key)
+    
+    def __setattr__(self, key, value):
+        self[key] = value
+
+    def get_value(self, key):
+        return getattr(self, key, None)
+    
+    def get_value_or_default(self, key):
+        value = getattr(self, key, None)
+        if value is None:
+            field = self.__mappings__[key]
+            if field.default is not None:
+                value = field.default() if callable(field.default) else field.default
+                setattr(self, key, value)
+        return value
+    
+    @classmethod
+    async def find_all(cls, where=None, args=None, **kw):
+        sql = [cls.__select__]
+        if where:
+            sql.append('where')
+            sql.append(where)
+        if args is None:
+            args = []
+        
+        order_by = kw.get('order_by', None)
+        if order_by:
+            sql.append('order by')
+            sql.append(order_by)
+        
+        limit = kw.get('limit', None)
+        if limit is not None:
+            sql.append('?')
+            args.append(limit)
+        elif isinstance(limit, tuple) and len(limit) == 2:
+            sql.append('?, ?')
+            args.extend(limit)
+        else:
+            raise ValueError('Invalid limit value: %s' % str(limit))
+        
+        rs = await select(' '.join(sql), args)
+        return [cls(**r) for r in rs]
+    
+    # 其他方法，略
+```
+
+注意这里的 Model 类继承自 dict, 因此可以用初始化字典的方式来初始化 User 类。
