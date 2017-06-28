@@ -853,3 +853,24 @@ s [-[[flags]]type] Range pattern
 
 ### 修改内存
 
+命令 e  用来修改指定内存地址或者区域的内容。
+
+第一种用法是按字符串方式编辑指定地址的内容，其格式为：
+
+```
+e{a|u|za|zu} Address "String"
+```
+
+其中 Address 是要修改的地址，za 表示以 0 结尾的 ASCII 字符串，zu 表示以 0 结尾的 Unicode 字符串，a 和 u 分别代码不是以 0 结尾的 ASCII 和 Unicode 字符串；
+
+第二种用法是以数值方式编辑，其格式为：
+
+```
+e{b|d|D|f|p|q|w} Address [Values]
+```
+
+大括号中的内容表示要修改数据的类型，例如下述指令将 0x0012fc94 开始的 5 个 DWORD 都改为 0x41
+
+```
+ew 12fc94 41 41 41 41 41
+```
