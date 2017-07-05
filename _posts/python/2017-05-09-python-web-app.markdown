@@ -117,7 +117,116 @@ loop.run_forever()
 
 ## 编写 ORM
 
-### 封装基本的数据库操作
+### 在 ubuntu 上安装及配置 mysql
+
+搬家后没带 hdmi 线，连不上树莓派了，只好虚拟机里装了一个 Ubuntu 来开发。
+
+现在我想在 Ubuntu 虚拟机上安装 mysql, 在本机(Windows) 上通过 python 的 mysql connector 连接到 ubuntu 的 mysql 来进行开发。之所以这么搞主要是刚装了新电脑，不想在电脑上安装 mysql 这个大家伙。
+
+在 Ubuntu 上安装 mysql 的方法很简单，只需使用如下几个命令即可：
+
+```
+sudo apt-get install mysql-server
+sudo apt-get install mysql-client
+```
+
+安装完毕后可以使用 `mysql -u root -p` 命令来登陆到 mysql 中。
+
+为了测试，可以使用 `create database test;` 命令来创建一个名为 test 的数据库；
+
+接下来就是从主机连接到虚拟机的 mysql 上了。这需要在主机上安装 python 的 mysql connector, 去官网看了一下目前支持的 python 版本最高到 3.4, 而我的 python 版本是 3.6. 所以官网安装这种方法就用不了了。
+
+不过可以改为安装 pymysql，它的作用跟 msql connector 类似，只需通过 pip 安装即可：`pip install pymysql`
+
+接下来编写如下测试代码来尝试从主机上连接虚拟机中的 mysql:
+
+```py
+import logging
+import pymysql
+
+logging.basicConfig(level=logging.DEBUG)
+LOGGER = logging.getLogger(__name__)
+
+if __name__ == '__main__':
+    # 连接到 test 数据库
+    connect = pymysql.connect(
+        host='192.168.125.121',
+        port=3306,
+        user='dongdada',
+        passwd='password',
+        database='test',
+        charset='utf8')
+
+    cursor = connect.cursor()
+
+    # 在数据库中创建一个 user 表
+    cursor.execute('create table user (id varchar(20) primary key, name varchar(20))')
+
+    # 在表中插入一行数据
+    cursor.execute('insert into user (id, name) values (%s, %s)', ['1', 'dongdada'])
+
+    LOGGER.info('row count = %d' % cursor.rowcount)
+
+    # 提交数据库请求
+    connect.commit()
+    connect.close()
+```
+
+运行上述代码后出现了如下提示：
+
+```
+Traceback (most recent call last):
+  File "D:\code\py\pytest\pytest\pytest.py", line 36, in <module>
+    charset='utf8')
+  File "C:\Program Files\Python36\lib\site-packages\pymysql\__init__.py", line 90, in Connect
+    return Connection(*args, **kwargs)
+  File "C:\Program Files\Python36\lib\site-packages\pymysql\connections.py", line 706, in __init__
+    self.connect()
+  File "C:\Program Files\Python36\lib\site-packages\pymysql\connections.py", line 963, in connect
+    raise exc
+pymysql.err.OperationalError: (2003, "Can't connect to MySQL server on '192.168.125.121' ([WinError 10061] 由于目标计算 机积极拒绝，无法连接。)")
+```
+
+这是因为 ubuntu 上安装的 mysql 还不支持远程连接，需要进行一些修改。在 ubuntu 上执行以下命令：
+
+```
+sudo vim /etc/mysql/mysql.conf.d/mysqld.cnf
+```
+
+打开 mysqld.cnf 之后，将 `bind-address = 127.0.0.1` 这行配置注释掉，保存退出。
+
+接着使用 `mysql -u root -p` 进入 mysql 执行环境，然后执行如下命令，设置远程访问 mysql 时的用户名和密码：
+
+```
+mysql -u root -p
+grant all privileges on *.* to dongdada@"%" identified by "password" with grant option;
+flush privileges;
+quit;
+```
+
+我把 dongdada 设为连接数据库时的用户名，password 设置为密码。随后使用 `flush privileges;` 指令来刷新设置；最后退出 mysql 环境。
+
+接着还得使用 `sudo /etc/init.d/mysql restart` 命令来重启 mysql 服务。如此一来就可以远程连接到 Ubuntu 虚拟机中的 mysql 数据库了。
+
+执行之前编写的 python 代码，成功把数据插入到了数据库中。你可以进入到 mysql 环境中，然后通过命令查看 mysql 的信息：
+
+```
+mysql> use test;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show columns from user from test;
++-------+-------------+------+-----+---------+-------+
+| Field | Type        | Null | Key | Default | Extra |
++-------+-------------+------+-----+---------+-------+
+| id    | varchar(20) | NO   | PRI | NULL    |       |
+| name  | varchar(20) | YES  |     | NULL    |       |
++-------+-------------+------+-----+---------+-------+
+2 rows in set (0.00 sec)
+```
+
+### 使用 aiomysql 操作数据库
 
 再编写 ORM 之前，我们先把基本的数据库操作封装一下，便于接下来的操作。
 
