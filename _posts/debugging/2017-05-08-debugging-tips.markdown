@@ -158,6 +158,10 @@ x user32!GetWindowT*
 
 ## VisualAssistX 导致 VS2008 显示有残影的解决办法
 
-有时候用 VS2008 开发，代码编辑区会莫名其妙变得有残影，尝试了一下发现是 VisualAssistX 的问题，把 VisualAssistX 插件禁用后再启用一下就可以了：
+有时候用 VS2008 开发，代码编辑区会莫名其妙变得有残影：
+
+![]( {{site.url}}/asset/debugging-tips-vax-bug.png )
+
+尝试了一下发现是 VisualAssistX 的问题，把 VisualAssistX 插件禁用后再启用一下就可以了：
 
 ![]( {{site.url}}/asset/software-debugging-tips-vax-disable.png )
