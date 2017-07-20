@@ -289,4 +289,213 @@ $ mysql -u root -p < schema.sql
 
 ## aiomysql 如何使用
 
-未完待续...
+aiomysql 的使用过程与上述操作是类似的，只不过变成了代码调用的形式。需要注意的是 aiomysql 是基于协程的，因此需要通过 await 的方式来调用。
+
+在使用数据库前需要先连接到数据库上，然后就可以进行数据库操作了。
+
+### 连接到数据库
+
+使用 aiomysql 连接到数据库可以使用 `aiomysql.connect()` 方法。它会返回一个 connection 对象, connection 对象代表了一个数据库连接：
+
+```py
+import aiomysql
+
+async def run(loop):
+    conn = await aiomysql.connect(
+        host='127.0.0.1', 
+        port=3306, 
+        user='root', 
+        password='password', 
+        db='test', 
+        loop=loop)
+
+    # 执行数据库操作 ...
+
+    conn.close()
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(run(loop))
+```
+
+`aiomysql.connect()` 函数的参数还有其他一些，这个可以参考 [aiomysql 的官方文档](http://aiomysql.readthedocs.io/en/latest/connection.html#connection)
+
+### Cursor
+
+连接成功后，可以通过 connect 对象得到一个 cursor 对象，你可以通过 cursor 对象来调用数据库指令，从而完成增删改查等操作。
+
+```py
+import aiomysql
+import asyncio
+
+async def run(loop):
+    conn = await aiomysql.connect(
+        host='127.0.0.1', 
+        port=3306, 
+        user='root', 
+        password='password', 
+        db='test', 
+        loop=loop)
+
+    cursor = await conn.cursor()
+    await cursor.execute("INSERT INTO user set email='hahaha123@outlook.com', phonenumber='12345678910'")
+    print(cursor.rowcount)
+
+    # 必须调用 commit, 操作才会真正在数据库中执行。
+    await conn.commit()
+    conn.close()
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(run(loop))
+```
+
+执行 SQL 语句后要调用 `connection.commit()` 函数，将操作提交到数据库中，这样才能真正完成数据库操作。`aiomysql.connect()` 的参数中有一个 `autocommit` 参数，默认为 False, 你可以把它设置为 True, 这样就不需要手动调用 `connection.commit()` 了。
+
+cursor 还有一些属性，可以获取一些信息：
+
+**description** 属性: 描述操作后 colume 的信息，是一个 tuple 里包裹 tuple 的结构：
+```py
+await cursor.execute("SELECT * FROM user")
+print(cursor.description)
+
+# 输出：
+# (('id', 3, None, 11, 11, 0, False), 
+# ('email', 253, None, 256, 256, 0, True), 
+# ('address', 253, None, 256, 256, 0, True), 
+# ('phonenumber', 253, None, 256, 256, 0,True))
+```
+
+**rowcount** 属性：返回操作所影响的行数，例如使用 SELECT 语句后，这个属性可以告知查询得到了多少行。
+
+### 获得 SELECT 语句的查询结果
+
+上一小结已经介绍了执行 INSERT 命令的方法，也就是先调用 `cursor.execute()`, 然后通过 `connection.commit()` 手动提交指令。
+
+执行 SELECT 指令的方法也是类似的，执行完毕后需要额外调用 `cursor.fetchone()`, `cursor.fetchmany(size=None)`, `cursor.fetchall()` 来获取查询结果。
+
+例如：
+
+```py
+await cursor.execute("SELECT * FROM user")
+rows = await cursor.fetchall()
+print(rows)
+
+# 输出
+# ((12, 'hahaha123@outlook.com', None, '12345678910'), 
+# (13, 'hahaha123@outlook.com', None, '12345678910'), 
+# (14, 'hahaha123@outlook.com', None, '12345678910'))
+```
+
+可以看到 `cursor.fetchall()` 返回的结果是以 tuple 里包裹 tuple 的形式来返回的，内部的每个 tuple 都表示数据库中的一行。
+
+除了这种 tuple 的形式，还可以使用 DictCursor, 这样放回的结果是通过 dict 来存储的：
+
+```py
+# 获取 cursor 时指定 aiomysql.DictCursor 标记
+cursor = await conn.cursor(aiomysql.DictCursor)
+
+await cursor.execute("SELECT * FROM user")
+rows = await cursor.fetchall()
+print(rows)
+
+# 输出
+# [{'id': 12, 'email': 'hahaha123@outlook.com', 'address': None, 'phonenumber': '12345678910'}, 
+# {'id': 13, 'email': 'hahaha123@outlook.com', 'address': None, 'phonenumber': '12345678910'}, 
+# {'id': 14, 'email': 'hahaha123@outlook.com', 'address': None, 'phonenumber': '12345678910'}]
+```
+
+可以看到结果是一个 list 中包裹 dict 来表示的。
+
+关于 cursor 的其他知识，可以参考 [官方文档](http://aiomysql.readthedocs.io/en/latest/cursors.html)
+
+### 连接池
+
+除了使用之前介绍过的 `aiomysql.connect()` 方法来连接到数据库，aiomysql 还提供了连接池的接口，有了连接池的话，不必频繁打开和关闭数据库连接。
+
+什么情况下需要频繁打开和关闭数据库连接呢？我推测是因为 aiomysql 是基于协程的异步方式来进行操作的。比如下面的代码：
+
+```py
+g_conn = aiomysql.connect(...)
+
+async def fetch_user():
+    global g_conn
+    cursor = await g_conn.cursor()
+    await cursor.execute("SELECT * FROM user")
+    rows = await cursor.fetchall()
+    return rows
+
+async def fetch_blog():
+    global g_conn
+    cursor = await g_conn.cursor()
+    await cursor.execute("SELECT * FROM blog")
+    rows = await cursor.fetchall()
+    return rows
+```
+
+请看上述代码，两个函数分别用户获取用户信息和博客信息，在 `fetch_user` 执行了查询语句后，因为是协程模式，可能下一个会执行的是 `fetch_blog` 中的查询语句，此时的 cursor 指向了 blog 而不是 user, 导致 `fetch_user` 的 `cursor.fetchall()` 返回的是 blog 的数据而非 user 的数据。
+
+按照上述猜测，不同的协程不能共用同一个 connection, 必须每个协程各自持有自己的 connection 才行。如此一来就有可能会频繁打开和关闭数据库连接。
+
+而连接池的作用就是将连接缓存下来，先来看看连接池的使用例子：
+
+```py
+import aiomysql
+import asyncio
+
+g_pool = None
+
+async def fetch_user():
+    global g_pool
+
+    # 从连接池中获取连接
+    with (await g_pool) as conn:
+        # 用这个连接执行数据库操作
+        cursor = await conn.cursor()
+
+        await cursor.execute("SELECT * FROM user")
+        rows = await cursor.fetchall()
+        print(rows)
+        
+        # with 退出后，将自动释放 conn 到 g_pool 中
+
+async def fetch_blog():
+    global g_pool
+
+    with (await g_pool) as conn:
+        cursor = await conn.cursor()
+
+        await cursor.execute("SELECT * FROM blog")
+        rows = await cursor.fetchall()
+        print(rows)
+
+async def run(loop):
+    global g_pool
+    g_pool = await aiomysql.create_pool(
+        host='127.0.0.1', 
+        port=3306, 
+        user='root', 
+        password='password', 
+        db='test', 
+        autocommit=True,
+        minsize=1,
+        maxsize=10, 
+        loop=loop)
+
+    await fetch_user()
+    await fetch_blog()
+
+    g_pool.close()
+    await g_pool.wait_closed()
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(run(loop))
+```
+
+进入 `fetch_user()` 或 `fetch_blog()` 协程后，首先要做的是通过 `with (await g_pool) as conn` 来从连接池中取出一个连接，因为池中的可能已经被用完，这时候需要等待，所以这里需要通过 `await g_pool` 的方式来调用。
+
+当 with 块退出时，这个连接也就使用完毕了，会自动还回给连接池，供其他协程使用。
+
+注意 `aiomysql.create_pool()` 时有两个参数 `minsize`, `maxsize` 指定了连接池中连接的最小值和最大值。
+
+`pool.close()` 是在整个程序都不需要使用数据连接时候才需要去调用的函数，注意它并不是一个协程。`pool.wait_closed()` 则用来等待连接池关闭完毕。
+
+关于连接池的其他知识，可以参考 [官方文档](http://aiomysql.readthedocs.io/en/latest/pool.html)
