@@ -69,3 +69,30 @@ Windows 提供了将文字转换为语音的库，这个库包含在 Speak API (
 相关内容可以参考 [MSDN](https://msdn.microsoft.com/en-us/library/ms723628.aspx#CHS_Context_Number)
 
 如何使用 SAPI 就不介绍了，用到的时候再研究好了。
+
+
+## WM_LBUTTONDBLCLK 事件
+
+之前一直以为 `WM_LBUTTONDBLCLK` 消息就是单独的一条消息。今天遇到一个问题，查了一下 [MSDN](https://msdn.microsoft.com/en-us/library/windows/desktop/ms645606.aspx) 才发现这个消息有一些细节需要注意下：
+
+> which the system generates whenever the user presses, releases, and again presses the left mouse button within the system's double-click time limit. Double-clicking the left mouse button actually generates a sequence of four messages: `WM_LBUTTONDOWN`, `WM_LBUTTONUP`, `WM_LBUTTONDBLCLK`, and `WM_LBUTTONUP`。
+
+以前一直以为双击只会产生一条消息，实际上双击会产生四条消息：`WM_LBUTTONDOWN`, `WM_LBUTTONUP`, `WM_LBUTTONDBLCLK`, `WM_LBUTTONUP`。也就是说，第二次按下鼠标左键的时候，就会生成 `WM_LBUTTONDBLCLK` 消息，这时候鼠标弹起，还会继续生成 `WM_LBUTTONUP` 消息。换句话说，产生双击消息需要三步而不是四步。
+
+我所遇到的问题就来源于此：
+
+首先，有两个窗口 LeftWnd, RightWnd :
+
+![]( {{site.url}}/asset/windows-tips-dbclick-1.png )
+
+双击 LeftWnd 左侧窗口会扩大，把 RightWnd 盖住：
+
+![]( {{site.url}}/asset/windows-tips-dbclick-2.png )
+
+接着在原来 RightWnd 的区域内再次双击 LeftWnd, 这时候 LeftWnd 会缩回去。
+
+这个时候，实际上双击操作的最后一个 `WM_LBUTTONUP` 是由 RightWnd 接收并处理的。RightWnd 收到鼠标弹起事件后会做一些响应操作。从现象上看来，明明双击了 LeftWnd, RightWnd 却响应了鼠标弹起事件，问题就这样出现了。
+
+解决方法我想了一下有两种：
+- RightWnd 处理的 `WM_LBUTTONUP` 消息，实际上目的是处理 “鼠标按下，移动一段，再弹起” 这个操作，最后的 `WM_LBUTTONUP` 事件是一个孤立的事件，那么可以在它收到 `WM_LBUTTONDOWN` 消息的时候标记一下，如果 `WM_LBUTTONUP` 的时候这个标记不是 true, 那么说明这个 `WM_LBUTTONUP` 消息是一个孤立的消息，不应当被处理；
+- 另一种是对 LeftWnd 的双击操作做一下处理，当收到 `WM_LBUTTONDBLCLK` 事件的时候，通过 `SetCapture()` 设置一下让 LeftWnd 去接受 `WM_LBUTTONUP` 消息，这样 RightWnd 就不会收到这个消息了，这种方法我还没试过，不过应该是可行的；
