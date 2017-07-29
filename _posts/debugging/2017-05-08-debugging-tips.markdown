@@ -165,3 +165,18 @@ x user32!GetWindowT*
 尝试了一下发现是 VisualAssistX 的问题，把 VisualAssistX 插件禁用后再启用一下就可以了：
 
 ![]( {{site.url}}/asset/software-debugging-tips-vax-disable.png )
+
+
+## 64 位系统下抓取 32 位程序 dump 的问题
+
+一般让用户或技术支持抓取 dump 的时候，都是通过任务管理器上右键选择 “创建转储文件” 来完成的：
+
+![]( {{site.url}}/asset/debugging-tips-get-dump.png )
+
+在 64 系统下抓取 32 位程序的时候，这种方法会有问题：
+
+![]( {{site.url}}/asset/debugging-tips-incorrect-dump.png )
+
+可以看到堆栈上是 wow64cpu 这个模块的内容，并不是我们需要的内容。因为我们得到的是一个 64 位地址空间的 dump 文件，可以看到上述堆栈中的地址都是用 64 位来表示的。
+
+如果需要在 64 位系统上正确抓取 32 位程序的 dump, 应该使用 `C:\Windows\SysWOW64\taskmgr.exe` 这个任务管理器来进行，它是一个 32 位程序。
