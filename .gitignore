@@ -4,3 +4,4 @@ _site
 .vscode
 .vs
 Gemfile.lock
+thumbs.db
