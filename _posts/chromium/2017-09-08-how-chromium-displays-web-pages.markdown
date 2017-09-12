@@ -56,7 +56,7 @@ renderer 中最重要的类是 `RenderView`, 代码位于 `/content/renderer/ren
 
 ### Threads in the renderer
 
-每个 renderer 都有两个线程 (具体可以参考 [Threading and Tasks](https://chromium.googlesource.com/chromium/src/+/master/docs/threading_and_tasks.md)). 主要的对象都运行在 render 线程上，比如 `RenderView` 和 WebKit 代码。当这些对象想要与 browser 进行通信的时候，首先向主线程 (render 线程) 投递一个消息，主线程再把这个消息分发到 browser 进程。此外，它也允许从 renderer 中同步地发送消息给 browser, 因为一些消息必须在得到 browser 的响应结果后才能继续执行。比如 renderer 中的 javascript 代码想要获取页面的 cookie 的时候，renderer 的主线程会阻塞住，直到收到 browser 的正确响应，这个时候发送给 renderer 主线程的所有消息都会被存到队列里，等到线程恢复之后再继续处理。
+每个 renderer 都有两个线程 (具体可以参考 [Threading and Tasks](https://chromium.googlesource.com/chromium/src/+/master/docs/threading_and_tasks.md)). 主要的对象都运行在 render 线程上，比如 `RenderView` 和 WebKit 代码。当这些对象想要与 browser 进行通信的时候，首先向主线程 (I/O 线程) 投递一个消息，主线程再把这个消息分发到 browser 进程。此外，它也允许从 renderer 中同步地发送消息给 browser, 因为一些消息必须在得到 browser 的响应结果后才能继续执行。比如 renderer 中的 javascript 代码想要获取页面的 cookie 的时候，renderer 的主线程会阻塞住，直到收到 browser 的正确响应，这个时候发送给 renderer 主线程的所有消息都会被存到队列里，等到线程恢复之后再继续处理。
 
 
 ## The browser process
