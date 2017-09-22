@@ -1,0 +1,95 @@
+---
+layout: post
+title:  "git 小知识点"
+date:   2017-09-22 10:38:30 +0800
+categories: other
+---
+
+
+## 配置 difftool 和 mergetool
+
+在 git 里配置 difftool 和 mergetool, 这样可以用外部工具来查看修改，现在用的是 Araxis Merge, 配置如下：
+
+```
+[diff]
+tool = araxis
+[difftool "araxis"]
+path = C:\\Program Files\\Araxis\\Araxis Merge\\compare.exe
+
+[merge]
+tool = araxis
+[mergetool "araxis"]
+path = C:\\Program Files\\Araxis\\Araxis Merge\\compare.exe
+```
+
+也可以用命令来配置：
+
+```
+git config --global difftool=araxis
+git config --global diff.tool.araxis="C:\\Program Files\\Araxis\\Araxis Merge\\compare.exe"
+
+git config --global mergetool=araxis
+git config --global merge.tool.araxis="C:\\Program Files\\Araxis\\Araxis Merge\\compare.exe"
+```
+
+
+## 本地版本回退
+
+`git reset` 命令可以用来把代码回退到某次 commit 时的版本，比如现在有下面三个提交：
+
+![]( {{site.url}}/asset/git-tips-reset-hard.jpg )
+
+现在想回退回上一个版本，看看上一个版本里改了啥，可以使用如下命令：
+
+```
+git reset --hard HEAD^
+```
+
+注意 `HEAD` 后面的 `^` 符号，它表示 `HEAD` 的上一个 `commit`, 如果是两个 `^^`, 就表示上上一次的 `commit`;
+
+执行上述命令后，`HEAD` 指针会指向上一次 `commit` 的位置：
+
+![]( {{site.url}}/asset/git-tips-reset-hard-done.jpg )
+
+注意，这个时候去查看提交日志，会发现你已经找不到之前最新的那个 commit 了：
+
+```
+$ git log --pretty=oneline
+a7286fb28d8b5f885b86ac09a34fe8d934b4f91d (HEAD -> master) add distributed
+5d0fc76d9522a9a73ef4a88eddc60ffaad2729d0 write a readme file
+```
+
+这个跟 `--hard` 参数有关，稍后再讲。
+
+切换到之前的版本看了一下之后，现在想回到最新的提交那儿，也可以用 `git reset` 命令，后面跟 `commit id`, 但问题是现在 git log 里没有最新提交的记录了，怎么知道 commit id 呢？可以使用 `git reflog`, 它会记录你的每一次命令:
+
+```
+$ git reflog
+a7286fb (HEAD -> master) HEAD@{2}: reset: moving to HEAD^
+60fe97a HEAD@{3}: commit: append GPL
+a7286fb (HEAD -> master) HEAD@{4}: commit: add distributed
+5d0fc76 HEAD@{5}: commit (initial): write a readme file
+```
+
+可以看到 `commit id` 是 `60fe97a`, 那么运行 `git reset --hard 60fe97a` 就可以回到那个版本了。
+
+### 如果在回退时，本地有未提交的修改会怎么样？
+
+使用了 `git reset --hard` 进行回退的话，本地未提交的修改会被**删除**, 不管这些修改有没有被 `git add` 到暂存区，这些记录都会消失。
+
+为了避免未提交的修改被删除，可以先通过 `git stash save` 把这些修改放到 stash 里，接着在需要的时候通过 `git stash apply` (不会删掉 stash 里的东西) 或者 `git stash pop` (会删除 stash 里的记录) 来把之前未提交的修改恢复到工作目录里。
+
+或者采用如下的办法：
+
+### 如果我只是想回退  commit 记录，不想回退本地代码怎么办？
+
+比如某次提交之后发现，提交的内容有问题，这时候你需要把这次提交回退掉，然后把本地的代码修改为正确之后再次提交。
+
+这个时候可以使用 `git reset --mixed` 命令，`--mixed` 与 `--hard` 参数不同，`--hard` 会在回退的过程中把工作区里的内容也一并回退掉，而 `--mixed` 则不会改动工作区，只是把 HEAD 和索引(现在还不懂 Index 是啥)移动到了指定的位置；
+
+
+## cherry-pick
+
+git cherry-pick可以选择某一个分支中的一个或几个commit(s)来进行操作。例如，假设我们有个稳定版本的分支，叫v2.0，另外还有个开发版本的分支v3.0，我们不能直接把两个分支合并，这样会导致稳定版本混乱，但是又想增加一个v3.0中的功能到v2.0中，这里就可以使用cherry-pick了,其实也就是对已经存在的commit 进行再次提交.
+
+剩下的可以查看 [这篇文章](http://www.jianshu.com/p/08c3f1804b36)
