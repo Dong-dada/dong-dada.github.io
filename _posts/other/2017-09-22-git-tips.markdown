@@ -5,7 +5,6 @@ date:   2017-09-22 10:38:30 +0800
 categories: other
 ---
 
-
 ## 配置 difftool 和 mergetool
 
 在 git 里配置 difftool 和 mergetool, 这样可以用外部工具来查看修改，现在用的是 Araxis Merge, 配置如下：
