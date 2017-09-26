@@ -5,8 +5,8 @@ date:   2017-05-09 10:19:30 +0800
 categories: python
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 之前通过爬虫练习了一下 python, 这次跟着 [廖雪峰python](http://www.liaoxuefeng.com/wiki/0014316089557264a6b348958f449949df42a6d3a2e542c000/001432170876125c96f6cc10717484baea0c6da9bee2be4000) 学习一下开发 Web App。
 

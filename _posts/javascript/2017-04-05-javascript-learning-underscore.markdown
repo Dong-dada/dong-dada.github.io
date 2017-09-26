@@ -5,8 +5,8 @@ date:   2017-04-05 18:36:30 +0800
 categories: javascript
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 在之前的文章中我们已经介绍过，JavaScript 支持函数式编程，支持高阶函数和闭包。函数式编程非常强大，可以写出非常简洁的代码。例如 `Array` 的 `map()` 和 `filter()` 方法：
 

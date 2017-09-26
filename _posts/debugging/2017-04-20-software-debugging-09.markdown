@@ -5,8 +5,8 @@ date:   2017-04-20 10:40:30 +0800
 categories: debugging
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 本章的前半部分将详细介绍 Windows 系统对 “未处理异常” 的处置方法和过程，包括默认的异常处理函数、UnhandledExcepitonFilter 函数、应用程序错误对话框。后半部分将介绍与未处理异常密切相关的 JTI 调试、顶层过滤函数、系统自带的 JIT 调试器—— Dr.Watson 程序、 Dr.Watson 产生的日志文件、用户态转储文件。
 

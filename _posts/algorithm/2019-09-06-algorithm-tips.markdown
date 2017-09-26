@@ -5,8 +5,8 @@ date:   2017-09-06 11:04:30 +0800
 categories: algorithm
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 ## 有向无环图
 [有向无环图](https://zh.wikipedia.org/wiki/%E6%9C%89%E5%90%91%E6%97%A0%E7%8E%AF%E5%9B%BE)

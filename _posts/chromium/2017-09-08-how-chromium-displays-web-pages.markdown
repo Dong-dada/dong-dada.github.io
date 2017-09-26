@@ -5,8 +5,8 @@ date:   2017-09-08 17:21:30 +0800
 categories: chromium
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 本文参考自 [官方文档](https://www.chromium.org/developers/design-documents/displaying-a-web-page-in-chrome)
 

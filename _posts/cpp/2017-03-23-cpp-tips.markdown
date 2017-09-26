@@ -5,8 +5,8 @@ date:   2017-03-23 16:18:30 +0800
 categories: cpp
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 ## bad_div 问题：
 

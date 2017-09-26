@@ -5,8 +5,8 @@ date:   2017-04-25 12:10:30 +0800
 categories: debugging
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 一套好的错误处理方案通常应该考虑以下三个方面：
 - 即时提示(instant nofitication) : 当错误发生时立刻提示给用户；

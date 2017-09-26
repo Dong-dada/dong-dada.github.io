@@ -5,8 +5,8 @@ date:   2017-05-05 13:20:30 +0800
 categories: debugging
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 
 从 Windows 3.0 开始，Windows 中就包含了 Dr.Watson 程序，用来收集错误信息并生成错误报告。Windowx XP 引入了自动发送错误报告的能力，可以根据系统设置将错误报告发送到指定的服务器；Windows Vista 进一步加强和完善了错误报告机制，加入了更多的 API (以 Wer 开头)，并正式将错误报告机制定义为 Windows Error Reporting, 简称 WER。因为 XP 和 Vista 的错误报告机制有所不同，所以在 SDK 文档中，将 XP 的错误报告机制称为 WER 1.0, 而 Vista 的则称为 WER 2.0。

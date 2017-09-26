@@ -5,8 +5,8 @@ date:   2017-09-06 11:40:30 +0800
 categories: chromium
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 
 本文参考自 [官方文档](http://www.chromium.org/developers/design-documents/multi-process-architecture)

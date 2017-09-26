@@ -5,8 +5,8 @@ date:   2017-05-05 13:20:30 +0800
 categories: debugging
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 概括来说，Windows 操作系统建立了两套日志机制。一套是 Windows Vista 引入的名为 CLFS (Common Log File System) 的机制，另一套是从 NT 3.5 就支持的 Event Logging 机制，因为其内部函数大多数是以 Elf (Event log file) 开头的，所以我们将其简称为 ELF。
 

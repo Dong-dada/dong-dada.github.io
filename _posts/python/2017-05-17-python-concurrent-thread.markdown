@@ -5,8 +5,8 @@ date:   2017-05-17 15:19:30 +0800
 categories: python
 ---
 
-* TOC
-{:toc}
+ 
+ 
 
 
 本文基于 python3
