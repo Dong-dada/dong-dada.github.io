@@ -5,8 +5,8 @@ date:   2017-07-10 10:36:30 +0800
 categories: debugging
 ---
 
- 
- 
+* TOC
+{:toc}
 
 
 前段时间看了 《软件调试》 中有关堆的章节，现在把 [之前的笔记](https://dong-dada.github.io/debugging/2017/06/05/software-debugging-19.html) 整理消化一下。

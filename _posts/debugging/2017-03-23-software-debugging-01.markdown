@@ -5,8 +5,8 @@ date:   2017-03-23 16:35:30 +0800
 categories: debugging
 ---
 
- 
- 
+* TOC
+{:toc}
 
 ## 指令和指令集
 

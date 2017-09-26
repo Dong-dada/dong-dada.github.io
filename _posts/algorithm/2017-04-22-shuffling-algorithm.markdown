@@ -5,8 +5,8 @@ date:   2017-04-22 15:12:30 +0800
 categories: algorithm
 ---
 
- 
- 
+* TOC
+{:toc}
 
 洗牌 Shuffle，也就是将一堆数字打乱顺序。
 

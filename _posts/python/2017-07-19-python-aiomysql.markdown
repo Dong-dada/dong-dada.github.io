@@ -5,8 +5,8 @@ date:   2017-07-19 10:32:05 +0800
 categories: python
 ---
 
- 
- 
+* TOC
+{:toc}
 
 
 本文介绍如何在 python3 中使用 aiomysql 库来访问 mysql 数据库。

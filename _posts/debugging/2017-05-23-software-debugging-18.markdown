@@ -5,8 +5,8 @@ date:   2017-05-23 09:53:30 +0800
 categories: debugging
 ---
 
- 
- 
+* TOC
+{:toc}
 
 
 栈 (stack) 和 函数调用 (function call) 这两项技术是支持软件大厦的基石，很难找到那个软件没有使用 栈 和 函数调用的。
