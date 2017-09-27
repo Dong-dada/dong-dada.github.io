@@ -1,0 +1,124 @@
+---
+layout: post
+title:  "仿函数 functor"
+date:   2017-09-27 14:20:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+
+## 什么是仿函数
+
+仿函数不是函数，而是一个类，类里实现了 `operator()` 运算符重载，其对象可以像函数那样直接调用：
+
+```cpp
+#include <cstdio>
+#include <cstdint>
+
+#include <algorithm>
+#include <vector>
+
+struct Foo {
+  Foo(int x, int y) : x(x), y(y) {}
+
+  int x;
+  int y;
+};
+
+class FooCompareFunctor {
+public:
+  FooCompareFunctor(bool is_ascending = false) :
+    is_ascending_(is_ascending) {
+  }
+
+  bool operator() (const Foo& lh, const Foo& rh) const {
+    if (is_ascending_) {
+      return lh.x < rh.x || (lh.x == rh.x && lh.y < rh.y);
+    } else {
+      return lh.x > rh.x || (lh.x == rh.x && lh.y > rh.y);
+    }
+  }
+
+  bool is_ascending_;
+};
+
+class FooPrintFunctor {
+public:
+  void operator() (const Foo& foo) const {
+    printf("x = %d, y = %d\n", foo.x, foo.y);
+  }
+};
+
+int main(int argc, char const *argv[])
+{
+  FooCompareFunctor comp_functor;
+  printf("%d\n", comp_functor(Foo(2, 2), Foo(1, 3)));
+
+  std::vector<Foo> vec;
+  vec.push_back(Foo(1, 2));
+  vec.push_back(Foo(1, 2));
+  vec.push_back(Foo(2, 1));
+  vec.push_back(Foo(2, 2));
+  vec.push_back(Foo(2, 3));
+  vec.push_back(Foo(3, 2));
+  vec.push_back(Foo(3, 1));
+
+  std::sort(vec.begin(), vec.end(), FooCompareFunctor(true));
+  std::for_each(vec.begin(), vec.end(), FooPrintFunctor());
+
+  return 0;
+}
+```
+
+以上代码中的 `FooCompareFunctor` 和 `FooPrintFunctor` 都是仿函数，可以看到它们与普通的类定义并无不同，只是实现了 `operator()` 的重载。
+
+在使用时，首先需要实例化一个仿函数对象，接着就可以像使用普通函数那样使用它了：
+
+```cpp
+FooCompareFunctor comp_functor(true);
+
+// 像使用普通函数那样使用 comp_functor 仿函数
+bool result = comp_functor(Foo(1, 2), Foo(2, 3));
+```
+
+
+## 仿函数有什么用
+
+从上面的例子看来，仿函数似乎没啥用，普通的函数指针也能达到类似的效果。
+
+仿函数与函数指针的最大不同在于，由于仿函数实际上是一个类，它可以通过成员变量来存储一些中间状态。
+
+```cpp
+#include <algorithm>
+
+class SumFunctor {
+public:
+  void operator() (int num) {
+    sum_ += num;
+  }
+
+  int sum() const {
+    return sum_;
+  }
+
+private:
+  int sum_ = 0;
+};
+
+int main(int argc, char const *argv[])
+{
+  SumFunctor sum_functor;
+  int arr[] = { 1, 2, 3, 4, 5, 6 };
+  sum_functor = std::for_each(arr, arr + 3, sum_functor);
+
+  printf("sum = %d\n", sum_functor.sum());
+
+  return 0;
+}
+```
+
+上述代码如果要通过函数指针来实现，就需要在外部去维护一个全局变量之类的东西了，比较麻烦。
+
+注意上述代码中，`sum_functor` 是通过值传递的方式来传给 `std::for_each()` 的，也就是说 `std::for_each()` 得到的是 `sum_functor` 的一份拷贝。如果想得到计算结果，就需要通过 `std::for_each()` 的返回值来获取其内部的 `SumFunctor` 对象。
