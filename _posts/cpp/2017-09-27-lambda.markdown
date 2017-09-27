@@ -1,0 +1,141 @@
+---
+layout: post
+title:  "lambda 表达式"
+date:   2017-09-27 15:12:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+
+## 什么是 lambda 表达式
+
+lambda 表达式也就是 [匿名函数](https://zh.wikipedia.org/wiki/%E5%8C%BF%E5%90%8D%E5%87%BD%E6%95%B0)，也就是不需要指定标识名的函数或子程序。
+
+比如下面的代码创建了一个匿名函数，然后立刻调用它：
+
+```cpp
+int main(int argc, char const *argv[])
+{
+  Point some_point(-1, 42);
+
+  [](const Point& point) {
+    printf("x = %d, y = %d\n", point.x, point.y);
+  }(some_point);
+
+  return 0;
+}
+```
+
+也可以把匿名函数赋值出来随后调用：
+
+```cpp
+int main(int argc, char const *argv[])
+{
+  Point some_point(-1, 42);
+
+  auto print_point = [](const Point& point) {
+    printf("x = %d, y = %d\n", point.x, point.y);
+  };
+
+  print_point(some_point);
+
+  return 0;
+}
+```
+
+接下来看看完整语法：
+
+```
+[capture] (parameters) mutable exception attribute -> return_type { body }
+```
+
+- 开始是一对方括号 `[]`，其中包含了要捕获的内容，这个随后再介绍；
+- 接着是一对圆括号 `()`，其中包含了匿名函数的参数列表，如果不需要参数，可以省略；
+- 接着是 mutable, exception 等修饰，我不清楚这部分是干啥的；
+- 接着是 `->` 后面跟着返回值类型，如果返回值为 `void`, 或者函数体只有一个 `return` 语句，可以直接推导出返回值的话，那么这部分可以省略；
+- 接着是一对大括号 `{}`，其中是函数体；
+- 如果需要该函数立刻执行，那就在后面加上 `(parameters)` 表示立刻调用；
+
+这里面比较让人奇怪的是 `[]` 里的内容。这里要说明的是，匿名函数不只是没有名字，它还可以捕获函数体外部的具有 automatic storage duration 的变量，即函数的局部变量和函数形参变量。匿名函数的函数体与这些变量的集合被称为闭包 closure.
+
+方括号 `[]` 中的 capture 可以设置为如下几种值：
+
+```cpp
+[]        // 沒有定義任何變量，但必须列出空的方括号。在Lambda表達式中嘗試使用任何外部變量都會導致編譯錯誤。
+[x, &y]   // x是按值傳遞，y是按引用傳遞
+[&]       // 任何被使用到的外部變量都按引用傳入。
+[=]       // 任何被使用到的外部變量都按值傳入。
+[&, x]    // x按值傳入。其它變量按引用傳入。
+[=, &z]   // z按引用傳入。其它變量按值傳入。
+```
+
+空表示不捕获任何变量，`=` 表示通过值的方式来捕获外部变量，`&` 表示通过引用的方式捕获外部变量。
+
+`=` 与 `&` 的区别正类似于函数传参时的按值传递和按引用传递，前者不会修改外部变量的值，而后者则会发生修改。来看例子：
+
+```cpp
+int main(int argc, char const *argv[])
+{
+  int arr[] = { 1, 2, 3, 4, 5, 6 };
+
+  int target = 3;
+  std::for_each(arr, arr + _countof(arr), [=](int num) {
+    if (num == target) {
+      printf("find!\n");
+    }
+  });
+
+  int sum = 0;
+  std::for_each(arr, arr + _countof(arr), [&](int num) {
+    sum += num;
+  });
+  printf("sum = %d\n", sum);
+
+  return 0;
+}
+```
+
+第一个匿名函数以值传递的方式来捕获外部变量 target, 第二个匿名函数以引用的方式来捕获外部变量 sum.
+
+
+## lambda 表达式有什么用
+
+### 用作谓词函数
+
+谓词函数 predicate function 指的是那些进行某个操作所需要的一个临时函数，比如 `std::for_each()` 的最后一个参数就是一个谓词函数。
+
+因为匿名函数可以直接在调用 `std::for_each()` 的地方编写代码，不需要单独定义一个函数，使用起来比较方便，可读性也比较高。
+
+### 作为闭包可以保存中间状态
+
+因为匿名函数可以捕获外部变量，因此可以把一些中间状态保存到外部变量上面，比如：
+
+```cpp
+std::function<int()> GetGenerator() {
+  int i = 0;
+  return [=]() mutable -> int {
+    return ++i;
+  };
+}
+
+int main(int argc, char const *argv[])
+{
+  auto generator = GetGenerator();
+  printf("generator() = %d\n", generator());
+  printf("generator() = %d\n", generator());
+  printf("generator() = %d\n", generator());
+  printf("generator() = %d\n", generator());
+  printf("generator() = %d\n", generator());
+  printf("generator() = %d\n", generator());
+
+  return 0;
+}
+```
+
+注意这里有一些细节，我们声明的匿名函数 `[=]() mutable -> int {...}` 中，使用了 `[=]` (值传递)的方式来捕获外部变量(也就是 i), 在内部修改了 i 的值(本来是不可以修改的，但加上了 mutable 修饰词之后就可以修改了)。这种情况下，外部的 i 值不会被修改 (因为是值传递方式)，但匿名函数内部会持有一个 i 的拷贝，这样才实现了保存中间状态的功能。
+
+如果用引用的方式 `[&]` 来捕获外部变量 i 的话，因为 i 在 `GetGenerator()` 执行完毕后就销毁了，是达不到保存中间状态的效果的。
+
+保存中间状态这个特点与仿函数有点类似，这一特性必然有更实用的用法，我现在还没太搞明白。
