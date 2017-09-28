@@ -1,0 +1,111 @@
+---
+layout: post
+title:  "std::bind"
+date:   2017-09-28 10:35:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+
+## 什么是 std::bind
+
+`std::bind()` 可以把一个函数(准确的说是 callable) 和 它的几个参数绑在一起，生成另外一个新的 callable, 比如：
+
+```cpp
+#include <functional>
+
+int Func(int n, char c, double f)
+{
+  printf("n = %d, c = %c, f = %f\n", n, c, f);
+  return n * c;
+}
+
+int main(int argc, char const *argv[])
+{
+  double f = 3.1415926;
+  auto func = std::bind(Func, std::placeholders::_1, 'd', f);
+  func(42);
+  return 0;
+}
+```
+
+上述例子中，绑定了两个参数 `char c, double f`, 生成了一个新的 callable func. 绑定完成后，调用 func 只需要传入 `int n` 参数就可以了。
+
+来看看用 `std::bind()` 绑定其它 callable 的示例：
+
+```cpp
+#include <functional>
+
+class TestClass
+{
+public:
+  int Foo(double f, int n)
+  {
+    printf("TestClass::Foo f = %f, n = %d\n", f, n);
+    return (int)f * n;
+  }
+};
+
+class Functor
+{
+public:
+  Functor(double radio) :
+    radio_(radio)
+  {
+  }
+
+  double operator() (int n, char c)
+  {
+    return radio_ * (n + c);
+  }
+
+private:
+  double radio_;
+};
+
+int main(int argc, char const *argv[])
+{
+  // 绑定成员函数
+  TestClass obj;
+  auto obj_member_func = std::bind(&TestClass::Foo, obj, 3.14, std::placeholders::_1);
+  obj_member_func(42);
+
+  // 绑定 lambda 表达式
+  auto lambda_func = std::bind([](bool is_odd, int num) {
+    num = num / 2 * 2;
+    return is_odd ? num + 1 : num;
+  }, false, std::placeholders::_1);
+  printf("lambda_func return = %d\n", lambda_func(13));
+
+  // 绑定 仿函数
+  Functor functor(0.5);
+  auto functor_func = std::bind(functor, 42, std::placeholders::_1);
+  printf("functor_func return = %f\n", functor_func('c'));
+
+  // 绑定 std::bind 返回的 callable
+  auto bind_func = std::bind(functor_func, 'a');
+  printf("bind_func return = %f\n", bind_func());
+
+  return 0;
+}
+```
+
+上述代码中的 `std::placeholders::_1` 是占位符，还有 `_2`, `_3` 等等，它表示的是新的 callable 里参数所占用的位置。比如原函数是 `func(int a, int b, int c)`, 绑定时使用 `std::bind(func, 1, std::placeholders::_2, std::placeholders::_1)`, 那么生成的新的 callable 为 `new_func(int c, int b)`.
+
+你可以使用 `std::function` 而不是 `auto` 来存储 `std::bind` 返回的东西：
+
+```cpp
+std::function<int(double, bool)> func = std::bind(foo, std::placeholders::_1, std::placeholders::_2);
+```
+
+
+## std::bind 有什么用
+
+按照 一些文章([1](https://wizardforcel.gitbooks.io/cpp-11-faq/content/49.html) [2](http://blog.csdn.net/solstice/article/details/3066268) [3](https://codeday.me/bug/20170715/38924.html))的观点, `std::bind` 有以下几个用处：
+
+- [partial function application](http://en.wikipedia.org/wiki/Partial_application), 也就是使用函数的一部分功能(通过固定其中某些参数的方式)；
+- 取代虚函数；
+
+还没用过，体会不深，以后有机会详细写一下。
