@@ -9,7 +9,7 @@ categories: cpp
 {:toc}
 
 
-`std::function` 是标准库提供的一个类模板，它可以存储任何可以调用的 (Callable) 东西，包括普通函数、lambda 表达式、仿函数等。
+`std::function` 是标准库提供的一个类模板，它可以存储任何可以调用的 (Callable) 东西，包括普通函数、lambda 表达式、仿函数、`std::bind` 等。
 
 没了，这就是它的功能，包装各种 Callable.
 
