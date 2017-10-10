@@ -231,3 +231,53 @@ runner->PostTask(FROM_HERE, base::BindOnce(&Task));
 
 
 ## 实现
+
+先来看下单个线程中 Event Loop 机制是如何建立的，这部分内容可以参考 [这篇文章](https://docs.google.com/document/d/1_pJUHO3f3VyRSQjEhKVvUU7NzCyuTCQshZvbWeQiCXU/view#heading=h.okllz7fdmm0) 以及 [这篇文章](http://blog.gclxry.com/chromium-multi-thread/)。
+
+总体来说，实现上述机制涉及到了如下几个类：
+- [base::Thread](https://cs.chromium.org/chromium/src/base/threading/thread.h?type=cs) ： 表示一个包含了 MessageLoop 的线程，一个 `base::Thread` 对像对应一个线程；
+- [base::MessageLoop](https://cs.chromium.org/chromium/src/base/message_loop/message_loop.h?type=cs) ： 表示一个 MessageLoop, 包含了一个 MessagePump 用于驱动 loop 运行，一个 IncomingTaskQueue 存储传入的 tasks, 一个 TaskQueue 存储正在执行的 tasks. 这两个 task queue 构成了类似于双缓冲的技术，后面会提到。另外还有一个 MessageLoopTaskRunner 用于向 InComingTaskQueue 中插入 task;
+- [base::MessagePump](https://cs.chromium.org/chromium/src/base/message_loop/message_pump.h?type=cs) ： 表示消息泵，顾名思义用来驱动 MessageLoop 运行；
+- [internel::IncomingTaskQueue](https://cs.chromium.org/chromium/src/base/message_loop/incoming_task_queue.h?type=cs) ： 存储传入的 tasks, 等 MessageLoop 有空闲的时候，将它与 `base::TaskQueue` 交换；
+- [TaskQueue](https://cs.chromium.org/chromium/src/base/pending_task.h?type=cs&l=56) : 实际上是 `base::queue<PendingTask>`, 一个待执行任务的队列；
+- [internal::MessageLoopTaskRunner](https://cs.chromium.org/chromium/src/base/message_loop/message_loop_task_runner.h?type=cs) : 实现了 `SingleThreadTaskRunner` 接口，用于向 InComingTaskQueue 插入 task;
+
+下图是上述几个类协同工作的过程：
+
+![]( {{site.url}}/asset/chrome-thread-architecture-event-loop.png )
+
+上图中的流程分为两个部分：
+- 线程外或线程内，通过 `MessageLoopTaskRunner` 将 `Task` 投递到 InComingTaskQueue 里面，完成 PostTask 这部分的工作；
+- MessagePump 触发 `MessageLoop::Dowork()`， 执行完 TaskQueue 里的 Tasks 后，将 IncomingTaskQueue 与 TaskQueue 交换，TaskQueue 里又得到新的 Tasks, 继续执行这些 Tasks.
+
+有一些细节需要注意：
+- `internal::InComingTaskQueue` 是一个阻塞队列，因此可以在多个线程中向其 post task;
+- `TaskQueue` 实际上是 `base::queue<PendingTask>`, 因为它始终只能由当前线程所访问，因此不需要考虑线程安全问题;
+
+### TaskRunner
+
+上述机制中，似乎 `MessageLoopTaskRunner` 的作用不那么明显，它完成的任务仅仅是将 task 投递到 IncomingTaskQueue 里面，直接由 MessageLoop 去暴露一个接口来 PostTask 应该也行，为啥要单独搞出来一个 TaskRunner 呢？
+
+它的目的是为了将 task 如何被执行进行解耦。正如我们在一开始说的, task 有三种不同的执行方式，如果想要修改 task 的执行方式，只需要替换一个新的 TaskRunner 即可。比如一开始有个专门处理文件操作的线程叫 FileThread, 后来我们希望能够按照优先级来调度投递过来的 Task, 这时候只需要换一个新的 TaskRunner 就可以了，不需要更改原来的。
+
+之前说过的 `MessageLoopTaskRunner` 继承自 `SingleThreadTaskRunner` 接口，我们看看另外几个 TaskRunner 接口是干啥用的：
+
+- `TaskRunner` 接口 ： 规定了 `Parallel` 执行方式，不保证 task 执行顺序，不保证 task 在哪个线程执行；
+- `SequencedTaskRunner` 接口 ： 规定了 `Sequenced` 执行方式，保证 task 执行顺序，不保证 task 在哪个线程中执行；
+- `SingleThreadTaskRunner` 接口 ： 规定了 `Single Threaded` 执行方式，保证 task 在同一线程中按顺序执行；
+
+可以看到 TaskRunner 的几个接口与我们之前说的 tasks 执行方式是一一对应的，要让 task 以哪种方式执行，就需要获取到对应的 TaskRunner 接口。
+
+我们之前提到过，如果需要获取当前线程的 SingleThreadTaskRunner, 可以通过 `base::ThreadTaskRunnerHandle::Get()` 函数来获取，这个函数是怎么获取的呢？
+
+首先，在 MessageLoop 绑定到 Thread 的时候，它会以自己的 `MessageLoopTaskRunner` 对象为参数构造一个 `ThreadTaskRunnerHandle` 对象；
+
+接着，`ThreadTaskRunnerHandle` 的构造函数里，会把自己设置到线程局部存储区里；
+
+最后，调用 `ThreadTaskRunnerHandle::Get()` 静态方法，是从线程局部存储里取出这个 `ThreadTaskRunnerHandle` 对象，然后再取出其中保存的 TaskRunner;
+
+因此，你就可以在当前线程中直接调用静态方法来获取到当前 MessageLoop 中的 TaskRunner 了。
+
+### TaskScheduler 调度任务
+
+这部分还没看懂，先 TODO 吧。。。
