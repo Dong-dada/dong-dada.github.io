@@ -230,7 +230,7 @@ runner->PostTask(FROM_HERE, base::BindOnce(&Task));
 接下来我们分析下这个线程架构的具体实现。
 
 
-## 实现
+## 单线程中  Event Loop 的实现
 
 先来看下单个线程中 Event Loop 机制是如何建立的，这部分内容可以参考 [这篇文章](https://docs.google.com/document/d/1_pJUHO3f3VyRSQjEhKVvUU7NzCyuTCQshZvbWeQiCXU/view#heading=h.okllz7fdmm0) 以及 [这篇文章](http://blog.gclxry.com/chromium-multi-thread/)。
 
@@ -278,6 +278,133 @@ runner->PostTask(FROM_HERE, base::BindOnce(&Task));
 
 因此，你就可以在当前线程中直接调用静态方法来获取到当前 MessageLoop 中的 TaskRunner 了。
 
-### TaskScheduler 调度任务
+### 小结
 
-这部分还没看懂，先 TODO 吧。。。
+这一节介绍了单线程中实现 Event Loop 的方法。它支持了我们之前提到的 Single Threaded 的 task 执行方式。
+
+Event Loop 机制的实现并不复杂，核心就是一个 task 的队列，一个消息泵不断从队列中取出 task 并执行。
+
+chrome 在实现时加入了双缓冲机制，避免 task 的投递与获取发生线程之间的竞争。
+
+`SingleThreadTaskRunner` 接口被保存在线程局部存储区里，因此可以在线程中调用 `ThreadTaskRunnerHandle::Get()` 来获取。
+
+接下来我们看看 Parallel 和 Sequence 执行方式是如何实现的。
+
+
+## TaskScheduler 任务调度的实现
+
+正如之前所说，对于 `Parallel` 和 `Sequenced` 类型的 task, 应该被投递到线程池里运行。chrome 的 `base::TaskScheduler` 就是干这个事儿的。
+
+`base::TaskScheduler` 是一个单例，负责将 task 调度到合适的线程中执行。
+
+查看 [TaskSchedulerImpl](https://cs.chromium.org/chromium/src/base/task_scheduler/task_scheduler_impl.h?type=cs&l=111) 的代码，可以看到 TaskScheduler 里有 4 个 `SchedulerWorkerPoolImpl`, 这 4 个线程池分别负责 `background`, `background blocking`, `foreground`, `foreground blocking` 这 4 种不同的 task 类型。
+
+每次调用 `TaskScheduler::PostDelayedTaskWithTraits()`, 都会根据 traits 决定将 task 分发 4 个线程池之一。
+
+我现在还不懂为啥要搞 4 个线程池出来，应该是某种策略吧。这里先不追究了。
+
+### SchedulerWorkerPool 线程池
+
+接着 `SchedulerWorkerPool::PostTaskWithSequence()` 会被调用，它的第一个参数是要投递的 task, 第二个参数是一个 `Sequence` 类型的值。
+
+第二个参数看起来有点儿奇怪，其实根据它的名字就可以知道，它就是为了完成我们之前说的 Sequence 这种 task 运行方式而搞出来的一个数据结构。为了让 task 按照顺序执行，需要用一个类似于列表的数据结构来存储 task, 如果我们两次调用 `PostTaskWithSequence()` 都传入了同一个 sequence, 那么这两个 task 就会被放到同一个 sequence 里面，线程池在运行完第一个 task 之后，才会开始运行第二个 task.
+
+`SchedulerWorkerPool` 提供了一个 `CreateSequencedTaskRunnerWithTraits()` 函数，该函数会返回一个 `SchedulerSequencedTaskRunner` 对象，这个对象内部又持有了一个 `Sequence`, 如果我们用这个对象来 PostTask, task 就会被投递到同一个 sequence 里，由此来完成 Sequence 执行方式。
+
+因此，在任何地方，如果我们需要用 Sequence 方式执行一组 task, 那么首先应该创建一个新的 `SchedulerSequencedTaskRunner` 对象，然后把所有 task 都投递到这个 TaskRunner 对象里：
+
+```cpp
+scoped_refptr<SequencedTaskRunner> sequenced_task_runner =
+    base::CreateSequencedTaskRunnerWithTraits(...);
+
+// TaskB runs after TaskA completes.
+sequenced_task_runner->PostTask(FROM_HERE, base::BindOnce(&TaskA));
+sequenced_task_runner->PostTask(FROM_HERE, base::BindOnce(&TaskB));
+```
+
+### PriorityQueue 优先级队列
+
+`SchedulerWorkerPoolImpl` 里有一个 [shared_priority_queue](https://cs.chromium.org/chromium/src/base/task_scheduler/scheduler_worker_pool_impl.h?type=cs&l=198) 成员变量，它是一个 PriorityQueue 类型的优先级队列，用来存储待执行的 `Sequence`。
+
+查看 [PriorityQueue 的实现](https://cs.chromium.org/chromium/src/base/task_scheduler/priority_queue.h?type=cs&l=43) 可以看到，每次向队列中 Push Sequence, 都需要传入一个 `SequenceSortKey` 参数，这个参数有两个字段：
+- TaskPriority : Sequence 的所有任务中，最高的优先级
+- sequence_time : Sequence 中，任务的最早投递时间
+
+PriorityQueue 内部使用 `std::priority_queue` 来实现，它的排序规则是：
+- 如果 TaskPriority 不同，那么 TaskPriority 高的那个排前面；
+- 否则把 `sequence_time` 比较早的那个排前面；
+
+Task 被转添加到 Sequence, 然后添加到 PriorityQueue 里面，始终保持着优先级最高的 Sequence 在前面。等待着 SchedulerWorker 的处理。
+
+### SchedulerWorker 工作线程
+
+`SchedulerWorkerPoolImpl` 里有一个 [SchedulerWorker 数组](https://cs.chromium.org/chromium/src/base/task_scheduler/scheduler_worker_pool_impl.h?type=cs&l=219), 顾名思义它就是用来执行 task 的线程。
+
+查看 [SchedulerWorker 的实现](https://cs.chromium.org/chromium/src/base/task_scheduler/scheduler_worker.cc?type=cs&l=38) 可以发现，它用底层的线程自己封装了一个执行 task 的循环，而没有使用之前说过的 MessageLoop 机制。其中的关键代码如下：
+
+```cpp
+  void ThreadMain() override {
+    outer_->delegate_->OnMainEntry(outer_.get());
+
+    // A SchedulerWorker starts out waiting for work.
+    outer_->delegate_->WaitForWork(&wake_up_event_);
+
+    while (!outer_->ShouldExit()) {
+      DCHECK(outer_);
+
+      // Get the sequence containing the next task to execute.
+      scoped_refptr<Sequence> sequence =
+          outer_->delegate_->GetWork(outer_.get());
+      if (!sequence) {
+        outer_->delegate_->WaitForWork(&wake_up_event_);
+        continue;
+      }
+
+      const bool sequence_became_empty =
+          outer_->task_tracker_->RunNextTask(sequence.get());
+
+      outer_->delegate_->DidRunTask();
+
+      // If |sequence| isn't empty immediately after the pop, re-enqueue it to
+      // maintain the invariant that a non-empty Sequence is always referenced
+      // by either a PriorityQueue or a SchedulerWorker. If it is empty
+      // and there are live references to it, it will be enqueued when a Task is
+      // added to it. Otherwise, it will be destroyed at the end of this scope.
+      if (!sequence_became_empty)
+        outer_->delegate_->ReEnqueueSequence(std::move(sequence));
+
+      // Calling WakeUp() guarantees that this SchedulerWorker will run
+      // Tasks from Sequences returned by the GetWork() method of |delegate_|
+      // until it returns nullptr. Resetting |wake_up_event_| here doesn't break
+      // this invariant and avoids a useless loop iteration before going to
+      // sleep if WakeUp() is called while this SchedulerWorker is awake.
+      wake_up_event_.Reset();
+    }
+
+    outer_->delegate_->OnMainExit(outer_.get());
+
+    // Break the ownership circle between SchedulerWorker and Thread.
+    // This can result in deleting |this| and as such no more member accesses
+    // should be made after this point.
+    outer_ = nullptr;
+  }
+```
+
+可见是一个 while 循环，不断通过 delegate (实际上是 `SchedulerWorkerPoolImpl`) 获取要执行的 Sequence, 执行完了之后就进入等待，直到被唤醒。
+
+上述代码中有一个判断，如果任务执行完之后 Sequence 不为空，那么就将它重新入队，这时候 sequence 会重新加入 PriorityQueue 并重新排序，从而保证 PriorityQueue 的队首始终是优先级最高的 sequence。
+
+### SchedulerWorkerPool 对任务的调度
+
+有了 Priority 和 SchedulerWorker, 基本的功能已经可以实现了，`SchedulerWorkerPool` 需要对投递过来的 task 进行一些调度，优先唤醒无事可做的线程，实在没有办法才创建新的线程。
+
+这部分我没有梳理清楚，以后再详细看看吧。。。
+
+### 小结
+
+这一节简略介绍了 chrome 中 TaskScheduler 的实现。关键着眼于 PriorityQueue 和 SchedulerWorker 这两个类。
+
+然而还有许多问题没有讨论清楚：
+- 线程池如何对投递过来的 task 进行调度？
+- 如何动态增减线程的数量？
+- 如何确保 Sequence 中的 tasks 是在上一个执行完毕之后才开始执行下一个的？
