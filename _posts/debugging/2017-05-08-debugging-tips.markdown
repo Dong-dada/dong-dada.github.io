@@ -53,7 +53,7 @@ unsigned __stdcall ThreadFunc(void* params)
     return 0;
 }
 
-int main()  
+int main()
 {
     for (int i = 0; i < 10; ++i)
     {
@@ -63,7 +63,7 @@ int main()
     ::Sleep(10);
 
     return 0;
-} 
+}
 ```
 
 ThreadFunc 这个函数会在多个线程中被调用，如果你在这个函数中设置了断点，那么每个线程调用 ThreadFunc 的时候都会命中这个断点，并且断点命中之后，再按下 F10 单步调试，不会继续在当前线程执行，而是调到另一个线程的断点上面去了。调试起来很不方便，因为我的目标可能只是一开始跟进来的那个线程。
@@ -180,3 +180,56 @@ x user32!GetWindowT*
 可以看到堆栈上是 wow64cpu 这个模块的内容，并不是我们需要的内容。因为我们得到的是一个 64 位地址空间的 dump 文件，可以看到上述堆栈中的地址都是用 64 位来表示的。
 
 如果需要在 64 位系统上正确抓取 32 位程序的 dump, 应该使用 `C:\Windows\SysWOW64\taskmgr.exe` 这个任务管理器来进行，它是一个 32 位程序。
+
+
+## 调试模式下查看内存泄漏
+
+你可以在程序中加入如下代码来生成内存泄漏报告：
+
+```
+#include <crtdbg.h>
+
+int main()
+{
+    _CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) | _CRTDBG_LEAK_CHECK_DF);
+
+    int* vec = new int[100];
+    delete[] vec;
+
+    int* vec2 = new int[100];
+
+    return 0;
+}
+```
+
+如上，你需要包含 `crtdbg.h` 头文件，并在需要开始检测内存泄漏的地方调用 `_CrtSetDbgFlag` 方法。有了这些设置之后，使用调试模式运行程序 (F5), 将在输出窗口上打印出内存泄漏报告：
+
+```
+Detected memory leaks!
+Dumping objects ->
+{72} normal block at 0x0083E4C0, 400 bytes long.
+ Data: <                > CD CD CD CD CD CD CD CD CD CD CD CD CD CD CD CD
+Object dump complete.
+```
+
+可以看到程序检测到了内存泄漏，那么如何定位泄漏位置呢？重点要关注 `{72}` 这条信息，它指明了内存泄漏发生在第几次内存分配的时候。我们可以使用 `_CrtSetBreakAlloc` 方法来设置断点：
+
+```
+int main()
+{
+    _CrtSetDbgFlag(_CrtSetDbgFlag(_CRTDBG_REPORT_FLAG) | _CRTDBG_LEAK_CHECK_DF);
+
+    _CrtSetBreakAlloc(72);  // 程序将在第 72 次分配内存的时候中断
+
+    // ...
+}
+```
+
+再次用 F5 运行程序，这时程序会中断到第 72 次进行内存分配的时候，直接帮你定位到导致内存泄漏的代码位置。
+
+内存报告中的 `normal block` 表示这是一个普通内存块。内存块的种类有以下几种：
+- normal block(普通块) : 由你的程序分配的内存；
+- client block(客户块) : 特殊类型的内存块，专门用于 MFC 程序中需要析构函数的对象。MFC new 操作符视具体情况既可以为所创建的对象建立普通块，也可以为之建立客户块。
+- CRT block(CRT 块) : 由 C 运行时库供自己使用而分配的内存块。由 CRT 自己来管理这些内存的分配和释放，我们一般不会在程序中发现这种内存块的泄漏。
+
+还有更详细的操作方法，可以参考 [这篇文章](http://blog.csdn.net/rye_grass/article/details/1551985)
