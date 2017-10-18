@@ -1,0 +1,88 @@
+---
+layout: post
+title:  "Cookie 是什么"
+date:   2017-10-18 16:30:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+本文参考自 [维基百科](https://zh.wikipedia.org/wiki/Cookie) 和 [这篇文章](http://blog.csdn.net/qiqingjin/article/details/51760343)
+
+
+## 什么是 Cookie
+
+Cookie 是服务器为了辨别用户身份而存储在用户本地终端(client side)上的数据(通常经过加密)。
+
+服务器和客户端都可以对 cookie 进行设置，设置完毕后，客户端每次向服务器发起请求，都可以带上 Cookie, 从而帮助服务器识别用户身份。
+
+对于页面(javascript)来说，所有请求都会带上 Cookie(如果有的话)，而如果是在客户端里直接发起 HTTP 请求(比如 curl)，那么可以选择是否带上 cookie。
+
+
+## Cookie 有什么用
+
+之所以需要 cookie，是因为 HTTP 协议是无状态的，服务器不知道用户上一次做了什么。比如网上购物的场景，用户浏览了几个页面，买了一些东西。最后结账的时候，因为 HTTP 无状态，不通过额外手段的话，服务器不知道用户买了啥。
+
+Cookie 就是绕开 HTTP 的无状态性的 “额外手段” **之一**。服务器可以设置或读取 Cookie 中包含的信息，借此维护用户跟服务器会话中的状态。
+
+在刚才的购物场景中，当用户选购了第一项商品，服务器在向用户发送网页的同时，还发送了一段Cookie，记录着那项商品的信息。当用户访问另一个页面，浏览器会把Cookie发送给服务器，于是服务器知道他之前选购了什么。用户继续选购饮料，服务器就在原来那段Cookie里追加新的商品信息。结帐时，服务器读取发送来的Cookie就行了。
+
+购物的例子可能不太明显，一般也不会吧账单信息记录到 cookie 里面。另一个典型的应用是当登录一个网站的时候，网站往往会提供记住密码的功能。如果勾选了这个选项，服务器收到请求之后，会把一个登录凭据写到 Cookie 里传回给客户端，第二次登录的时候，浏览器发送这个 Cookie, 服务器只需要校验其中的凭据就可以了，不许要用户再输入用户名密码。
+
+
+## Cookie 的缺陷
+
+1. Cookie会被附加在每个HTTP请求中，所以无形中增加了流量。
+2. 由于在HTTP请求中的Cookie是明文传递的，所以安全性成问题。（除非用HTTPS）
+3. Cookie的大小限制在4KB左右。对于复杂的存储需求来说是不够用的。
+
+
+## 怎么操作  Cookie
+
+服务端向客户端发送 Cookie 是通过 HTTP 响应报文来实现的，你可以在响应报文里添加 `Set-Cookie:` 字段来设置需要发送的 Cookie, 其格式如下：
+
+```
+Set-Cookie: name=value;domain=.domain.com;path=/;expires=Sat, 11 Jun 2016 11:29:42 GMT;HttpOnly;secure
+```
+
+其中 `name=value` 是必填项，他是一个 key-value 键值对。剩下的是可选项：
+- name: 一个唯一确定的 cookie 名称。通常来讲 cookie 的名称是不区分大小写的；
+- value: 存储在 cookie 中的字符串值。最好为 cookie 的 name 和 value 进行 url 编码；
+- domain: cookie 对于哪个域是有效的。所有向该域发送的请求中都会包含这个 cookie 信息。这个值可以包含子域(如： yq.aliyun.com )，也可以不包含它(如： .aliyun.com ，则对于 aliyun.com 的所有子域都有效)；
+- path: 表示这个 cookie 影响到的路径，浏览器跟会根据这项配置，像指定域中匹配的路径发送 cookie；
+- expires: 失效时间，表示 cookie 何时应该被删除的时间戳(也就是，何时应该停止向服务器发送这个 cookie )。如果不设置这个时间戳，浏览器会在页面关闭时即将删除所有 cookie； 不过也可以自己设置删除时间。这个值是 GMT 时间格式，如果客户端和服务器端时间不一致，使用 expires 就会存在偏差；
+- max-age: 与 expires 作用相同，用来告诉浏览器此 cookie 多久过期（单位是秒），而不是一个固定的时间点。正常情况下，max-age 的优先级高于 expires；
+- HttpOnly: 告知浏览器不允许通过脚本 document.cookie 去更改这个值，同样这个值在 document.cookie 中也不可见。但在 http 请求里仍然会携带这个 cookie. 注意这个值虽然在脚本中不可获取，但仍然在浏览器安装目录中以文件形式存在。这项设置通常在服务器端设置。
+- secure: 安全标志，指定后，只有在使用 SSL 链接时候才能发送到服务器，如果是 http 链接则不会传递该信息。就算设置了 secure 属性也并不代表他人不能看到你机器本地保存的 cookie 信息，所以不要把重要信息放 cookie 就对了；
+
+一个例子：
+
+```
+访问 www.google.com 之后的响应内容：
+
+HTTP/1.1 200 OK
+Date: Wed, 18 Oct 2017 09:09:35 GMT
+Expires: -1
+Cache-Control: private, max-age=0
+Content-Type: text/html; charset=UTF-8
+Strict-Transport-Security: max-age=86400
+P3P: CP="This is not a P3P policy! See g.co/p3phelp for more info."
+Server: gws
+X-XSS-Protection: 1; mode=block
+X-Frame-Options: SAMEORIGIN
+Set-Cookie: 1P_JAR=2017-10-18-09; expires=Wed, 25-Oct-2017 09:09:35 GMT; path=/; domain=.google.com
+Set-Cookie: DV=; expires=Mon, 01-Jan-1990 00:00:00 GMT; path=/webhp; domain=www.google.com
+Set-Cookie: SIDCC=; expires=Mon, 01-Jan-1990 00:00:00 GMT; path=/webhp; domain=www.google.com
+...
+```
+
+服务器设置 Cookie 之后发给客户端，客户端(浏览器)收到响应后，按照 `Set-Cookie` 字段中的内容，把 cookie 保存到内存或硬盘上。以后客户端再次发起请求，就会带上 Cookie:
+
+```
+GET https://www.google.com/webhp?hl=zh-CN&sa=X&ved=0ahUKEwj09cG-6PnWAhUl9IMKHeGDB-oQPAgD HTTP/1.1
+Host: www.google.com
+Connection: keep-alive
+Cookie: SID=GQWa1up7HKkMMijaMgPCL62IMfUmryJINhZdNQ_vP_Rs-1EBRQ0LIRKxc8HU9lVlylYW5w.; HSID=Aa1lG9iwsTZrTEOjd; SSID=AI1WJtXX8GHAfBJX1; APISID=Aj3cJoI6mvsjeHz0/AwhGRBTcP5cCJnF5j; SAPISID=vJHZBcrrTl0MdfRQ/A4N3dfFH9ZsVGWtcO;
+...
+```
