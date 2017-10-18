@@ -2,7 +2,7 @@
 layout: post
 title:  "Cookie 是什么"
 date:   2017-10-18 16:30:30 +0800
-categories: cpp
+categories: web
 ---
 
 * TOC
