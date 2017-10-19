@@ -31,6 +31,14 @@ git config --global mergetool=araxis
 git config --global merge.tool.araxis="C:\\Program Files\\Araxis\\Araxis Merge\\compare.exe"
 ```
 
+配置完了之后就可以在 diff 的时候使用 `git difftool` 和 `git mergetool` 命令来打开 Araxis Merge 工具来比较了。
+
+如果不想执行 `git difftool` 的时候，每次比较一个文件都需要确认 `y/n`, 那么可以执行 `git difftool -y`。或者进行如下设置：
+
+```
+git config --global difftool.prompt false
+```
+
 
 ## 本地版本回退
 
