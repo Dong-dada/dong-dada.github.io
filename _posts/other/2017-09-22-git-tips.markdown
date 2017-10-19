@@ -117,3 +117,18 @@ git push origin +master
 比平时的 `git push` 命令多了一个 `+`, 它表示强制更新。
 
 完事儿之后就可以删除远程仓库上的提交了。
+
+
+## 每次往 github 上提交内容都需要输密码，很麻烦，可以去掉吗？
+
+虽然在设置了 SSH key 到 github 上，但每次 `git push` 还是要输入用户名密码，挺奇怪的。
+
+原因是 `git clone` 的时候用的是 HTTPS 而不是 SSH 协议，所以配置的 SSH key 不起作用了。
+
+解决办法就是把协议换成 SSH 的：
+
+```
+git remote -v           // 查看远程地址
+git remote rm origin    // 删除原有的推送地址
+git remote add origin git@github.com:username/repository.git    // 设置新的推送地址
+```
