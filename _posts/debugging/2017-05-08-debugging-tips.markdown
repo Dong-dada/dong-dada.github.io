@@ -235,7 +235,7 @@ int main()
 还有更详细的操作方法，可以参考 [这篇文章](http://blog.csdn.net/rye_grass/article/details/1551985)
 
 
-## 在 Visual Studio 中通过数据断点来查看对象合适被销毁
+## 在 Visual Studio 中通过数据断点来查看对象何时被销毁
 
 经常会遇到野指针问题，也就是对象已经被销毁了，然后去引用它，导致了崩溃。
 
@@ -244,3 +244,47 @@ int main()
 要了解对象是在何处被销毁的，可以通过设置数据断点的方式。
 
 首先在调试模式下得到对象的地址，然后 New 一个数据断点，接着运行，这样每次指针指向的内存被改变的时候，都会中断下来。缩小排查范围的话，很快就可以定位到销毁对象的代码位置了。
+
+
+## 导出程序的清单文件  manifest
+
+参考自 [这篇文章](http://blog.csdn.net/matrix_designer/article/details/6360819)
+
+简单来说就是要执行以下命令：
+
+```
+mt -inputresource:Tester.exe;#1 -out:extracted.manifest
+```
+
+mt.exe 的位置一般是 `C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A\Bin\mt.exe` 或者 `C:\Program Files (x86)\Windows Kits\10\bin\x86\mt.exe`.
+
+
+## 解决 “这个程序可能安装不正确”  提示的问题
+
+有时候会发现安装包安装完了之后会弹出如下提示(程序兼容性助手)：
+
+![]( {{site.url}}/asset/debug-tips-program-install-incorrect.png )
+
+感觉很奇怪。找到了如下几个资料：
+- [oschina](https://my.oschina.net/cardinallxx/blog/288654)
+- [StackOverflow](https://stackoverflow.com/questions/1069135/this-program-might-not-have-installed-correctly-message-in-windows-7-rc/22745100#22745100)
+- [MSDN](https://msdn.microsoft.com/en-us/library/dd371711%28VS.85%29.aspx?f=255&MSPPError=-2147217396)
+- [Techno Ladder](http://technoladder.blogspot.com/2012/02/how-to-fix-warning-this-program-might.html)
+
+总的来说有这么几种说法：
+- 程序的名字或描述里包含有 install 等字样，导致 Windows 认为这是一个安装包；
+- manifest 里缺少了系统兼容性的字段(`supportOS`)；
+
+怎么确定是不是以上问题导致的呢？尝试重现了这个问题，然后选择了弹框中的 “使用推荐的设置重新安装” 选项，这次不会再次弹框了。
+
+再去看一下安装包的属性，兼容性选项卡里勾选上了 “使用兼容设置” ：
+
+![]( {{site.url}}/asset/debug-tips-capalicity-mode.png )
+
+这个选项一开始是没有勾选的。可见 Windows 检查到安装包的兼容性设置后，认为跟当前系统不兼容，又判断到这是个安装程序，随后就弹出了提示可能安装不正确。
+
+用上一小节介绍的 `mt.exe` 提取出安装包的 manifest 文件，里面确实没有 `supportOS` 字段。
+
+对比一下老版本的安装包，它不会出现这个提示，并且 manifest 里也是有 `supportOS` 字段的。
+
+基本确定是因为 manifest 里缺少这个字段导致了弹框，改一下就好了。
