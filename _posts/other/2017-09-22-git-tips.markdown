@@ -5,6 +5,9 @@ date:   2017-09-22 10:38:30 +0800
 categories: other
 ---
 
+* TOC
+{:toc}
+
 ## 配置 difftool 和 mergetool
 
 在 git 里配置 difftool 和 mergetool, 这样可以用外部工具来查看修改，现在用的是 Araxis Merge, 配置如下：
@@ -131,4 +134,57 @@ git push origin +master
 git remote -v           // 查看远程地址
 git remote rm origin    // 删除原有的推送地址
 git remote add origin git@github.com:username/repository.git    // 设置新的推送地址
+```
+
+
+## 分支操作
+
+```
+// 创建一个本地分支
+git branch <branch_name>
+
+// 切换到某个本地分支上
+git checkout <branch_name>
+
+// 创建一个本地分支，然后切换到它上面
+git checkout -b <branch_name>
+
+// 删除本地分支(已经合并过代码的分支)
+git branch -d <branch_name>
+
+// 删除本地分支(强制删除)
+git branch -D <branch_name>
+
+// 将本地分支推送到远程仓库上
+git push <远程主机名> <本地分支名>:<远程分支名>
+git push origin feature-xxx:feature-xxx
+
+// 删除远程仓库的远程分支
+git push origin --delete feature-xxx
+```
+
+经常会遇到这种情况，在 master 上开发了一些代码，然后发现这些代码需要新开分支来提交。但如果这时候切换到新建的分支上的话，会因为本地有没提交的代码而导致提交失败。这个时候可以使用 `git stash save` 命令暂存本地的修改，切换完成后再通过 `git stash pop` 将修改还原到新分支上。
+
+
+## pretty log
+
+直接使用 `git log` 命令查看日志，打印的结果可读性不太好，或者日志太多了，打不下。这时候可以设置 pretty 选项来对输出的日志进行格式化：
+
+```
+git log --pretty=format:'%Cred%h%Creset - %s %Cgreen(%cr) %C(bold blue)<%an>%Creset'
+```
+
+其中的 `%h` 表示 hash id, `%Cred`, `%Cgreen` `%Creset` 用来设置颜色, `%s` 表示 commit 标题。具体可以参考 [这篇文章](https://ruby-china.org/topics/939)。
+
+每次输这么长有点儿麻烦，可以用如下命令来为上述命令起一个别名 lg:
+
+```
+git config --global alias.lg "log --color --pretty=format:'%Cred%h%Creset - %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit"
+```
+
+也可以编辑 `C:\Users\Administrator\.gitconfig` 文件，新增如下条目：
+
+```
+[alias]
+    lg = log --color --pretty=format:'%Cred%h%Creset - %s %Cgreen(%cr) %C(bold blue)<%an>%Creset'
 ```
