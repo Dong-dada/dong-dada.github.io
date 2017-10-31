@@ -23,7 +23,7 @@ categories: windows
 #include <iostream>
 #include <Windows.h>
 
-int main()  
+int main()
 {
     LASTINPUTINFO last_input_info;
     last_input_info.cbSize = sizeof(LASTINPUTINFO);
@@ -38,7 +38,7 @@ int main()
     }
 
     return 0;
-} 
+}
 ```
 
 
@@ -96,3 +96,31 @@ Windows 提供了将文字转换为语音的库，这个库包含在 Speak API (
 解决方法我想了一下有两种：
 - RightWnd 处理的 `WM_LBUTTONUP` 消息，实际上目的是处理 “鼠标按下，移动一段，再弹起” 这个操作，最后的 `WM_LBUTTONUP` 事件是一个孤立的事件，那么可以在它收到 `WM_LBUTTONDOWN` 消息的时候标记一下，如果 `WM_LBUTTONUP` 的时候这个标记不是 true, 那么说明这个 `WM_LBUTTONUP` 消息是一个孤立的消息，不应当被处理；
 - 另一种是对 LeftWnd 的双击操作做一下处理，当收到 `WM_LBUTTONDBLCLK` 事件的时候，通过 `SetCapture()` 设置一下让 LeftWnd 去接受 `WM_LBUTTONUP` 消息，这样 RightWnd 就不会收到这个消息了，这种方法我还没试过，不过应该是可行的；
+
+
+## 在程序启动时弹出  UAC 提示
+
+有时候调用某些接口，需要获取管理员权限，比如通过 `CreateFile()` 获取盘符的句柄的时候。
+
+这就要求程序以管理员权限启动。换句话说，在程序启动的时候弹出一个 UAC 提示，从用户那里获取到运行的权限。
+
+这需要在程序清单文件中配置如下内容：
+
+```xml
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"></requestedExecutionLevel>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>
+```
+
+也可以在 visual studio 的设置面板中进行设置：
+
+![]( {{site.url}}/asset/debug-tips-required-administrator.png )
+
+只需将 UAC 执行级别设置为 requiredAdministrator 即可。
