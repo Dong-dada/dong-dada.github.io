@@ -188,3 +188,102 @@ git config --global alias.lg "log --color --pretty=format:'%Cred%h%Creset - %s %
 [alias]
     lg = log --color --pretty=format:'%Cred%h%Creset - %s %Cgreen(%cr) %C(bold blue)<%an>%Creset'
 ```
+
+
+## 分支的合并
+
+要合并分支，比如把 `feature-test` 合并到 `master`, 需要首先切换到 `master` 目标分支上，然后使用 `git merge feature-test` 命令把来源分支 `feature-test` 的代码合并到 `master`:
+
+```
+git checkout master
+git merge feature-test
+```
+
+当然，合并的过程可能会有冲突：
+
+```
+$ git merge feature-test
+Auto-merging readme.md
+CONFLICT (content): Merge conflict in readme.md
+Automatic merge failed; fix conflicts and then commit the result.
+```
+
+出现冲突可以通过 `git mergetool` 来解决冲突：
+
+![]( {{site.url}}/asset/git-tips-mergetool.png )
+
+我配置的 mergetool 是 Araxis Merge, 它的 merge 分为三个部分，左边是当前分支 `master` 的代码，中间是基准代码，右侧则是来源分支 `feature-test` 的代码。你可以选择把左边和右边的代码都合并到中间，也可以选择把左边的代码合并到右边，或者反之。退出 merge 界面之后，Araxis 会询问你需要保存哪个。
+
+通过 Araxis Merge 解决完所有冲突后，再看下此时的状态：
+
+```
+$ git status
+On branch master
+All conflicts fixed but you are still merging.
+  (use "git commit" to conclude merge)
+
+Changes to be committed:
+
+        modified:   readme.md
+```
+
+可以看到所有的冲突都解决了，但仍处于 merging 状态，还需要使用 `git commit` 把冲突解决的结果提交一下。
+
+因此 `git merge` 完成之后，`master` 分支上会多出来一条提交记录，用于记录此次分支合并操作：
+
+```
+git lg -10
+0128b08 - Merge branch 'feature-test' (7 seconds ago)
+03dbc0e - master edit 2 (14 minutes ago)
+652ed8a - feature edit (17 minutes ago)
+ecbaa08 - master edit (47 minutes ago)
+```
+
+
+## git merge 的 fast forward 选项
+
+`git merge` 命令有两个选项 `--ff` 和 `--no-ff`, 分别用来指定是否使用 fast forward 来进行分支合并。
+
+### 什么是 fast forward
+
+fast forward 是快进的意思，且看下图：
+
+![]( {{site.url}}/asset/git-tips-fast-forward.png )
+
+bugfix 分支是从 master 分支上拉出来的，在 bugfix 分支提交了一些东西之后，需要把 bugfix 合并到 master 上。
+
+此时 master 分支上没有新建任何提交，对于 git 来说，它只需要把 master 分支的指针直接指到 bugfix 分支的最新提交上就可以了。这种操作就叫快进 fast forward ：
+
+![]( {{site.url}}/asset/git-tips-fast-forward-2.png )
+
+在这种情况下，会生成如下提交记录：
+
+![]( {{site.url}}/asset/git-tips-fast-forward-3.png )
+
+看起来跟 rebase 有点像。
+
+### 如果不能 fast forward 会怎么样？
+
+如果 merge 的时候 master 有新的提交，那么之前的快进操作就无法执行了：
+
+![]( {{site.url}}/asset/git-tips-fast-forward-4.png )
+
+这种情况下会在 master 分支下产生一个新的 commit:
+
+![]( {{site.url}}/asset/git-tips-fast-forward-5.png )
+
+这种情况下，会生成如下提交记录：
+
+![]( {{site.url}}/asset/git-tips-fast-forward-6.png )
+
+### --no-ff 选项，禁止  fast forward
+
+你可以给 `git merge` 加上一个选项 `--no-ff`, 也就是不要进行 fast forward.
+
+这样的话，即使 master 分支没有新增 commit, 也不会进行快进，而是生成一个新的 commit.
+
+### 什么时候使用  --no-ff 选项呢？
+
+使用 `--no-ff` 选项的优点是它不会把 feature 中的提交记录带入到 master 里面，可以让 master 的提交记录更清晰一些。
+
+如果往 master 合代码都使用 `--no-ff` 选项，那么 master 的提交记录里只会有 `merge branch feature-xxx` 这样的记录，比较简洁。
