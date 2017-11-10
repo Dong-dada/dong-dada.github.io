@@ -79,7 +79,7 @@ c1: fatal error C1083: 无法打开源文件: “yyacc.c”: No such file or dir
 在 boost 根目录执行 `b2 --help` 就能看到 b2 程序的使用方法。根据其中的内容，我执行了如下命令:
 
 ```
-b2 --stagedir=D:\code\boost_1_65_1\stage --build-type=complete variant=debug link=static threading=multi runtime-link=shared stage
+b2 --stagedir=D:\code\boost_1_65_1\stage --build-type=complete variant=debug link=static threading=multi runtime-link=shared debug-symbols=on debug-store=database stage
 ```
 
 上述命令中：
@@ -87,9 +87,12 @@ b2 --stagedir=D:\code\boost_1_65_1\stage --build-type=complete variant=debug lin
 - build-type: complete 表示完全编译；
 - link: 表示最后生成的库是 静态库(static) 还是 动态库(shared)；
 - runtime-link: 表示以何种方式使用运行时库，是 链接静态库(static) 还是 链接动态库(shared)；
+- debug-symbols=on, debug-store=database: 用于指定生成 pdb 文件
 - stage: boost 支持的编译方式有两种，install 表示把头文件和库文件都生成到输出目录里；stage 表示只把库文件生成到输出目录里。因为 boost 目录里已经有头文件的代码了，所以我使用了 stage 方式。
 
 上述命令执行成功之后，boost 就编译完成了，编译好的 `.lib` 文件保存在我所指定的 `D:\code\boost_1_65_1\stage` 文件夹中。
+
+pdb 文件没有自动放到 stage 文件夹里，而是放在 `bin.v2` 的子文件夹里。搜了一下应该没有单独导出 pdb 的命令，不过问题不大，当程序链接 `.lib` 的时候，会自动查找到 pdb 的位置。如果确实需要的话，可以写个批处理来做这件事。
 
 随便建个项目，把 boost 根目录加入到附加包含目录里，把库目录加入到附加库目录里。然后编写如下代码来测试是否能够正确调用到 boost:
 
@@ -135,12 +138,14 @@ Boost 的编译分为两步：
 在 libtorrent 根目录下执行以下命令：
 
 ```
-b2 link=static runtime-link=shared boost-link=static variant=debug dht=on
+b2 --libdir=%s --includedir=%s --build-type=complete link=static runtime-link=static boost-link=static variant=debug dht=on debug-symbols=on debug-store=database install
 ```
+
+指定了 install 方式来编译，这样可以通过定义 `libdir`, `includedir` 的方式来指定 lib 的输出位置。
 
 具体可以参考 [官方文档](http://www.libtorrent.org/building.html)。
 
-上述命令执行完毕后，会在根目录下生成一个 bin 文件夹，其中就包含了编译结果 libtorrent.lib.
+上述命令执行完毕后，会在 libdir 指定的位置生成编译结果，其中就包含了 libtorrent.lib.
 
 ### 运行 demo
 
