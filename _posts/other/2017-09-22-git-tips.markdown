@@ -287,3 +287,32 @@ bugfix 分支是从 master 分支上拉出来的，在 bugfix 分支提交了一
 使用 `--no-ff` 选项的优点是它不会把 feature 中的提交记录带入到 master 里面，可以让 master 的提交记录更清晰一些。
 
 如果往 master 合代码都使用 `--no-ff` 选项，那么 master 的提交记录里只会有 `merge branch feature-xxx` 这样的记录，比较简洁。
+
+
+## 标签 tag
+
+git 可以给某个 commit 打上标签，以示重要。
+
+与标签有关的命令如下：
+
+```sh
+git tag                 // 列出标签
+git tag -l 'v1.8.5.*'   // 列出以 v1.8.5. 开头的标签
+
+git tag -a v1.4 -m 'my version 1.4'     // 为当前 commit 打上标签，v1.4 是标签的名字，-m 后面是标签的注释
+
+git tag -a v1.5 9fceb02                 // 为指定 commit 打上标签，不写 -m 的话，会弹出编辑器让你输入注释
+
+git show v1.4           // 显示某个标签的信息，包括日期、注释、commit id
+```
+
+### checkout 标签
+
+在 Git 中你并不能真的检出一个标签，因为它们并不能像分支一样来回移动。 如果你想要工作目录与仓库中特定的标签版本完全一样，可以使用 `git checkout -b [branchname] [tagname]` 在特定的标签上创建一个新分支：
+
+```sh
+$ git checkout -b version2 v2.0.0
+Switched to a new branch 'version2'
+```
+
+当然，如果在这之后又进行了一次提交，version2 分支会因为改动向前移动了，那么 version2 分支就会和 v2.0.0 标签稍微有些不同，这时就应该当心了。
