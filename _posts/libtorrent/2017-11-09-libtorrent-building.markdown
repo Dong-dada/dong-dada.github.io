@@ -116,6 +116,18 @@ int main()
 }
 ```
 
+**注意：**
+之后发现我的项目没有开启 rtti, 而 boost 默认编译是开启了 rtti 的，导致 API 不一致。解决方法是加上如下参数关闭掉 boost 的 rtti:
+
+```
+define=BOOST_NO_RTTI define=BOOST_NO_TYPEID --without-log
+
+完整命令：
+b2 --stagedir=D:\code\boost_1_65_1\stage --build-type=complete variant=debug link=static threading=multi runtime-link=shared debug-symbols=on debug-store=database define=BOOST_NO_RTTI define=BOOST_NO_TYPEID --without-log stage
+```
+
+前面两个宏可以参考 [这份文档](http://www.boost.org/doc/libs/1_46_1/libs/exception/doc/configuration_macros.html)。 `--without-log` 目的是不编译 boost.log 库，因为这个库依赖了 rtti.
+
 ### 小结
 
 Boost 的编译分为两步：
