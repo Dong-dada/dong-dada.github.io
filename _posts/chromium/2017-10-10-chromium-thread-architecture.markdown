@@ -218,6 +218,40 @@ runner->PostTask(FROM_HERE, base::BindOnce(&Task));
 
 向自定义线程里投递 Single Thread Task, 需要先自己创建一个 SingleThreadTaskRunner 对象出来，这里暂不介绍。
 
+### 在新项目里使用 MessageLoop
+
+之前的几个投递 task 的方法都是在已经有 Message Loop 和 TaskScheduler 的情况下使用的，如果我们新建了一个项目，想要在这个项目里使用 Message Loop 等相关机制，要怎么做呢？
+
+很简单，先创建 `base::MessageLoop`, 然后调用 `base::RunLoop().Run()` 就可以了：
+
+```cpp
+#include "base/at_exit.h"
+#include "base/message_loop/message_loop.h"
+#include "base/run_loop.h"
+
+int main() {
+  base::MessageLoop loop;
+  base::AtExitManager at_exit;
+
+  // ...
+
+  base::RunLoop().Run();
+  return 0;
+}
+```
+
+注意上述代码中的 `base::AtExitManager`, 它用在某些 chrome 的单例对象上。我在使用 `base::RepeatingTimer` 的时候发现如果不加这行代码，会断言错误。
+
+记得在 BUILD.gn 里加上 `//base` 的依赖，这样才能正确链接到 base 静态库：
+
+```
+// 自建项目的 BUILD.gn 文件
+
+deps = [
+  "//base",
+]
+```
+
 ### 小结
 
 这一节我们首先讨论了 Task 对象的构造方式，它跟 C++ 的 `std::function` 和 `std::bind（）` 很像，通过柯里化来完成了任务的惰性计算。
