@@ -764,14 +764,33 @@ public class Main {
 - 可以使用 instanceof 来检查一个对象是否实现了某个接口；
 - 接口之间也可以继承，但也只能单继承；
 - 接口之中不能包含 fields, 或静态方法，但可以包含常量。
-- 可以为接口方法提供一个默认实现，并用 default 修饰符标记此方法：
+- 可以为接口方法提供一个默认实现，并用 default 修饰符标记此方法，请看稍后的代码示例：
+- 有一点跟 C++ 很不一样的是，你不能在继承之后，把方法的 public 改为 private，可以参考接下来的代码示例；
 
 ```java
+// default 作为默认实现
 public interface MouseListener {
     default void mouseClicked(MouseEvent event) {}
     default void mousePressed(MouseEvent event) {}
 }
 ```
+
+```java
+class Worker implements Runnable {
+    // run 方法在 Runnable 接口中是 public, 你不能把它修改为 private
+    private void run() {
+        // ...
+    }
+}
+```
+
+在 C++ 中常常这么做，比如一个类实现了 MouseListener 接口，用以处理鼠标事件，显然这种情况下我不希望外部使用我这个类的时候，把 `mouseClicked()` 也作为一个 public 方法暴露出去，这时候就会把它声明为 private。
+
+然而 Java 不允许这么做。可能它认为接口描述的是一个类可以做什么，如果一个类实现了接口，却不暴露这个接口中的方法，那就违背了实现接口的初衷。
+
+更进一步考虑，我们一般不会直接暴露类给调用方，调用方应该是持有接口来访问类对象的。如此一来我们对外提供的应该是一个接口，只要不向外提供 MouseListener 接口，那么外部也就没法访问 `mouseClicked()` 方法了。
+
+使用内部类也许也是一种比较符合逻辑的做法，通过内部类来实现接口，利用内部类来处理 mouseListener 中的各种事件，也是一种方法。
 
 
 ## 对象克隆
