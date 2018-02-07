@@ -290,3 +290,284 @@ Maven 定义了依赖调解的第一原则：路径最近者优先。对于上�
 
 ### 可选依赖
 
+可选依赖的意思可能不是那么直接。比如以下依赖关系：
+
+```java
+A --> B --> mysql-connector(可选依赖)
+      |
+      +---> postgresql(可选依赖)
+```
+
+B 分别使用 MySQL 和 PostgreSQL 实现了两个互斥的特性，用户只会使用其中一种。比如 B 是一个持久层隔离工具包，它支持多种数据库。在构建 B 这个项目的时候，就需要这两种数据库的驱动程序，但实际使用的时候，只会依赖一种数据库。
+
+这时候，就可以在 B 的 pom.xml 里，把对这两种数据库驱动的依赖设定为可选依赖。意思是由使用方 A 来决定使用哪种数据库：
+
+```xml
+<!-- B 项目的 pom.xml -->
+<project>
+    <<artifactId>project-b</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>5.1.10</version>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>8.4-701.jdbc3</version>
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+</project>
+
+<!-- A 项目的 pom.xml -->
+<project>
+    <artifactId>project-a</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.dada.mvn</groupId>
+            <artifactId>project-b</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <!-- 决定使用哪个数据库 -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>5.1.10</version>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+### 排除依赖
+
+有时候，你的项目 A 依赖了另一个第三方的项目 B，而 B 又依赖了一个不稳定的 C(0.1). 这个时候你会希望把 C(0.1) 去掉，改为依赖稳定版本的 C(1.0)。
+
+这种情况下，就可以先排除对 C(1.0) 的依赖，然后重新声明对 C(1.0) 的依赖：
+
+```xml
+<project>
+    <groupId>com.dada.mvn</groupId>
+    <artifactId>project-a</artifactId>
+    <version>1.0.0</version>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.dada.mvn</groupId>
+            <artifactId>project-b</artifactId>
+            <version>1.0.0</version>
+            <exclusions>
+                <!-- 排除 B 对原有的 C 的依赖 -->
+                <exclusion>
+                    <groupId>com.dada.mvn</groupId>
+                    <artifactId>project-c</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- 重新声明对 C(1.0) 的依赖 -->
+        <dependency>
+            <groupId>com.dada.mvn</groupId>
+            <artifactId>project-c</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+### 使用 Maven 属性归类依赖
+
+在 Maven 中可以定义属性，然后引用属性。有点儿类似于在 C 语言中定义一个宏 PI, 用它来替换实际的值 3.1415926, 方便阅读的同时，减少维护的麻烦。
+
+比如 springframework 有许多依赖，版本都是一样的，我们就可以用属性来对这些版本号做归类：
+
+```xml
+<project>
+    ...
+
+    <properties>
+        <!-- 定义一个 springframework 版本号的属性 -->
+        <springframework.version>2.5.6</springframework.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-core</artifactId>
+            <!-- 使用属性来代表版本号 -->
+            <version>${springframework.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>sprinf-beans</artifactId>
+            <!-- 使用属性来代表版本号 -->
+            <version>${springframework.version}</version>
+        </dependency>
+        ...
+    </dependencies>
+</project>
+```
+
+### 优化依赖
+
+这一小节介绍几个命令，可以来查看项目间的依赖关系：
+
+- `mvn dependency:list` : 列出已解析依赖；
+- `mvn dependency:tree` : 以树形结构列出已解析依赖；
+- `mvn dependency:analyze` : 分析当前项目的依赖是否存在潜在问题；
+
+### 小结
+
+这一节首先介绍了 Maven 中坐标的组成，然后介绍了 Maven 中依赖的细节。
+
+- 除了 groupId, artifactId, version 之外，还有一个 packaging 也是坐标之一，它标识了这个项目的打包方式，默认是 jar;
+- 依赖的配置中, scope 指明了依赖的范围，这决定了这个依赖会在 编译、测试、打包的哪个环节被引入；
+- 依赖的配置中，optional 指明了这个依赖是可选的，需要由上层决定具体使用哪个依赖；
+- 依赖的配置中，exclusions 可以帮你排除一些不想依赖的项目，并将其替换为更合适的版本；
+
+另外，我们还介绍了 Maven 调解依赖的两个原则：
+- 路径最近者优先。当依赖树中存在两个相同项目时，引入路径比较近的那个项目；
+- 第一声明者优先。如果路径一样，那么引入先被声明的那个项目；
+
+另外，我们简单介绍了 Maven 中的属性，你可以定义一个属性，接着去引用它。
+
+最后，我们介绍了几个命令来帮助你优化依赖关系：
+- mvn dependency:list
+- mvn dependency:tree
+- mvn dependency:analyze
+
+
+## 仓库
+
+Maven 在解析 POM 中的依赖的时候，会根据依赖项的坐标去本地仓库里寻找对应的项目，如果本地仓库里没有，就从远程仓库里下载该项目。这是 Maven 工作的基本原理。
+
+从上述原理可以看到，Maven 没有把依赖项目存储到每个项目里，而是有一个仓库来存储所有这些项目。
+
+### 仓库的分类
+
+之前已经说过，仓库分为本地和远程两类。对于远程仓库而言，存在一些特殊目的仓库：
+- 中央仓库： Maven 核心自带的远程仓库；
+- 私服： 在局域网内自行架设的远程仓库；
+- 一些公共仓库： 比如 Java.net Maven 仓库、JBoss Maven 库；
+
+私服和中央仓库的区别有点儿类似于 公司内自己架设的 Git 仓库 和 GitHub 的区别。前者只给内部使用，后者是所有人都可以用的。
+
+### 仓库的布局
+
+Maven 仓库基于简单的文件系统存储，它的文件布局跟项目的坐标是对应的。
+
+比如一个项目的坐标为：
+
+```xml
+<groupId>com.dada.mvn</groupId>
+<artifactId>hello-world</artifactId>
+<version>1.0-SNAPSHOT</version>
+<packaging>jar</packaging>
+```
+
+那么该项目就会保存在仓库的 `仓库目录\com\dada\mvn\hello-world\1.0-SNAPSHOT` 文件夹中。
+
+本地仓库目录可以在 Maven 的 settings.xml 里配置，这里就不罗嗦了。
+
+Maven 会在上述文件夹中保存已经打好的 jar 包，以及该项目的 POM 文件。你可以尝试运行 `mvn clean install` 命令，把自己的项目安装到本地仓库里，然后检查下 Maven 仓库里是否按照上述规则保存了你的项目。
+
+### 远程仓库的配置
+
+默认情况下，Maven 会从中央仓库中下载所需要的构件。很多时候这个无法满足你的需求，可能某个构件存在于 JBoss 仓库里，这时候你可以在 POM 中加入 JBoss 仓库的配置：
+
+```xml
+<project>
+    <repositories>
+        <repository>
+            <id>jboss</id>
+            <name>JBoss Repository</name>
+            <url>http://repository.jboss.com/maven2/</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+            <layout>default</layout>
+        </repository>
+    </repositories>
+</project>
+```
+
+### 远程仓库的认证
+
+大部分私服为了安全性的考虑，不会让你直接连上它，需要提供用户名密码来访问。你可以在 Maven 的 settings.xml 里配置认证信息：
+
+```xml
+<settings>
+    <servers>
+        <id>repository-id</id>
+        <username>repo-user</username>
+        <password>repo_pwd</password>
+    </servers>
+</settings>
+```
+
+### 部署到远程仓库
+
+除了把自己的构件安装到 Maven 本地仓库，你还可以把它部署到远程仓库里，供其它人使用。
+
+首先需要在 POM 中配置构件的部署地址：
+
+```xml
+<project>
+    ...
+
+    <distributionManagement>
+        <repository>
+            <id>proj-releases</id>
+            <name>Proj Release Repository</name>
+            <url>http://192.168.1.100/content/repositories/proj-release</url>
+        </repository>
+        <snapshotRepository>
+            <id>proj-snapshots</id>
+            <name>Proj Snapshot Repository</name>
+            <url>http://192.168.1.100/content/repositories/proj-snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
+</project>
+```
+
+配置完毕后，运行 `mvn clean deploy` 命令，既可把该项目部署到对应的远程仓库中。
+
+### 快照机制
+
+我们之前开发的 hello-world 例子中，其版本号是 `1.0.0-SNAPSHOT`, 这表示该构件是 `1.0.0` 的快照版本。
+
+Maven 的快照机制可以方便协作开发。比如 A 和 B 两个模块都在开发，A 依赖了 B, 那么每当 B 有进一步的改动之后，A 都需要获取到 B 的最新版本。
+
+每次 B 有所修改，Maven 都会为构件打上时间戳，在 Maven 构件 A 的时候，就只会拉取最新版本的 B。
+
+默认情况下 Maven 一天检查一次远程仓库中的快照文件有没有更新，如果有，就把它拉取到本地仓库。如果你希望强制拉取，那么可以执行 `mvn clean install-U`。
+
+### 仓库搜索服务
+
+还有一个问题是，我们怎么从仓库中找到需要的构件，比如需要一个负责登录的构件，怎么知道远程仓库里有没有这个构件，这个构件的坐标是什么。
+
+这就需要有人 Maven 仓库搜索服务。
+
+知名的公共仓库搜索服务有 [Sonatype Nexus](http://repository.sonatype.org), [Jarvana](http://www.jarvana.com/jarvana), [MVNbrowser](http://www.mvnbrowser.com), [MVNrepository](http://mvnrepository.com)
+
+公司内部也许也会有这样的服务，方便你查询公司内部的 Maven 私服。
+
+### 小结
+
+这一节介绍了 Maven 中仓库的一些细节：
+- 仓库的布局是简单的文件系统布局，构件路径跟项目的坐标相对应；
+- 除了 Maven 自己的中央仓库，公司内部还可以搭建自己的私服，也有其它一些公共的 Maven 远程仓库；
+- 快照机制可以帮助我们在协作开发时，更方便地与他人共享最新版本的构件；
+- 可以利用仓库搜索服务来查询远程仓库中的构件信息；
+
+
+## 生命周期和插件
+
+Maven 用生命周期这一概念来抽象构件过程中的各个阶段。每个阶段有不同的插件来完成实际的构件过程。
