@@ -570,4 +570,49 @@ Maven 的快照机制可以方便协作开发。比如 A 和 B 两个模块都�
 
 ## 生命周期和插件
 
-Maven 用生命周期这一概念来抽象构件过程中的各个阶段。每个阶段有不同的插件来完成实际的构件过程。
+Maven 用生命周期这一概念来抽象构件过程中的各个阶段。每个阶段有不同的插件来完成实际的构建过程。
+
+### 三套生命周期
+
+Maven 有三套独立的生命周期，分别是 clean, default, site. 每套生命周期中都包含了若干个阶段 (phase), 这些阶段是由顺序的，后面的阶段依赖于前面的阶段。
+
+你可以 Maven 中直接执行某个阶段，比如 `mvn pre-clean`, 那么只会执行 clean 生命周期的 `pre-clean` 阶段。如果你执行了后面的阶段，比如 `mvn post-clean`, 那么前面的阶段也会被执行。
+
+Maven 命令中的参数代表了所需要执行的阶段而不是生命周期。比如 `mvn clean` 不是说要执行 clean 生命周期的所有阶段，而是执行 clean 生命周期的 clean 阶段。类似的, `mvn clean install` 意思是先执行 clean 生命周期的 clean 阶段，再执行 default 生命周期的 install 阶段。类似的，你还可以调用 `mvn clean install site-deploy` 继续让它执行 site 生命周期的 site-deploy 阶段。
+
+clean 生命周期用于清理上次构建生成的文件，它分为如下几个阶段：
+- pre-clean : 准备清理；
+- clean : 进行清理；
+- post-clean : 扫尾工作；
+
+default 生命周期用于构建项目，它是所有生命周期中最核心的部分，它分为如下几个阶段：
+- validate
+- initialize
+- generate-sources
+- process-sources : 处理项目主资源文件。一般是把 `src/main/resources` 目录的内容进行变量替换等工作后，复制到项目输出的主 classpath 目录中。
+- generate-resources
+- process-resources
+- compile : 编译项目的主源码。一般是把 `src/main/java` 目录的代码编译到项目输出的主 classpath 目录中。
+- process-classes
+- generate-test-sources
+- process-test-sources : 类似于 process-sources, 但它处理的是测试资源文件
+- generate-test-sources
+- test-compile : 类似于 compile, 但它编译的是测试代码；
+- process-test-classes
+- test : 使用单元测试框架运行测试，该代码不会被打包和部署。
+- prepare-package
+- package : 对编译完成的代码进行打包。
+- pre-integration-test
+- integration-test
+- post-integration-test
+- verify
+- install : 将包安装到本地 Maven 仓库，共本地其它 Maven 项目使用
+- deploy : 将最终的包复制到远程仓库，共其它开发人员使用。
+
+site 生命周期用于建立和发布项目站点，Maven 可以根据 POM 所包含的信息自动生成一个站点，方便团队交流和发布项目信息。它分为如下几个阶段：
+- pre-site
+- site : 生成项目站点文档
+- post-site
+- site-deploy : 将生成的项目站点发布到服务器上
+
+
