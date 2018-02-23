@@ -102,3 +102,82 @@ public class KnightMain {
 
 ### 面向切面编程
 
+第三点的面向切面编程 (Aspect-Oriented Programming, AOP) 是一种编程思想。它往往被定义为促使软件系统实现关注点的分离的一项技术。
+
+大多数软件都有许多组件组成，每个组件负责一部分特定功能，我们总希望这些组件能有更高的内聚性，而不是分散在项目的各处，需要关注很多地方。比如针对登陆模块的日志功能，按照传统的思路，也许我们会写出以下的代码：
+
+```java
+public class LoginService {
+    public void OnLoginSuccess() {
+        // ...
+
+        // 在项目代码的各个函数中记录登陆事件
+        RecordLoginEvent("success");
+    }
+
+    public void OnLoginFailed() {
+        // ...
+
+        // 在项目代码的各个函数中记录登陆事件
+        RecordLoginEvent("failed");
+    }
+
+    // ...
+}
+```
+
+面向切面的思想，就是把分散在项目各处的这些功能分离出来，形成一个可重用的组件。对于上述例子来说，登陆事件的记录就是一个切面。类似的，登陆情况的统计也可以看作一个切面。
+
+按照上述思路，我们可以封装 LoginEventRecoder, LoginEventRepoter 等类来实现这些切面：
+
+```java
+public class LoginEventRecoder {
+    public void RecordLoginSuccess() {
+    }
+
+    public void RecordLoginFailed() {
+    }
+
+    // ...
+}
+```
+
+有了 LoginEventRecoder 这个切面之后，我们还是得在 LoginService 的合适地方去调用它的方法才行。不过 Spring 提供了简单的方式来对切面进行配置，例如：
+
+```xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:aop="http://www.springframework.org/schema/aop
+        http://www.springframework.org/schema/aop/spring-aop-3.2.xsd
+        http://www.springframework.org/schema/beans
+        http://www.springframework.org/schema/beans/spring-beans.xsd" >
+
+    <beans id="loginService" class="com.dada.login.LoginService">
+    </beans>
+
+    <beans id="loginEventRecoder" class="com.dada.login.LoginEventRecoder">
+    </beans>
+
+    <aop:config>
+        <!-- 把 loginEventRecoder 声明为一个切面 -->
+        <aop:aspect ref="loginEventRecoder">
+            <!-- 定义一个切点，它关心 OnLoginSuccess 函数的执行 -->
+            <aop:poingcut id="loginSuccess"
+                expression="execution(* *.OnLoginSuccess(..))" />
+
+            <!-- 声明前置通知，当切点 loginSuccess 执行后，将触发 RecordLoginSuccess -->
+            <aop:after pointcut-ref="loginSuccess" method="RecordLoginSuccess"/>
+
+            <!-- 按照同样方法可以定义 loginFailed 切点 -->
+        </aop:aspect>
+    </aop:config>
+</beans>
+```
+
+通过少量的配置，Spring 就可以帮你把 LoginEventRecoder 声明为一个切面，并将其与 LoginService 关联起来。从代码上看来，LoginEventRecoder 与 LoginService 完全独立，并且 LoginEventRecoder 只关注于如何记录登陆事件。
+
+### 使用模板消除样板式代码
+
+Spring 提供了一些模板，可以帮助你减少一些看起来差不多的代码。比如使用 JDBC 来访问数据库，你总是需要连接数据库、创建一个 SQL 语句对象、捕捉 SQLException 等等。而使用 JdbcTemplate，你就只需要关心要查询的内容是什么就可以了。
+
+这一点就不写示例代码了，以后单独介绍吧。
