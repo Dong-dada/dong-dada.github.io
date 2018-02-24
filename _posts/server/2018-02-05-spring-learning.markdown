@@ -181,3 +181,43 @@ public class LoginEventRecoder {
 Spring 提供了一些模板，可以帮助你减少一些看起来差不多的代码。比如使用 JDBC 来访问数据库，你总是需要连接数据库、创建一个 SQL 语句对象、捕捉 SQLException 等等。而使用 JdbcTemplate，你就只需要关心要查询的内容是什么就可以了。
 
 这一点就不写示例代码了，以后单独介绍吧。
+
+### 容器
+
+在 Spring 框架中，对象生存于 Spring 容器中。Spring 容器负责创建对象，装配它们，配置它们并管理它们的整个生存周期：
+
+![]( {{site.url}}/asset/spring-container.png )
+
+Spring 容器并不是只有一个，Spring 带有多个容器实现，可以归纳为两种不同的类型：
+- bean 工厂是最简单的容器，提供基本的 DI 支持。
+- 应用上下文基于 BeanFactory 构架，提供应用框架级别的服务。
+
+bean 工厂比较低级，应用上下文更受欢迎。
+
+### 应用上下文
+
+Spring 自带了多种类型的应用上下文：
+- AnnotationConfigApplicationContext: 从一个或多个基于 Java 的配置类中加载 Spring 上下文；
+- AnnotationConfigWebApplicationContext: 从一个或多个基于 Java 的配置类中加载 Spring Web 上下文；
+- ClassPathXmlApplicationContext: 从类路径下的一个或多个 XML 配置文件中加载上下文定义，把应用上下文的定义文件作为类资源；
+- FileSystemXmlApplicationContext: 从文件系统下的一个或多个 XML 配置文件中加载上下文定义；
+- XmlWebApplicationContext: 从 Web 应用下的一个或多个 XML 配置文件中加载上下文定义；
+
+下列代码展示了如何加载应用上下文：
+
+```java
+// 从不同位置加载应用上下文
+ApplicationContext context = new FileSystemXmlApplicationContext("C:/knight.xml");
+ApplicationContext context = new ClassPathXmlApplicationContext("knight.xml");
+
+ApplicationContext context = new AnnotationConfigApplicationContext(com.dada.login.config.LoginConfig.class);
+
+// 从应用上下文(容器)中获取 bean
+LoginService loginService = context.getBean(LoginService.class);
+```
+
+### Spring 模块
+
+![]( {{site.url}}/asset/spring-modules.png )
+
+
