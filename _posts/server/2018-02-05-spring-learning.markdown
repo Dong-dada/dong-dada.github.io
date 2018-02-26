@@ -221,3 +221,125 @@ LoginService loginService = context.getBean(LoginService.class);
 ![]( {{site.url}}/asset/spring-modules.png )
 
 
+## 装配 beans
+
+Spring 提供了三种装配机制：
+- 在 XML 中进行显式配置；
+- 在 Java 中进行显式配置；
+- 隐式的 bean 发现机制和自动装配；
+
+书中建议优先使用自动化装配方式，然后选择 JavaConfig 的方式，因为它类型安全且功能丰富，最后考虑选择 XML 装配方式。
+
+### 自动化装配
+
+Spring 从两个角度来实现自动化装配：
+- 组件扫描(component scanning): Spring 会自动发现应用上下文中所创建的 bean;
+- 自动装配(autowiring): Spring 自动满足 bean 之间的依赖；
+
+要让 Spring 完成上述操作，你需要在合适的地方加上注解。比如 `@Component` 注解将告诉 Spring, 依据当前的类来创建 bean, 而 `@Autowired` 注解则告诉 Spring, 寻找合适的 bean 来满足依赖：
+
+```java
+@Component
+public class SgtPeppers implements CompactDisc {
+    private String title = "Sgt. Pepper's Lonely Hearts Club Band";
+    private String artist = "The Beatles";
+
+    public void play() {
+        System.out.println("Playing " + title + " by " + artist);
+    }
+}
+
+@Component
+public class CDPlayer implements MediaPlayer {
+    private CompactDisc cd;
+
+    @Autowired
+    public CDPlayer(CompactDisc cd) {
+        this.cd = cd;
+    }
+
+    public void play() {
+        cd.play();
+    }
+}
+```
+
+上述代码中通过 `@Component` 注解，创建了两个 bean, 而 `@Autowired` 注解则告诉 Spring, 在创建 CDPlayer bean 的时候，自动绑定一个实现了 CompactDisc 接口的 bean, 也就是 SgtPeppers bean.
+
+你可能会好奇，当没有 bean 能够满足自动装配的时候，会怎样呢？当有多个 bean 都能满足自动装配的时候，会怎样呢？这一点以后再介绍。
+
+### 通过 Java 代码装配
+
+对于一些第三方库，没办法在其中添加自动装配的注解，这时候可以使用 JavaConfig 代码来进行装配。
+
+JavaConfig 跟普通的 Java 代码有所区别，它是配置代码，不应该包含任何业务代码。所以通常我们会把 JavaConfig 放到单独的包中，与其他业务代码区分开来。
+
+上一小节介绍自动装配时，我们漏掉了一段代码，Spring 并不会自动完成组建的扫描，而需要你在某个类中指定 `@ComponentScan` 注解，我们可以把这个注解放到 JavaConfig 中：
+
+```java
+package com.dada.learning;
+
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@ComponentScan
+public class CDPlayerConfig {
+}
+```
+
+`@Configuration` 告诉 Spring, 被修饰的类是配置类，该类应该包含在 Spring 应用上下文中如何创建 bean 的细节。我们现在不使用自动装配，因此可以移除 `@ComponentScan` 注解，然后加入显式配置的代码：
+
+```java
+@Configuration
+public class CDPlayerConfig {
+
+    @Bean
+    public CompactDisc sgtPeppers() {
+        return new SgtPeppers();
+    }
+
+    @Bean
+    public CDPlayer cdPlayer(CompactDisc cd) {
+        return new CDPlayer(cd);
+    }
+}
+```
+
+上述代码中通过 `@Bean` 注解来修饰一个方法，Spring 会自动调用该方法，该方法返回的对象会被视为一个 bean 加入到 Spring 容器中。
+
+在 `cdPlayer()` 方法创建 bean 的时候，会接受一个实现了 CompactDisc 接口的对象，Spring 会自动装配 SgtPeppers bean 给 `cdPlayer()` 方法，这也就实现了依赖的绑定。
+
+### 通过 XML 装配 bean
+
+在文章开头我们已经介绍过使用 XML 装配 bean 的方法。例如如下代码：
+
+```xml
+
+<beans xmlns="http://www.springframework.org/scheme/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <bean id="compactDisc" class="soundsystem.SgtPeppers" />
+
+    <bean id="cdPlayer" class="soundsystem.CDPlayer">
+        <constructor-arg ref="compactDisc" />
+    </bean>
+</beans>
+```
+
+### 导入和混合配置
+
+有的时候，你可能觉得某个 JavaConfig 配置类过于复杂，而希望将其拆分开来，拆分完成后，你需要把其中一个配置类导入到另一个配置类中，以确保配置仍然会生效。这时候可以使用 `@Import` 注解：
+
+```java
+@Configuration
+@Import({CDPlayerConfig.class, CDConfig.class})
+@ImportResource("classpath:cd-config.xml")
+public class SoundSystemConfig {
+}
+```
+
+`@ImportResource` 注解用于导入 XML 配置。
+
+类似的，在 XML 配置中可以使用 import 标签来导入配置。
