@@ -343,3 +343,82 @@ public class SoundSystemConfig {
 `@ImportResource` 注解用于导入 XML 配置。
 
 类似的，在 XML 配置中可以使用 import 标签来导入配置。
+
+
+## 高级装配
+
+### 环境与 profile
+
+在开发软件的时候，一个很麻烦的事情就是把程序从一个环境迁移到另一个环境。比如数据库的配置，我们可能希望在开发环境中使用一个嵌入式的数据库、在生产环境中又期望通过 JDBC 从容器中获取一个 DataSource、在测试环境中则使用测试用的数据库。
+
+如此一来，根据使用的数据库的不同，我们需要用不同的策略来生成一个 bean，Spring 提供了 profile 功能来支持这一点。你可以通过 profile 告知 Spring 当前的 bean 适用于哪种环境。之后再按照不同需求来激活对应的 profile。
+
+例如你可以编写如下两个 bean 来适应开发环境和生产环境：
+
+```java
+@Configuration
+@Profile("dev")
+public class DevelopmentProfileConfig {
+
+    @Bean(destroyMethod="shutdown")
+    public DataSource dataSource() {
+        return new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.H2)
+            .addScript("classpath:schema.sql")
+            .addScript("classpath:test-dada.sql")
+            .build();
+    }
+}
+```
+
+```java
+@Configuration
+@Profile("prod")
+public class ProductionProfileConfig {
+
+    @Bean
+    public DataSource dataSource() {
+        JndiObjectFactoryBean jndiObjectFactoryBean = 
+            new JndiObjectFactoryBean();
+        jndiObjectFactoryBean.setJndiName("jdbc/myDS");
+        jndiObjectFactoryBean.setResourceRef(true);
+        jndiObjectFactoryBean.setProxyInterface(
+            javax.sql.DataSource.class);
+        return (DataSource)jndiObjectFactoryBean.getObject();
+    }
+}
+```
+
+上述代码中使用了 `@Profile` 注解来修饰不同的配置类，你也可以用 `@Profile` 注解来修饰方法：
+
+```java
+@Configuration
+public class DataSourceConfig {
+
+    @Bean(destroyMethod = "shutdown")
+    @Profile("dev")
+    public DataSource embeddedDataSource() {
+        // ...
+    }
+
+    @Bean
+    @Profile("prod")
+    public DataSource jndiDataSource() {
+        // ...
+    }
+}
+```
+
+对应的，在 XML 配置中，你也可以使用 `<beans>` 元素的 profile 属性来设置。这一点就不介绍了，用到的时候再去看吧。
+
+接下来，你需要告诉 Spring 应该激活哪个 profile. 这一点依赖于两个属性：`spring.profiles.active` 和 `spring.profiles.default`, Spring 会首先查找 `spring.profiles.active` 的设置，如果没有，就采用 `spring.profiles.default` 的设置。
+
+要设置这两个属性，有一下几种不同的方式：
+- 作为 DispatcherServlet 的初始化参数
+- 作为 Web 应用的上下文参数；
+- 作为 JNDI 条目；
+- 作为环境变量；
+- 作为 JVM 的系统属性；
+- 在集成测试类上，使用 `@ActiveProfiles` 注解来设置； 
+
+现在还不清楚 Servlet 相关的内容，因此先不介绍，以后用到再去查找。
