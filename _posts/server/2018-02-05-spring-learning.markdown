@@ -422,3 +422,220 @@ public class DataSourceConfig {
 - 在集成测试类上，使用 `@ActiveProfiles` 注解来设置； 
 
 现在还不清楚 Servlet 相关的内容，因此先不介绍，以后用到再去查找。
+
+### 条件化的 bean
+
+有时候我们会希望在满足了某种条件的情况下才创建 bean, 比如只会在另外某个特定的 bean 也声明了之后才创建，或者只有在设置了某个环境变量的情况下才创建。
+
+这种情况下可以通过 `@Conditional` 注解设置一个条件类，例如：
+
+```java
+@Bean
+@Conditional(MagicExistCondition.class)
+public MagicBean magicBean() {
+    // ...
+}
+```
+
+MagicExistCondition 类必须实现 Condition 接口：
+
+```java
+public interface Condition {
+    boolean matches(ConditionContext ctxt, AnnotatedTypeMetadata metadata);
+}
+```
+
+例如：
+
+```java
+public class MagicExistCondition implements Condition {
+    public boolean matches(ConditionContext ctxt, AnnotatedTypedMetadata metadata) {
+        // 检查环境变量中是否包含 magic 字段，从而决定是否创建 bean
+        Environment env = ctxt.getEnvironment();
+        return env.containsProperty("magic");
+    }
+}
+```
+
+除了获取环境变量，你还可以利用 ConditionContext 的其他方法，检查某个 bean 是否存在，检查资源，检查某些类是否存在，从而为 bean 是否创建提供依据。
+
+AnnotatedTypedMetadata 则能够让你检查方法的注解。
+
+### 处理自动装配的歧义性
+
+之前我们已经讨论过，在自动装配时，如果有不止一个 bean 能够匹配结果，Spring 会无法装配，精确地说，此时 Spring 会抛出 NoUniqueBeanDefinitionException 异常。
+
+解决上述问题的一个方法是设置首选(primary)bean：
+
+```java
+// 将优先使用 IceCream 作为甜点
+@Component
+@Primary
+public class IceCream implements Dessert {
+    // ...
+}
+
+@Component
+public class Cookies implements Dessert {
+    // ...
+}
+```
+
+Primary bean 的问题在于，当有多个 Primary Bean 的时候，Spring 又会面临不知道该选谁的问题，这种情况下你可以使用 `@Qualifier` 注解来明确告知 Spring 此次要绑定的依赖是谁：
+
+```java
+@Autowired
+@Qualifier("iceCream")
+public void setDessert(Dessert dessert) {
+    this.dessert = dessert;
+}
+```
+
+### bean 的作用域
+
+之前我们创建的 bean 都是单例形式的，也就是说不管注入多少次，每次所注入的 bean 都是同一个对象。
+
+Spring 定义了多种作用域，可以基于这些作用域来创建 bean，包括：
+- 单例 (Singleton): 在整个应用中，只创建 bean 的一个实例；
+- 原型 (Prototype): 每次注入或者通过 Spring 应用上下文获取的时候，都会创建一个新的 bean 实例；
+- 会话 (Session) : 在 Web 应用中，为每个会话创建一个 bean 实例；
+- 请求 (Request) : 在 Web 应用中，为每个请求创建一个 bean 实例；
+
+默认情况的作用域是 Singleton ，你可以通过 `@Scope` 注解来指定其它的作用域：
+
+```java
+// 使用组件扫描
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public class Notepat {
+    // ...
+}
+
+// 在 JavaConfig 配置类里配置
+@Bean
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
+public Notepad notepad() {
+    return new Notepad();
+}
+```
+
+XML 里也可以配置，这里不啰嗦了。
+
+会话和请求作用域暂不描述，以后进行 Web 开发后再回来看这部分内容。
+
+### 运行时值注入
+
+我们可以在装配 bean 时，为 bean 注入一些值：
+
+```java
+@Bean
+public CompactDisc sgtPeppers() {
+    return new BlankDisc("Sgt. Pepper's Lonely Hearts Club Band", "The Beatles");
+}
+```
+
+问题在于，有时候我们希望这些值是在运行时才确定的，而不是硬编码在 JavaConfig 或 XML 中。Spring 提供了两种在运行时求值的方式：
+- 属性占位符(Property placeholder);
+- Spring 表达式语言(SpEL);
+
+先看看简单的属性占位符：
+
+```java
+@Configuration
+@PropertySource("classpath:/com/dada/learning/app.properties")
+public class ExpressiveConfig {
+
+    @Autowired
+    Environment env;
+
+    @Bean
+    public BlankDisc disc() {
+        return new BlankDisc(env.getProperty("disc.title"), env.getProperty("disc.artist"));
+    }
+}
+```
+
+我们在 `app.properties` 文件里配置了两个属性，内容大致如下：
+
+```
+disc.title = Sgt. Peppers Lonely Hearts Club Band
+disc.artist = The Beatles
+```
+
+`@PropertySource` 注解引用了 `app.properties` 文件，它会把属性文件里的内容加载到 Spring 的 Environment 中，随后我们可以在配置代码里通过 `env.getProperty()` 方法来获取这些属性。
+
+类似的，在 XML 配置中也可以使用属性占位符：
+
+```xml
+<bean id="sgtPeppers"
+      class="soundsystem.BlankDisc"
+      c:_title="${disc.title}"
+      c:_artist="${disc.artist" />
+```
+
+对于组件扫描和自动装配的机制，则可以使用 `@Value` 注解：
+
+```java
+public BlankDisc(@Value("${disc.title}") String title,
+                 @Value("${disc.artist}") String artist) {
+    //...
+}
+```
+
+### 使用 Spring 表达式语言进行装配
+
+除了使用属性占位符，你还可以使用 SpEL(Spring Expression Language, Spring 表达式语言)来进行装配。相较于属性占位符的方式，它更加灵活和强大。
+
+SpEL 拥有很多特性，包括：
+- 使用 bean 的 ID 来引用 bean;
+- 调用方法和访问对象的属性；
+- 对值进行算数、关系和逻辑运算；
+- 正则表达式匹配；
+- 集合操作；
+
+SpEL 表达式需要放在 `#{...}` 中，表达式体并不难理解：
+
+```java
+// 最简单的表达式
+#{1}
+
+// 获取 ID 为 sgtPeppers 的 bean 的 artist 属性
+#{sgtPeppers.artist}
+
+// 像占位符那样引用系统属性
+#{systemProperties['dist.title']}
+
+public BlankDisc(@Value("#{systemProperties['dist.title']}"),
+                 @Value("#{systemProperties['dist.artist']}"))
+
+// 调用 bean 的方法
+#{artistSelector.selectArtist().toUpperCase()}
+
+// 使用 ? 操作符，当 selectArtist() 返回 null 时，toUpperCase() 不会被调用
+#{artistSelector.selectArtist()?.toUpperCase()}
+
+// 访问类作用域的方法和常量
+#{T(java.lang.Math).random()}
+
+// 使用运算符
+#{2 * T(Java.lang.Math).PI * circle.radius}
+#{counter.total == 100}
+#{scoreboard.score > 1000 ? "Winner!" : "Loser"}
+
+// 如果 disc.title 为 null, 则为其赋一个值
+#{disc.title ?: 'Rattle and Hum'}
+
+// 正则表达式
+#{admin.email matches '[a-ZA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.com'}
+
+// 获取集合元素, [] 运算符
+#{jukebox.songs[4].title}
+
+// 过滤集合元素, .?[] 运算符
+#{jukebox.songs.?[artist eq 'Aerosmith']}
+```
+
+
+## 面向切面的 Spring
+
+
