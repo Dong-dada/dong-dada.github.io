@@ -149,6 +149,9 @@ git checkout <branch_name>
 // 创建一个本地分支，然后切换到它上面
 git checkout -b <branch_name>
 
+// 创建一个本地分支，它跟踪指定的远程分支，然后切换到这个本地分支上
+git checkout -b <local_branch_name> <remote_branch_name>
+
 // 删除本地分支(已经合并过代码的分支)
 git branch -d <branch_name>
 
