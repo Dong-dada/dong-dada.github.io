@@ -72,29 +72,29 @@ Spock 将单元测试中的不同阶段用相应的 block 来进行标识，对�
 
 ```groovy
 def "some complex feature" () {
-    setup "prepare some account":
+    setup: "prepare some account"
     // ...
 
     // 进行多种不同的测试
-    when "login with email account":
+    when: "login with email account"
     // ...
-    then "login success":
-    // ...
-
-    when "login with phone number account:
-    // ...
-    then "login success":
+    then: "login success"
     // ...
 
-    expect "login with invalid account should be failed:
+    when: "login with phone number account
+    // ...
+    then: "login success"
     // ...
 
-    cleanup "clean login status":
+    expect: "login with invalid account should be failed
+    // ...
+
+    cleanup: "clean login status"
     // ...
 }
 
 def "some data drive feature" () {
-    expect "get correct maximum":
+    expect: "get correct maximum"
     Math.max(a, b) == c
 
     where:
