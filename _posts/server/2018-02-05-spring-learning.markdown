@@ -323,3 +323,119 @@ public BlankDisc(@Value("#{systemProperties['dist.title']}"),
 #{jukebox.songs.?[artist eq 'Aerosmith']}
 ```
 
+
+## 面向切面编程
+
+正如文章一开始的介绍， AOP 可以实现横切关注点与它们所影响的对象之间的解耦。
+
+![]( {{site.url}}/asset/spring-aspect.png )
+
+### AOP 术语
+
+- 通知(Advise) : 切面所需要完成的工作被称为通知；
+- 连接点(Join point): 连接点表示所有潜在的值得关注的时机；
+- 切点(Pointcut): 切点表示切面所关心的连接点；
+- 切面(Aspect): 通知和切点加起来被称为切面，其中包含了要干什么、在何处、在何时；
+- 引入(Introduction): 引入允许我们向现有的类添加新方法或属性；
+- 织入(Weaving): 织入是指把切面应用到目标对象并创建新的代理对象的过程；
+
+### Spring 支持 AOP 的基本原理
+
+Spring 并不是唯一的 AOP 框架，还有另一种比较出名的框架叫做 AspectJ, AspectJ 是在编译期进行切面的织入的，而 Spring 则是在运行期完成织入，这使得 Spring 对 AOP 的支持没有 AspectJ 那么强大。
+
+![]( {{site.url}}/asset/spring-aspect-weaving.png )
+
+上图介绍了 Spring 支持 AOP 的基本原理。经过织入以后，Spring 会把目标对象用代理类包裹，这个代理类中的所有方法调用，都会先调用切面中的通知方法。
+
+### 切点的语法
+
+切点的作用在于缩小连接点的范围，显然并不是所有的连接点都是值得我们关注的，因此需要通过定义切点来选择感兴趣的关注点。
+
+Spring AOP 借鉴了 AspectJ 中的切点表达式语言来定义切点。具体说来 Spring AOP 支持如下的切点指示器。
+- `execution()`: 用于匹配是连接点的执行方法；
+- `arg()`: 限制连接点匹配参数为指定类型的执行方法；
+- `arg()`: 限制连接点匹配参数为指定类型的执行方法；
+- `@args()`: 限制连接点匹配参数由指定注解标注的执行方法；
+- `this()`: 限制连接点匹配 AOP 代理的 bean 引用为指定类型的类；
+- `target`: 限制连接点匹配目标对象为指定类型的类；
+- `@target()`: 限制连接点匹配特定的执行对象，这些对象对应的类要具有指定类型的注解；
+- `within()`: 限制连接点匹配指定的类型；
+- `@within()`: 限制连接点匹配指定注解所标注的类型(当使用 Spring AOP 时，方法定义在由指定的注解所标注的类里)；
+- `@annotation`: 限制匹配带有指定注解的连接点；
+
+上述指示器中，只有 `execution()` 是实际执行匹配的，其它指示器都是用来限制匹配的。也就是说我们首先用 execution 来执行匹配，然后用其它指示器来限制所要匹配的连接点有哪些。且看如下例子：
+
+![]( {{site.url}}/asset/spring-aspect-pointcut-expression.jpg )
+
+上述表达式描述了 `concert.Performance.perform()` 切点，当改方法被执行时，切面中的指定方法将被调用。
+
+### 例子
+
+```java
+package com.dada.learning;
+
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.*;
+import org.springframework.stereotype.Component;
+
+@Aspect
+@Component
+public class Audience {
+
+    @Before("execution(* com.dada.learning.Performance.perform( .. ))")
+    public void silenceCellPhone() {
+        System.out.println("Silencing cell phones");
+    }
+
+    // 除了直接写切点表达式，也可以先定义一个切点，然后重用它
+    @Pointcut("execution(* com.dada.learning.Performance.perform( .. ))")
+    public void performance() {}
+
+    @Before("performance()")
+    public void takeSeats() {
+        System.out.println("Taking seats");
+    }
+
+    @AfterReturning("performance()")
+    public void applause() {
+        System.out.println("CLAP CLAP CLAP!!!");
+    }
+
+    @AfterThrowing("performance()")
+    public void demandRefund() {
+        System.out.println("Demand a refund");
+    }
+
+    @Around("performance()")
+    public void watchPerformance(ProceedingJoinPoint joinPoint) {
+        System.out.println("before perform");
+        try {
+            joinPoint.proceed();
+            System.out.println("after perform");
+        } catch (Throwable throwable) {
+            System.out.println("perform failed!");
+        }
+    }
+}
+```
+
+```java
+package com.dada.learning;
+
+import org.springframework.context.annotation.ComponentScan;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+
+@Configuration
+@EnableAspectJAutoProxy // 开启 AspectJ 的自动代理机制，将自动为 @Aspect 修饰的类创建代理类
+@ComponentScan
+public class PerformanceConfig {
+}
+```
+
+`Audience` (观众)是我们定义的切面类，例子中展示了切点表达式的使用、自定义切点、环绕通知这些技术，在 Performance (演出) 开始的前后，观众这个切面会完成一系列自己的事情。
+
+`PerformanceConfig` 是 Java 配置类，唯一值得注意的是 `@EnableAspectJAutoProxy` 注解，该注解将开启自动代理机制，以便自动将 Audience 织入到 Performance 对象中。
+
+XML 的示例就不介绍了，用到的时候去看书吧。
+
