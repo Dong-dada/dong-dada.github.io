@@ -362,11 +362,178 @@ aes128_cmac 是一个计算签名的算法，它将返回一个经过签名的 1
 
 接着，使用 CMAC 算法进行计算；
 
+```
 cmacS = aes128_cmac(SNwkSIntKey, B1 | msg)
 cmacF = aes128_cmac(FNwkSIntKey, B0 | msg)
+```
 
 如果是 LoRaWAN 1.0 协议，则 MIC = cmacF[0..3];
 
 如果是 LoRaWAN 1.1 协议，则 MIC = cmacS[0..1]cmacF[0..1]
 
+
+## MAC 指令
+
+MAC(Medium access control, 介质访问控制)，Network Server 可以通过 MAC 指令来对终端设备进行一些控制。
+
+MAC 指令可以保存在 FOpts 字段里(不能超过 15 byte)，也可以用 FPort 0 标识，然后放在 FRMPayload 里(不能超过 FRMPayload 的最大大小)。
+
+MAC 指令由 一字字节的 CID(command identifier) 以及可选的一些指令相关参数组成。
+
+MAC 指令序列应该按照同样的顺序被回应。并且一个 frame 里所包含的 MAC 指令，其回复也应该在容纳在同一个 frame 里。
+
+以下是所有 MAC 指令的列表：
+
+| CID  | Command | Transmitted by End-Device | Transmitted by Gateway | Short Description |
+| ---- | ------- | ------------------------- | ---------------------- | ----------------- |
+| 0x01 | ResetInd            | x |   | ABP 终端发给网络，要求重置网络，协商协议版本 |
+| 0x01 | ResetConf           |   | x | 网络已经收到 ResetInd 指令 |
+| 0x02 | LinkCheckReq        | x |   | 终端要求检查网络连接是否正常 |
+| 0x02 | LinkCheckAns        |   | x | 回应 LinkCheckReq 指令。包含了接收到的信号强度评估。 |
+| 0x03 | LinkADRReq          |   | x | 请求终端改变 data rate, transmit power, repetition rate 或 channel |
+| 0x03 | LinkADRAns          | x |   | 已经收到了 LinkADRReq |
+| 0x04 | DutyCycleReq        |   | x | 设置终端的最大 transmit duty-cycle |
+| 0x04 | DutyCycleAns        | x |   | 已经收到了 DutyCycleReq |
+| 0x05 | RXParamSetupReq     |   | x | 设置 reception slots 参数 |
+| 0x05 | RXParamSetupAns     | x |   | 已经收到了 RXParamSetupReq |
+| 0x06 | DevStatusReq        |   | x | 请求终端状态 |
+| 0x06 | DevStatusAns        | x |   | 返回终端状态，比如电池状态、demodulation margin |
+| 0x07 | NewChannelReq       |   | x | 创建或修改一个 radio channel 的定义 |
+| 0x07 | NewChannelAns       | x |   | 已经收到了 NewChannelReq |
+| 0x08 | RxTimingSetupReq    |   | x | 设置 reception slots 的 timing |
+| 0x08 | RxTimingSetupAns    | x |   | 已经收到了 RxTimingSetupReq 指令 |
+| 0x09 | TxParamSetupReq     |   | x | Network Server 使用这个指令来设置最大允许的 dwell time 和 Max EIRP |
+| 0x09 | TxParamSetupAns     | x |   | 已经收到了 TxParamSetupReq |
+| 0x0A | DlChannelReq        |   | x | Modifies the definition of a downlink RX1 radio channel by shifting the downlink frequency from the uplink frequencies (i.e. creating an asymmetric channel) |
+| 0x0A | DlChannelAns        | x |   | 已经收到了 DlChannelReq |
+| 0x0B | RekeyInd            | x |   | OTA 设备发送该指令来触发 security context update(rekey) |
+| 0x0B | RekeyConf           |   | x | 已经收到了 RekeyInd 指令 |
+| 0x0C | ADRParamSetupReq    |   | x | Network Server 使用该指令来设置终端的 ADR_ACK_LIMT 和 ADR_ACK_DELAY 参数 |
+| 0x0C | ADRParamSetupAns    | x |   | 已经收到了 ADRParamSetupReq 指令 |
+| 0x0D | DeviceTimeReq       | x |   | 终端发送该指令来请求当前时间 |
+| 0x0D | DeviceTimeAns       |   | x | network 回应 DeviceTimeReq 指令 |
+| 0x0E | ForceRejoinReq      |   | x | 网络强制要求设备立刻 rejoin |
+| 0x0F | RejoinParamSetupReq |   | x | 网络发送给设备重连周期参数 |
+| 0x0F | RejoinParamSetupAns | x |   | 已经收到 RejoinParamSetupReq |
+| 0x80 tp 0xFF | proprietary | x | x | 留给专有网络做扩展 |
+
+接下来逐一介绍各个 MAC 指令。
+
+### Reset indication commands (ResetInd, ResetConf)
+
+这两个 MAC 指令只针对通过 ABP 方式进行入网的终端设备有效。
+
+终端设备发送 ResetInd 指令，表示它已经被重置回了默认的 MAC 和 radio 参数，比如换电池导致设备的 MAC 层上下文丢失。
+
+### Link Check commands (LinkCheckReq, LinkCheckAns)
+
+终端设备通过该指令来向 Server 询问连接情况。
+
+LinkCheckReq 没有 payload; LinkCheckAns 的 payload 如下：
+
+```
++-------------+--------+-------+
+| Size(bytes) | 1      | 1     |
+| payload     | Margin | GwCnt |
++-------------+--------+-------+
+```
+
+Margin 字段的意义是 demodulation margin(解调余量)， 它表示的是最后一次成功收到 LinkCheckReq 指令后以 dB 为单位的 link margin。总之感觉是一个网络质量的标志。
+
+GwCnt 表示有个网关收到了该终端的 LinkCheckReq 指令。
+
+### Link ADR commands(LinkADRReq, LinkADRAns)
+
+LinkADRReq 是网络发给终端的，表示希望执行 rate adaptation. 它的 payload 为：
+
+```
++-------------+------------------+--------+------------+
+| Size(bytes) | 1                | 2      | 1          |
+| payload     | DataRate_TxPower | ChMask | Redundancy |
++-------------+------------------+--------+------------+ 
+```
+
+DataRate_TxPower 的高 4 位是 DataRate, 低 4 位是 TxPower. ChMask 中的比特位标识了基站 16 个 channel 中，哪些 channel 对 DataRate_TxPower 的设定来说是可用的。
+
+Redundancy 是冗余的意思，其字段如下：
+
+```
++------+-----+------------+---------+
+| Bits | 7   | [6:4]      | [3:0]   |
+|      | RFU | ChMaskCntl | NbTrans |
++------+-----+------------+---------+
+```
+
+**NbTrans** 字段标识了 uplink frame 重发的次数，它适用于 "confirmed" 和 "unconfirmed" uplink frames. 默认值为 1，即每个 uplink frame 只会传送一次。可选范围为 [1..15].
+
+ChMaskCntl 字段标识了之前说的 ChMask 字段应该如何解释。
+
+出于设置终端 channel mask 的目的，Network Server 可以在一个 downlink frame 里包含多个连续的 LinkADRReq 指令，这些指令合在一起被视为一个原子指令。终端处理完毕后应该用一个 LinkADRAns 指令来回复，表示接受或拒绝这一系列指令。
+
+LinkADRAns 指令的 payload 只有一个字节，其内容如下：
+
+```
++------+-------+-----------+---------------+------------------+
+| Bits | [7:3] | 2         | 1             | 0                |
+|      | RFU   | Power ACK | Data rate ACK | Channel mask ACK |
++------+-------+-----------+---------------+------------------+
+```
+
+- Power ACK bit: 
+    + 为 0 表示设备无法降低功率，调整 TxPower 的操作失败了；
+    + 为 1 表示设备可以在该功率下运行；
+- Data rate ACK bit:
+    + 为 0 表示设备不支持要设置的 data rate, 调整 data rate 的操作失败了；
+    + 为 1 表示设备成功地切换到了对应的 data rate;
+- Channel Mask ACK bit:
+    + 为 0 表示发来的 channel mask 无效；
+    + 为 1 表示 channel state 已经设置成功；
+
+### End-Device Transmit Duty Cycle (DutyCycleReq, DutyCycleAns)
+
+DutyCycleReq 用于设置终端汇总的占空比。汇总占空比相当于所有 sub-bands 的占空比。其 payload 为：
+
+```
++------+-----+-----------+
+| Bits | 7:4 | 3:0       |
+|      | RFU | MaxDCycle |
++------+-----+-----------+
+```
+
+### Receive Windows Parameters (RxParamSetupReq, RxParamSetupAns)
+
+RxParamSetupReq 指令可以改变每个 uplink frame 的第二个接收窗口 RX2 的频率和 data rate. 这个指令还可以在 uplink 和第一个接收窗口 RX1 之间执行一个偏移。
+
+其 payload 如下：
+
+```
++-------------+------------+-----------+
+| Size(bytes) | 1          | 3         |
+| payload     | DLSettings | Frequency |
++-------------+------------+-----------+
+```
+
+DLSettings 的结构如下：
+
+```
++------+-----+-------------+-------------+
+| Bits | 7   | 6:4         | 3:0         |
+|      | RFU | RX1DRoffset | RX2DataRate |
++------+-----+-------------+-------------+
+```
+
+RX1DRoffset 字段设置了在 RX1 窗口中 uplink data rate 和 downlink data rate 之间的偏移，默认值是 0. The offset is used to take into account maximum power density constraints for base stations in some regions and to balance the uplink and downlink radio link margins。
+
+Rx2DataRate 字段定义了第二个接收窗口中，downlink 所使用的 data rate. frequency 字段相当于第二个接收窗口中所使用的频率。
+
+RxParamSetupAns 里的 payload 如下：
+
+```
++------+-----+-----------------+-------------------+-------------+
+| Bits | 7:3 | 2               | 1                 | 0           |
+|      | RFU | RX1DRoffset ACK | RX2 Data rate ACK | Channel ACK |
++------+-----+-----------------+-------------------+-------------+
+```
+
+可以看到上述有几个位标记，用来标记几个设置是否生效。
 
