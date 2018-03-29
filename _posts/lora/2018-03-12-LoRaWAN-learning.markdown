@@ -537,3 +537,10 @@ RxParamSetupAns 里的 payload 如下：
 
 可以看到上述有几个位标记，用来标记几个设置是否生效。
 
+### End-Device Status (DevStatusReq, DevStatusAns)
+
+Network Server 可以通过发送 DevStatusReq 指令来获取终端的状态。终端收到此指令后回复 DevStatusAns 指令，其内容为电池电量及 Margin?
+
+### Creation/Modification of a Channel (NewChannelReq, NewChannelAns, DlChannelReq, DlChannelAns)
+
+NewChannelReq 指令可以创建或修改 Channel. 这个指令可以设置 uplink 时所使用的频点和 data rate 的范围。
