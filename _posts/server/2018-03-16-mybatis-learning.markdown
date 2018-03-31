@@ -92,7 +92,7 @@ INSERT INTO country ('name', 'code') VALUES ('中国', 'CN'), ('美国', 'US'), 
 </mapper>
 ```
 
-可以看到 mapper 文件里把 sql 语句转化成了一个类似于方法描述的东西，先执行 sql 语句，然后发返回值存储到 `com.dada.learning.mybatis.model.Country` 这个对象里。
+可以看到 mapper 文件里把 sql 语句转化成了一个类似于方法描述的东西，先执行 sql 语句，然后把返回值存储到 `com.dada.learning.mybatis.model.Country` 这个对象里。
 
 ### Model 对象
 
@@ -171,7 +171,7 @@ public class CountryMapperTest {
 
 上一节中调用 sql 语句，使用的是 `SqlSession.selectList("selectAll")` 这样的形式，MyBatis 3.0 开始，支持把 mapper 文件映射到一个接口上，你可以通过接口来调用 mapper 中定义的 sql 语句，更简单直接一些。
 
-注意之前 mapper 中有一个 namespace 属性：
+注意之前 mapper 中有一个 namespace 属性，指定了 mapper 文件映射的接口名：
 
 ```xml
 <mapper namespace="com.dada.learning.mybatis.mapper.CountryMapper">
@@ -179,7 +179,7 @@ public class CountryMapperTest {
 </mapper>
 ```
 
-上一节的例子中没有提供接口定义，你可以创建一个接口：
+不过上一节的例子中没有提供接口定义，因此不能通过接口来访问，不过你可以创建一个接口：
 
 ```java
 package com.dada.learning.mybatis.mapper;
@@ -286,7 +286,74 @@ List<Country> countryList = countryMapper.selectAll();
 </mapper>
 ```
 
-其实跟之前 select 差不多。不过上面的例子没有考虑到返回主键的情况——有时候我们需要先插入一个数据，得到这次插入后生成的主键，然后拿着这个主键做进一步的操作。
+其实跟之前 select 差不多。不过上面的例子没有考虑到主键自增的情况——我们需要显式传入 id.
 
+有时候可能希望利用数据库的自增主键，而不是自己输入主键，插入数据完成后，我们还希望能够拿到自增的主键值以便进一步操作。这种情况可以通过设置 insert 标签的 useGeneratedKeys 属性来完成：
+
+```xml
+<mapper namespace="com.dada.learning.mybatis.mapper.UserMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        insert into sys_user (
+            user_name, user_password, user_email,
+            user_info, head_img, create_time)
+        values (
+            #{userName}, #{userPassword}, #{userEmail},
+            #{userInfo}, #{headImg, jdbcType=BLOB}, #{createTime, jdbcType=TIMESTAMP})
+    </insert>
+</mapper>
+```
+
+useGeneratedKey 属性设置后，MyBatis 会使用 JDBC 的 getGeneratedKeys 方法来获取由数据库内部生成的主键，然后将主键值赋值给 keyProperty 配置的 id 属性。以下是测试代码：
+
+```java
+public void testInsert() {
+    SqlSession sqlSession = sqlSessionFactory.openSession();
+    UserMapper userMapper = sqlSession.getMapper(UserMapper.class);
+
+    SysUser user = new SysUser();
+    user.setUserName("dongdada");
+    user.setUserPassword("123456");
+    user.setUserEmail("dongdada@test.com");
+    user.setUserInfo("test info");
+    user.setHeadImg(new byte[]{1, 2, 3});
+    user.setCreateTime(new Date());
+
+    // 插入数据库
+    int result = userMapper.insert(user);
+
+    // result 表示影响的数据库行数
+    Assert.assertEquals(result, 1);
+
+    // 由于打开了 getGeneratedKeys 属性，因此插入之后可以获取到自增的主键
+    Assert.assertNotNull(user.getId());
+}
+```
+
+### update
+
+```xml
+<mapper namespace="com.dada.learning.mybatis.mapper.UserMapper">
+    <update id="updateById">
+        update sys_user
+        set user_name = #{userName},
+            user_password = #{userPassword},
+            user_email = #{userEmail},
+            user_info = #{userInfo},
+            head_img = #{headImg, jdbcType = BLOB},
+            create_time = #{createTime, jdbcType = TIMESTAMP}
+        where id = #{id}
+    </update>
+</mapper>
+```
+
+### delete
+
+```xml
+<mapper namespace="com.dada.learning.mybatis.mapper.UserMapper">
+    <delete id = "deleteById">
+        delete from sys_user where id = #{id}
+    </delete>
+</mapper>
+```
 
 
