@@ -63,4 +63,8 @@ public class ServletInitializer extends AbstractAnnotationConfigDispatcherServle
 
 不过我猜大部分场景下一个 Web App 里只要有一个 DispatcherServlet 就可以了。如果需要多个 DispatcherServlet, 就不能用 `AbstractAnnotationConfigDispatcherServletInitializer` 了，得用别的办法。
 
+参考自：
+- [getServletConfigClasses() vs getRootConfigClasses()](https://stackoverflow.com/questions/35258758/getservletconfigclasses-vs-getrootconfigclasses-when-extending-abstractannot)
+- [Why use Spring ApplicationContext hierarchies?](https://stackoverflow.com/questions/5132604/why-use-spring-applicationcontext-hierarchies/5132637#5132637)
+
 
