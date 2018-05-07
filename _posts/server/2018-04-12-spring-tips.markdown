@@ -68,3 +68,76 @@ public class ServletInitializer extends AbstractAnnotationConfigDispatcherServle
 - [Why use Spring ApplicationContext hierarchies?](https://stackoverflow.com/questions/5132604/why-use-spring-applicationcontext-hierarchies/5132637#5132637)
 
 
+## RedisTemplate 中使用 GenericJackson2JsonRedisSerializer 的一些细节
+
+Spring 中使用缓存，需要进行如下配置:
+
+```java
+@Configuration
+@ComponentScan
+@EnableCaching
+public class CacheConfiguration {
+
+    /**
+     * RedisConnectionFactory 这个 Bean 提供了连接到 Redis 数据库的能力
+     */
+    @Bean
+    public RedisConnectionFactory redisConnectionFactory() {
+        JedisConnectionFactory jedisConnectionFactory = new JedisConnectionFactory();
+        jedisConnectionFactory.setHostName("localhost");
+        jedisConnectionFactory.setPort(6379);
+        return jedisConnectionFactory;
+    }
+
+    @Bean(name = "tempCacheRedisTemplate")
+    public RedisTemplate<String, String> tempCacheRedisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        RedisTemplate<String, String> template = new RedisTemplate<String, String>();
+        template.setConnectionFactory(redisConnectionFactory);
+
+        template.setKeySerializer(new StringRedisSerializer());
+
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+        objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+        objectMapper.registerModule(new JavaTimeModule());
+        template.setValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
+
+        template.afterPropertiesSet();
+        return template;
+    }
+
+    @Bean(name = "tempCacheManager")
+    @Primary
+    public CacheManager tempCacheManager(@Qualifier("tempCacheRedisTemplate") RedisTemplate redisTemplate) {
+        RedisCacheManager redisCacheManager = new RedisCacheManager(redisTemplate);
+        redisCacheManager.setDefaultExpiration(60*60);
+        redisCacheManager.setTransactionAware(true);
+        return redisCacheManager;
+    }
+}
+```
+
+配置完之后才可以使用 `@Cacheable`, `@CachePut`, `@CacheEvict` 等注解。
+
+值得注意的是配置 RedisTemplate 的一段代码：
+
+```java
+ObjectMapper objectMapper = new ObjectMapper();
+
+// 把 Java 类型信息保存到生成的 Json 里面，以便反序列化时 Jackson 能够得到类型
+objectMapper.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL, JsonTypeInfo.As.PROPERTY);
+
+// 设置日期格式
+objectMapper.setDateFormat(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"));
+
+// JavaTimeModule 这个模块可以处理 ZonedDateTime 这种 Java8 里的时间类型
+objectMapper.registerModule(new JavaTimeModule());
+
+// 用 ObjectMapper 来初始化 GenericJackson2JsonRedisSerializer
+template.setValueSerializer(new GenericJackson2JsonRedisSerializer(objectMapper));
+```
+
+之前由于没有配置 `enableDefaultTyping`, 导致对象可以序列化成 json 后保存到 redis 里，但取不出来，因为 json 里没有包含类型信息，jackson 无法完成反序列化；
+
+另外由于没有配置 `JavaTimeModule`, 导致 ZonedDateTime 序列化后的 json 很大(包含了详细的成员信息)。
+
