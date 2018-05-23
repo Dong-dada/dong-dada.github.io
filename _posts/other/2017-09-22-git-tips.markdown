@@ -319,3 +319,50 @@ Switched to a new branch 'version2'
 ```
 
 当然，如果在这之后又进行了一次提交，version2 分支会因为改动向前移动了，那么 version2 分支就会和 v2.0.0 标签稍微有些不同，这时就应该当心了。
+
+
+## rebase 在分支合并中的使用
+
+先说明一点，branch 只是一个指针，删除一个分支并不意味着这个分支下的所有 commit 都会删除，只是删掉了分支指针而已。
+
+使用 `git merge` 进行完分支合并后，一般会生成一个新的 merge commit. 这个 commit 只是一个标识，而不是把所有 commit 的内容打包在一起形成一个新的提交。这意味着合并分支完成后，之前的所有 commit 都还在：
+
+![]( {{site.url}}/asset/git-tips-merge.png )
+
+即使删掉分支，commit 也是在的：
+
+![]( {{site.url}}/git-tips-delete-branch.png )
+
+上图的提交记录，有点不太好看，两个分支在并行开发，后面再去读的时候，容易在两个分支间跳来跳去。
+
+所以可以在 merge 之前，先把 master 的内容 rebase 到 feature 分支上：
+
+```
+git checkout feature_01
+git rebase master
+```
+
+rebase 操作将首先跳到 master 分支的最新 commit 上，然后基于它把 feature_01 上的所有 commit 依次重放一遍。重放的过程中可能有冲突需要解决。
+
+rebase 前:
+
+![]( {{site.url}}/asset/git-tips-before-rebase.png )
+
+rebase 后:
+
+![]( {{site.url}}/asset/git-rebase-after.png )
+
+可以看到 rebase 之后 feature 分支的所有提交都排到了 master 分支前面，并且 commit id 发生了变化。这时候再切回 master 进行 merge 操作：
+
+```
+git checkout master
+git merge --no-ff feature_01
+```
+
+就会生成如下记录：
+
+![]( {{site.url}}/asset/git-tips-merge-after-rebase.png )
+
+从 master 分支看来，feature 分支的开发就像是串行开发一样，更容易理解一些。
+
+不过 rebase 还是要慎用，因为会修改原先的 commit, 不小心搞错了可能比较麻烦吧。。。
