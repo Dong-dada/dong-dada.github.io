@@ -366,3 +366,20 @@ git merge --no-ff feature_01
 从 master 分支看来，feature 分支的开发就像是串行开发一样，更容易理解一些。
 
 不过 rebase 还是要慎用，因为会修改原先的 commit, 不小心搞错了可能比较麻烦吧。。。
+
+参考自 [这篇文章](http://hungyuhei.github.io/2012/08/07/better-git-commit-graph-using-pull---rebase-and-merge---no-ff.html)
+
+
+## zsh 查看 git log 的问题
+
+在 mac 上用了 zsh 之后，发现每次查看 git log 都会打开一个类似于 vi 的编辑界面，而不是向以前用 bash 那样直接展示到命令行里面。有时候需要复制一些 commit id 不太方便。
+
+一开始查没找到怎么设置，以为是 zsh 的问题。感谢同事发现了设置的方法:
+
+```
+git config --global --replace-all core.pager "less -F -X"
+```
+
+可以看到，其实是要设置 git 的 core.paper, 其中 less 是一个命令行下的查看工具, -F 表示如果屏幕可以容纳得下内容，就把内容直接打印到屏幕，而不是在 less 里展示, -X 表示强制展示到屏幕(大概是这个意思)。
+
+设置完毕后 git log 就可以直接展示到 zsh 命令行里了。
