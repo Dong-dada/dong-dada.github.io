@@ -1,0 +1,28 @@
+---
+layout: post
+title:  "JavaScript 小知识点"
+date:   2018-05-29 11:44:30 +0800
+categories: web
+---
+
+* TOC
+{:toc}
+
+## 一些 JS 语法：
+
+```js
+{ offset, limit } = state;
+
+// 上述代码等价于
+offset = state.offset
+limit = state.limit
+```
+
+```js
+{name: a, address: {line1: b}} = foo;
+
+// 上述代码等价于
+a = foo.name;
+b = foo.address.line1;
+```
+
