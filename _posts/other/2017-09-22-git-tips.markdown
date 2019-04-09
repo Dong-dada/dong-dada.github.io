@@ -307,6 +307,8 @@ git tag -a v1.4 -m 'my version 1.4'     // 为当前 commit 打上标签，v1.4 
 git tag -a v1.5 9fceb02                 // 为指定 commit 打上标签，不写 -m 的话，会弹出编辑器让你输入注释
 
 git show v1.4           // 显示某个标签的信息，包括日期、注释、commit id
+
+git push origin v1.4    // 向远程分支 push 标签
 ```
 
 ### checkout 标签
