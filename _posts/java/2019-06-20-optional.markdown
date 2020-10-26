@@ -1,0 +1,35 @@
+## Optional 表达了 "这个值是可选的", "这个值可能没有" 这件事
+
+```java
+public class Computer {
+    /**
+     * 电脑可能没装声卡
+     */
+    private Optional<Soundcard> soundcard;
+}
+
+public class Soundcard {
+    /**
+     * 声卡可能没有 usb 端口
+     */
+    private Optional<USB> usb;
+}
+```
+
+## Optional 提供的接口，要求你在访问 "可选值" 的时候，必须考虑它 "没有" 的情况，从而避免空指针异常
+
+```java
+{
+    Optional<Soundcard> maybeSoundcard = getSoundcard();
+
+    // 存在的情况下才做某事
+    maybeSoundcard.ifPresent(x -> x.turnOff())
+
+    // 存在且满足一定条件才做某事
+    maybeSoundcard.filter(x -> )
+
+    // 为空的时候返回一个默认值
+    Soundcard soundcard = maybeSoundcard.orElse(new Soundcard("defaut"));
+
+}
+```
