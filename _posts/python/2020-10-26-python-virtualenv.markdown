@@ -26,8 +26,17 @@ source demo-env/bin/activate
 # 在虚拟环境中安装三方库
 pip install pytest
 
+# 在虚拟环境中执行 python 脚本 
+python demo.py
+
 # 退出虚拟环境
 deactivate
+
+# 验证当前是否在虚拟环境中，检查是否有打印 (demo-env)
+pip --version
+
+# 删除虚拟环境
+rm -rf demo-env
 ```
 
 # 步骤
