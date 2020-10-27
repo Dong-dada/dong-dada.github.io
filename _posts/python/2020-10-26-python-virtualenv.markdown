@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Python virtualenv"
-date:   2017-03-20 10:53:30 +0800
+date:   2020-10-26 21:00:30 +0800
 categories: python
 ---
 
