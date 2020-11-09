@@ -1,0 +1,44 @@
+---
+layout: post
+title:  "GDB 小技巧"
+date:   2020-11-06 11:00:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+# 查看变量内容
+
+在断点处直接输入变量名即可。也可以调用变量的方法：
+
+```
+route_config.group()
+"HSF"
+route_config.name()
+"routes"
+route_config.interface()
+"com.demo.OrderService"
+```
+
+
+# STL pretty printer
+
+给 GDB 安装 STL 支持插件，就可以在 GDB 调试时看到 STL 容器的内容。安装方法如下:
+
+下载插件到合适的位置
+
+```
+svn co svn://gcc.gnu.org/svn/gcc/trunk/libstdc++-v3/python
+```
+
+编辑 ~/.gdbinit 文件，添加以下内容(注意 /home/maude/gdb_printers/python 需要替换成插件文件夹所在位置):
+
+```
+python
+import sys
+sys.path.insert(0, '/home/maude/gdb_printers/python')
+from libstdcxx.v6.printers import register_libstdcxx_printers
+register_libstdcxx_printers (None)
+end
+```
