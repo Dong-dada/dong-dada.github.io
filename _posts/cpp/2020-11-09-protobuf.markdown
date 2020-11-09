@@ -1,0 +1,304 @@
+---
+layout: post
+title:  "Protocol Buffer"
+date:   2020-11-06 11:00:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+使用 Protocol Buffer, 首先需要定义 .proto 文件，随后使用 prococ 将 .proto 文件编译成 .h, .cc 文件。
+
+最后需要集成 Protocol Buffer 库，来使用编译好的 .h, .cc 文件。
+
+# proto2 示例
+
+proto2 版本的示例
+
+```proto
+syntax = "proto2";
+
+// 定义该文件所属的 package, 主要是为了解决名称空间冲突问题
+// 对于生成对的 C++ 代码而言，这个 package 名称会体现为 namespace 名称
+// 比如 package envoy.admin.v2alpha, 对应 C++ 代码中的命名空间为 envoy::admin::v2alpha
+package tutorial;
+
+// message 表示一个数据结构，比如这里的 message Person, 表示最终将生成一个 Person 类
+message Person {
+  // 数据结构内的字段类型包括 bool, int32, float, double, string 等，也可以是自定义类型
+  optional string name = 1;
+
+  // "=1", "=2" 是一个 tag, 在二进制编码的时候唯一标识了某个字段，估计是为了节省大小
+  optional int32 id = 2;
+
+  // optional 表示该字段可选，如果设置为 required, 那么表示这个字段是必填的
+  // 如果一个字段被声明为 optional, 但是却没有设置这个值，那么会传入一个默认值:
+  // 数字类型的默认值是 0, 字符串类型的默认值是空字符串, 布尔类型的默认值是 false
+  // 每个字段都必须被 optional, required, repeated 这三者之一来修饰
+  optional string email = 3;
+
+  enum PhoneType {
+    MOBILE = 0;
+    HOME = 1;
+    WORK = 2;
+  }
+
+  message PhoneNumber {
+    optional string number = 1;
+    optional PhoneType type = 2 [default = HOME];
+  }
+
+  // repeated 表示这个字段是个列表
+  repeated PhoneNumber phones = 4;
+}
+
+message AddressBook {
+  repeated Person people = 1;
+}
+```
+
+输入以下命令，就可以在当前目录生成 .h, .cc 文件:
+
+```
+protoc --cpp_out=./ address_book.proto
+```
+
+生成的文件中包含了以下几个方法：
+
+```cpp
+  // name
+  inline bool has_name() const;
+  inline void clear_name();
+  inline const ::std::string& name() const;
+  inline void set_name(const ::std::string& value);
+  inline void set_name(const char* value);
+  inline ::std::string* mutable_name();
+
+  // id
+  inline bool has_id() const;
+  inline void clear_id();
+  inline int32_t id() const;
+  inline void set_id(int32_t value);
+
+  // email
+  inline bool has_email() const;
+  inline void clear_email();
+  inline const ::std::string& email() const;
+  inline void set_email(const ::std::string& value);
+  inline void set_email(const char* value);
+  inline ::std::string* mutable_email();
+
+  // phones
+  inline int phones_size() const;
+  inline void clear_phones();
+  inline const ::google::protobuf::RepeatedPtrField< ::tutorial::Person_PhoneNumber >& phones() const;
+  inline ::google::protobuf::RepeatedPtrField< ::tutorial::Person_PhoneNumber >* mutable_phones();
+  inline const ::tutorial::Person_PhoneNumber& phones(int index) const;
+  inline ::tutorial::Person_PhoneNumber* mutable_phones(int index);
+  inline ::tutorial::Person_PhoneNumber* add_phones();
+```
+
+此外，每个 message 都会包含以下几个方法：
+
+```cpp
+// 检查是否所有 required 字段都被填充了值
+bool IsInitialized() const final
+
+// 返回一个 human-readable 的字符串
+string DebugString() const;
+
+// 拷贝
+void CopyFrom(const Person& from);
+
+// 删除 message 里的所有值
+void Clear();
+```
+
+此外，每个 protocol buffer 类都包含以下几个序列化、反序列化方法：
+
+```cpp
+// 将 message 序列化为 string
+bool SerializeToString(string* output) const;
+
+// 从 string 反序列化出 message
+bool ParseFromString(const string& data);
+
+// 将 message 序列化为 C++ ostream
+bool SerializeToOstream(ostream* output) const;
+
+// 从 ostream 中反序列化出 message
+bool ParseFromIstream(istream* input);
+```
+
+以下是使用生成好的 .h 文件来读写 protocol buffer 消息的示例：
+
+```cpp
+#include <iostream>
+#include <fstream>
+#include <string>
+#include "address_book.pb.h"
+using namespace std;
+
+// 该方法将提示用户输入用户名、电话号码等信息，随后将这些信息填充到 message 里面
+void PromptForAddress(tutorial::Person* person) {
+    cout << "Enter person ID number: ";
+    int id;
+    cin >> id;
+    person->set_id(id);
+    cin.ignore(256, '\n');
+
+    cout << "Enter name: ";
+    getline(cin, *person->mutable_name());
+
+    cout << "Enter email address (blank for none): ";
+    string email;
+    getline(cin, email);
+    if (!email.empty()) {
+        person->set_email(email);
+    }
+
+    while (true) {
+        cout << "Enter a phone number (or leave blank to finish): ";
+        string number;
+        getline(cin, number);
+        if (number.empty()) {
+            break;
+        }
+
+        tutorial::Person::PhoneNumber* phone_number = person->add_phones();
+        phone_number->set_number(number);
+
+        cout << "Is this a mobile, home, or work phone? ";
+        string type;
+        getline(cin, type);
+        if (type == "mobile") {
+            phone_number->set_type(tutorial::Person::MOBILE);
+        } else if (type == "home") {
+            phone_number->set_type(tutorial::Person::HOME);
+        } else if (type == "work") {
+            phone_number->set_type(tutorial::Person::WORK);
+        } else {
+            cout << "Unknown phone type.  Using default." << endl;
+        }
+    }
+}
+
+// 该方法将先从文件中解析出 message, 随后提示用户向通讯录中写入新的联系人信息
+int main(int argc, char* argv[]) {
+    // Verify that the version of the library that we linked against is
+    // compatible with the version of the headers we compiled against.
+    GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+    if (argc != 2) {
+        cerr << "Usage:  " << argv[0] << " ADDRESS_BOOK_FILE" << endl;
+        return -1;
+    }
+
+    tutorial::AddressBook address_book;
+
+    {
+        // Read the existing address book.
+        fstream input(argv[1], ios::in | ios::binary);
+        if (!input) {
+            cout << argv[1] << ": File not found.  Creating a new file." << endl;
+        } else if (!address_book.ParseFromIstream(&input)) {
+            cerr << "Failed to parse address book." << endl;
+            return -1;
+        }
+    }
+
+    // Add an address.
+    PromptForAddress(address_book.add_people());
+
+    {
+        // Write the new address book back to disk.
+        fstream output(argv[1], ios::out | ios::trunc | ios::binary);
+        if (!address_book.SerializeToOstream(&output)) {
+            cerr << "Failed to write address book." << endl;
+            return -1;
+        }
+    }
+
+    // Optional:  Delete all global objects allocated by libprotobuf.
+    google::protobuf::ShutdownProtobufLibrary();
+
+    return 0;
+}
+```
+
+以下代码展示了如何读取 protocol buffer 序列化后的文件：
+
+```cpp
+#include <iostream>
+#include <fstream>
+#include <string>
+#include "addressbook.pb.h"
+using namespace std;
+
+// Iterates though all people in the AddressBook and prints info about them.
+void ListPeople(const tutorial::AddressBook& address_book) {
+  for (int i = 0; i < address_book.people_size(); i++) {
+    const tutorial::Person& person = address_book.people(i);
+
+    cout << "Person ID: " << person.id() << endl;
+    cout << "  Name: " << person.name() << endl;
+    if (person.has_email()) {
+      cout << "  E-mail address: " << person.email() << endl;
+    }
+
+    for (int j = 0; j < person.phones_size(); j++) {
+      const tutorial::Person::PhoneNumber& phone_number = person.phones(j);
+
+      switch (phone_number.type()) {
+        case tutorial::Person::MOBILE:
+          cout << "  Mobile phone #: ";
+          break;
+        case tutorial::Person::HOME:
+          cout << "  Home phone #: ";
+          break;
+        case tutorial::Person::WORK:
+          cout << "  Work phone #: ";
+          break;
+      }
+      cout << phone_number.number() << endl;
+    }
+  }
+}
+
+// Main function:  Reads the entire address book from a file and prints all
+//   the information inside.
+int main(int argc, char* argv[]) {
+  // Verify that the version of the library that we linked against is
+  // compatible with the version of the headers we compiled against.
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+
+  if (argc != 2) {
+    cerr << "Usage:  " << argv[0] << " ADDRESS_BOOK_FILE" << endl;
+    return -1;
+  }
+
+  tutorial::AddressBook address_book;
+
+  {
+    // Read the existing address book.
+    fstream input(argv[1], ios::in | ios::binary);
+    if (!address_book.ParseFromIstream(&input)) {
+      cerr << "Failed to parse address book." << endl;
+      return -1;
+    }
+  }
+
+  ListPeople(address_book);
+
+  // Optional:  Delete all global objects allocated by libprotobuf.
+  google::protobuf::ShutdownProtobufLibrary();
+
+  return 0;
+}
+```
+
+
+# proto3 语法规则
+
+可查阅 [这篇文章](https://developers.google.com/protocol-buffers/docs/proto3)。

@@ -1,0 +1,62 @@
+---
+layout: post
+title:  "Bazel"
+date:   2020-11-04 19:47:30 +0800
+categories: cpp
+---
+
+* TOC
+{:toc}
+
+Bazel 文件结构示例：
+
+```
+.
+├── README.md
+├── WORKSPACE
+├── main
+│   ├── BUILD
+│   ├── hello-greet.cc
+│   ├── hello-greet.h
+│   └── hello-world.cc
+└── lib
+    ├── BUILD
+    ├── hello-time.cc
+    ├── hello-time.h
+    ├── date
+    │   ├── BUILD
+    │   ├── hello-date.cc
+    │   └── hello-date.h
+    └── utils
+        ├── time-utils.cc
+        └── time-utils.h
+```
+
+除了 .h, .cc 这些源码文件以外，还有两种特殊的问题:
+- WORKSPACE: 位于整个项目文件夹的根目录，定义了一个 bazel 工作空间。
+    - 整个工作空间中仅会有一个 WORKSPACE 文件。子文件夹中的 WORKSPACE 文件会被忽略。
+    - 创建一个空的 WORKSPACE 文件，即可将所在文件夹指定为 bazel 工作空间。
+- BUILD: 定义一个 bazel package。
+    - 你想让哪个文件夹中的东西成为一个包，就在这个文件夹下创建一个 BUILD 文件。
+    - package 的管理范围包括子目录下的东西，**但不包括子 package 所包括的内容**。比如 lib 这个包下面有两个文件夹 date, utils，因为 date 文件夹里创建了 BUILD 文件，所以 lib 包的管理范围不包括 date 文件夹；而 utils 文件夹下没有创建 BUILD 文件，所以它里面的内容存在于 lib 包的管理范围内。
+
+
+BUILD 文件示例:
+
+```
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "hello-world",
+    srcs = ["hello-world.cc"],
+)
+```
+
+BUILD 文件中有个很重要的概念叫做 build rule, 它告诉了 bazel 如何构建出目标产物。比如示例中的 cc_binary 就是 bazel 内置的一个 build rule, 表示要构建的是一个可执行文件。
+
+
+
+
+
+
+
