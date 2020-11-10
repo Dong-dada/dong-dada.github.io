@@ -243,3 +243,126 @@ fn sub(x: i32, y: i32) -> i32 {
 - 一个值同一时刻仅属于一个 owner。
 - 如果 owner 离开了作用域，这个值将被销毁。
 
+Rust 语言所提供的几种基本类型(包括复合类型)，都是在栈上分配内存的。标准库中定义了一些类型，这些类型是从堆上分配内存的，比如 String。
+
+```rust
+{
+    // 在堆上分配内存
+    let mut s = String:from("hello");
+    s.push_str(", world!");
+    println!("{}", s);
+}   // 变量 s 离开了作用域，为其分配的内存将被释放
+```
+
+从实现上讲，变量 s 离开作用域的时候，其 drop() 方法将被自动调用，来销毁为其分配的内存。类似于 C++ 的 RAII 模式。
+
+看起来很简单，不过考虑到其他情况，事情就会变得有点复杂。
+
+## 赋值时发生的移动
+
+比如以下代码:
+
+```rust
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1;
+    println!("{}, world!", s1);
+}
+```
+
+变量 s1 被赋值给了 s2，当 s1 和 s2 都离开作用域的话会发生什么呢？ drop() 方法会被调用两次吗？
+
+其实不会，rust 在赋值的时候会检查变量是否实现了 Copy trait：如果实现了 Copy trait，那么变量应该做一次深拷贝，这样新旧变量就都可以用；如果没有实现 Copy trait，那么 s1 对应的内存会被 move 到 s2 上，然后 s1 变成了无效状态。
+
+因此上面的代码无法编译通过，会报以下错误：
+
+```
+error[E0382]: borrow of moved value: `s1`
+ --> src\main.rs:5:28
+  |
+3 |     let s1 = String::from("hello");
+  |         -- move occurs because `s1` has type `std::string::String`, which does not implement the `Copy` trait
+4 |     let s2 = s1;
+  |              -- value moved here
+5 |     println!("{}, world!", s1);
+  |                            ^^ value borrowed here after move
+```
+
+如果你希望进行深拷贝，那么应该调用 clone() 方法：
+
+```rust
+fn main() {
+    let s1 = String::from("hello");
+    let s2 = s1.clone();
+    println!("s1 = {}, s2 = {}", s1, s2);
+}
+```
+
+## 函数参数和返回值
+
+向函数传参时发生的情况跟赋值类似，要么 move, 要么 copy：
+
+```rust
+fn main() {
+    let s = String::from("hello");
+    takes_ownership(s);     // 因为 String 没有实现 Copy trait, 因此 s 被 move 到函数内
+
+    let x = 5;
+    makes_copy(x);          // 因为 i32 实现了 Copy trait，因此 x 做了一次拷贝
+}
+
+fn takes_ownership(some_string: String) {
+    println!("{}", some_string);
+}   // 变量 some_string 离开了作用域，因此被释放
+
+fn makes_copy(some_integer: i32) {
+    println!("{}", some_integer);
+}   // 变量 some_integer 离开了作用域，因此被释放
+```
+
+函数返回值的情况也赋值类似，要么 move，要么 copy:
+
+```rust
+fn main() {
+    let s1 = give_ownership();
+
+    let s2 = String::from("hello");
+
+    let s3 = takes_and_gives_back(s2);
+}
+
+fn give_ownership() -> String {
+    let some_string = String::from("hello");
+    some_string
+}   // 因为 String 没有实现 Copy trait, 因此 some_string 被 move 给了调用方
+
+fn takes_and_gives_back(a_string: String) -> String {
+    a_string
+}   // 变量先被 move 给该方法，然后又被 move 给调用方
+```
+
+## 引用
+
+有的时候你有这种需求：既希望把变量传给函数使用，又不希望函数把这个变量的所有权夺走。
+
+按照上述规则，你只能在返回值里面重新得到这个变量的所有权：
+
+```rust
+fn main() {
+    let s1 = String::from("hello");
+
+    let (s2, len) = calculate_length(s1);
+
+    println!("The length of '{}' is {}.", s2, len);
+}
+
+fn calculate_length(s: String) -> (String, usize) {
+    let length = s.len(); // len() returns the length of a String
+
+    (s, length)
+}   // 再把所有权返回给调用方
+```
+
+这种写法比较繁琐，Rust 提供了名为引用的概念，可以达到你想要的效果：
+
+
