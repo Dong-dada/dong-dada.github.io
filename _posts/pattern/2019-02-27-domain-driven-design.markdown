@@ -218,7 +218,7 @@ SaaSOvation 公司因为没有重视 DDD 战略设计，只关注实体、值对
 
 我们的 SaaSOvation 团队所选择的 3 个限界上下文最终将与各自所对应的子域形成一对一的关系。如下图所示：
 
-![]( {{site.url/asset/implementing-ddd-context-sample.jpg}} )
+![]( {{site.url}}/asset/implementing-ddd-context-sample.jpg )
 
 #### 协作上下文
 
