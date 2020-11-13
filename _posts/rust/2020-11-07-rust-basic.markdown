@@ -499,3 +499,84 @@ fn safe(s: &String) -> &String {
     &s
 }
 ```
+
+
+# Slice 类型
+
+与 Reference 类似，Slice 这种数据类型也没有所有权。Slice 的作用是让你能够引用一个集合的子集：
+
+```rust
+fn main() {
+    let s = String::from("hello world");
+
+    let hello = &s[0..5];       // 获取 s 的 [0~5) 子集。这里的 0 可以省略不写: [..5]
+    let world = &s[6..11];      // 获取 s 的 [6~11) 子集。这里的 11 可以省略不写: [6..]
+
+    println!("{} {}", hello, world);
+}
+```
+
+以下是 slice type 的内存结构：
+
+![]({{site.url}}/asset/rust-slice.svg)
+
+可以看到 slice 实际上是指针加上长度。
+
+Slice 类型的定义为 &str，以下是一个把 slice 作为返回值的例子：
+
+```rust
+// 这段代码没问题
+fn first_word(s: &String) -> &str {
+    let bytes = s.as_bytes();
+
+    for (i, &item) in bytes.iter().enumerate() {
+        if item == b' ' {
+            return &s[0..i];
+        }
+    }
+
+    &s[..]
+}
+
+// 这段代码会编译失败
+fn main() {
+    let mut s = String::from("hello world");
+    let word = first_word(&s);
+    s.clear();
+    println!("{}", word);   // s 已经被释放了，仍然尝试访问 word slice，因此编译出错
+}
+```
+
+上面编译错误的原因跟引用是类似的，也是作用区间的问题。
+
+一种更好的编码实践是使用 &str 而不是 &String 来作为函数的参数，这样函数既可以接收 slice 参数，也可以接收 String 参数：
+
+```rust
+fn first_word(s: &str) -> &str {
+    let bytes = s.as_bytes();
+
+    for (i, &item) in bytes.iter().enumerate() {
+        if item == b' ' {
+            return &s[0..i];
+        }
+    }
+
+    &s[..]
+}
+
+fn main() {
+    let s = String::from("hello world");
+    let word = first_word(&s[..]);          // 通过 &s[..] 把 String 转为 slice
+    println!("{}", word);
+
+    let word = first_word("hello world");   // 直接传入 slice
+    println!("{}", word);
+}
+```
+
+Slice 也可以用在数组之类的地方：
+
+```rust
+let a = [1, 2, 3, 4, 5];
+let slice = &a[1..3];
+```
