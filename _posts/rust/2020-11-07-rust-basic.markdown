@@ -365,4 +365,137 @@ fn calculate_length(s: String) -> (String, usize) {
 
 这种写法比较繁琐，Rust 提供了名为引用的概念，可以达到你想要的效果：
 
+```rust
+fn main() {
+    let s1 = String::from("hello");
 
+    // &s1 用这种方式就可以获取到变量的引用
+    let s2 = &s1;
+
+    // &s1 用这种方式获取到变量的引用，随后把引用作为参数传给函数
+    let len = calculate_length(&s1);
+    println!("The length of '{}' is {}.", s1, len);
+
+    // 如果希望通过引用修改原对象，那么需要用 mut 修饰，能够这么做的前提是源对象是 mutable 的
+    let mut s1 = s1;
+    let s2 = &mut s1;
+    change(&mut s1);
+    println!("The length of '{}' is {}.", s1, s1.len());
+}
+
+// 通过引用的方式，可以达到 "借用" 所有权的效果
+fn calculate_length(s: &String) -> usize {
+    s.len()
+}
+
+fn change(s: &mut String) {
+    s.push_str(", world");
+}
+```
+
+引用的实现跟 C++ 类似，也是通过指针来实现的：
+
+![]({{site.url}}/asset/rust-reference.svg)
+
+因此上述代码中的变量 s 退出作用域，只是销毁了指针，不会销毁字符串对象。
+
+不过 rust 对于引用的使用有一些限制，以避免 data race 问题：
+- 两个以上的线程同时访问同一块内存；
+- 其中一个或多个线程对这块内存做修改；
+- 某个线程没有做同步机制；
+
+总的来说就是有一个线程修改了内存，其它线程不知道，就会读到还没有被写完的数据，或者同时写入，导致内存里的数据错乱。
+
+所以 rust 要求，在引用的作用范围内：
+- 最多只能有一个可变引用(避免多个可变引用修改同一块内存)。
+- 如果有了可变引用，那就不能有其它不可变引用(避免一个可变引用修改内存时，其它不可变引用读取到的数据不完整)。
+- 不可变引用可以有多个(只读的话，引用再多也没关系)。
+
+实验发现 rust 似乎会跟踪引用的作用区间，检测到两个引用的作用区间重复的话就会报错。比如以下两例代码：
+
+```rust
+// 以下代码能够编译通过
+fn main() {
+    let mut s1 = String::from("hello");     // s1 作用区间开始
+    let s2 = &mut s1;                       // s2 作用区间开始
+    s2.push_str(", world");                 // s2 作用区间结束
+    s1.push_str("!");                       // s1 作用区间结束
+}
+```
+
+```rust
+// 以下代码编译失败
+fn main() {
+    let mut s1 = String::from("hello");     // s1 作用区间开始
+    let s2 = &mut s1;                       // s2 作用区间开始
+    s1.push_str("!");                       // s1 作用区间结束
+    s2.push_str(", world");                 // s2 作用区间结束
+}
+```
+
+第二例代码的编译提示如下，可以看到因为 s1 和 s2 的 作用区间是重合的，所以编译失败了：
+
+```
+ --> src/main.rs:4:5
+  |
+3 |     let s2 = &mut s1;
+  |              ------- first mutable borrow occurs here
+4 |     s1.push_str("!");
+  |     ^^ second mutable borrow occurs here
+5 |     s2.push_str(", world");
+  |     -- first borrow later used here
+```
+
+另外一种情况是，如果有了可变引用，就不能再有其它的不可变引用，比如下面的例子：
+
+```rust
+// 以下代码编译失败
+fn main() {
+    let mut s = String::from("hello");
+
+    let r1 = &s;            // r1 作用区间开始
+    let r2 = &mut s;        // r2 作用区间开始
+
+    // 已经有了可变引用 r2 了，这个时候就不能再使用不可变引用 r1 了
+    println!("{}, {}", r1, r2);     // r1,r2 作用区间结束
+}
+```
+
+此外，rust 能够检查出来引用作为返回值时，是否会导致空悬指针(dangling pointer)问题：
+
+```rust
+fn dangle() -> &String {
+    let mut s = String::from("hello");
+    &s
+}   // s 离开作用域之后会销毁，因此返回 &s 会导致空悬指针问题
+```
+
+以上代码报错如下：
+
+```
+error[E0106]: missing lifetime specifier
+ --> src/main.rs:6:16
+  |
+6 | fn dangle() -> &String {
+  |                ^ expected named lifetime parameter
+  |
+  = help: this function's return type contains a borrowed value, but there is no value for it to be borrowed from
+help: consider using the `'static` lifetime
+  |
+6 | fn dangle() -> &'static String {
+  |
+```
+
+以下代码就能工作正常，因为改代码没有空悬指针问题：
+
+```rust
+fn main() {
+    let s = String::from("Hello world!");
+    let r = safe(&s);
+    println!("{}", r);
+}
+
+fn safe(s: &String) -> &String {
+    &s
+}
+```
