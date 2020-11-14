@@ -700,3 +700,63 @@ fn main() {
     println!("{:#?}", rect);
 }
 ```
+
+
+
+# 枚举
+
+简单使用:
+
+```rust
+// 定义枚举
+#[derive(Debug)]
+enum IpAddrKind {
+    V4,
+    V6,
+}
+
+#[derive(Debug)]
+struct IpAddr {
+    // 枚举作为结构体成员
+    kind: IpAddrKind,
+    address: String,
+}
+
+fn main() {
+    let home = IpAddr {
+        // 使用枚举
+        kind: IpAddrKind::V4,
+        address: String::from("127.0.0.1"),
+    };
+    let loopback = IpAddr {
+        kind: IpAddrKind::V6,
+        address: String::from("::1"),
+    };
+    println!("home: {:#?}", home);
+    println!("loopback: {:#?}", loopback);
+}
+```
+
+与 C++/Java 等语言不同，Rust 的枚举值可以被赋值：
+
+```rust
+#[derive(Debug)]
+enum IpAddr {
+    V4(u8, u8, u8, u8),
+    V6(String),
+}
+
+fn main() {
+    // 把 127, 0, 0, 1 赋值给 V4
+    let home = IpAddr::V4(127, 0, 0, 1);
+    println!("home: {:#?}", home);
+
+    // 把 ::1 赋值给 V6
+    let loopback = IpAddr::V6(String::from("::1"));
+    println!("loopback: {:#?}", loopback);
+}
+```
+
+看起来 rust 里面的枚举与 C++/Java 里的枚举很不一样。不过这种语法让 Optional 等类型实现起来更自然。
+
+
