@@ -108,6 +108,11 @@ let x = tup.0
 let y = tup.1
 let z = tup.2
 
+// tuple 作为函数参数
+fn area(dimensions: (u32, u32)) -> u32 {
+    dimensions.0 * dimensions.1
+}
+
 
 // array 初始化
 let a = [1, 2, 3, 4, 5];
@@ -579,4 +584,119 @@ Slice 也可以用在数组之类的地方：
 ```rust
 let a = [1, 2, 3, 4, 5];
 let slice = &a[1..3];
+```
+
+
+# 结构体
+
+```rust
+// 结构体定义
+#[derive(Debug)]
+struct User {
+    username: String,
+    email: String,
+    sign_in_count: u64,
+    active: bool,
+}
+
+fn build_user(email: &str, username: &str) -> User {
+    // 创建实例
+    User {
+        email: String::from(email),
+        username: String::from(username),
+        active: true,
+        sign_in_count: 1,
+    }
+}
+
+fn main() {
+    // rust 不允许将用 mut 修饰特定 field, 只能用 mut 修饰整个结构体
+    let mut user = build_user("someone@example.com", "someone");
+
+    // 访问结构体成员
+    user.email = String::from("anotheremail@example.com");
+
+    // 打印结构体信息，注意结构体必须添加 #[derive(Debug)] 注解，才能打印出来
+    println!("{:#?}", user);
+
+    // 根据已有实例，创建一个新的实例
+    let user2 = User {
+        email: String::from("another@example.com"),
+        username: String::from("another"),
+        ..user
+    };
+    println!("{:#?}", user2);
+
+    // tuple struct, 类似于 tuple, 但是可以起名字
+    struct Color(i32, i32, i32);
+    struct Point(i32, i32, i32);
+
+    let black = Color(0, 0, 0);
+    let origin = Point(0, 0, 0);
+}
+```
+
+对于上述代码中声明的 User 结构体而言，其成员的生命周期与 User 自身的生命周期是一致的。如果希望让结构体保存一个引用，需要用到 rust 的 lifetime 机制。下述代码会编译错误：
+
+```rust
+struct User {
+    username: &str,     // 需要使用 lifetime 机制，不能直接使用引用
+    email: &str,
+    sign_in_count: u64,
+    active: bool
+}
+```
+
+以下例子展示了如何为结构体定义成员函数：
+
+```rust
+#[derive(Debug)]
+struct Rectangle {
+    width: u32,
+    height: u32,
+}
+
+// 为结构体添加 method
+impl Rectangle {
+    // 使用 &self, 以只读方式访问 Rectangle 实例
+    fn area(&self) -> u32 {
+        self.width * self.height
+    }
+
+    // 使用 &mut self, 以读写方式刚问 Rectangle 实例
+    fn scale(&mut self, radio: f32) {
+        self.width = (self.width as f32 * radio) as u32;
+        self.height = (self.height as f32 * radio) as u32;
+    }
+}
+
+// 注意同一个结构体，可以定义多个 impl block.
+impl Rectanble {
+    // 定义 associated function, 类似于静态成员函数
+    fn square(size: u32) -> Rectangle {
+        Rectangle {
+            width: size,
+            height: size,
+        }
+    }
+}
+
+fn main() {
+    let rect = Rectangle {
+        width: 30,
+        height: 50,
+    };
+
+    // 调用成员函数
+    println!("The area of the rectangle is {} square pixels.", rect.area());
+
+    // 调用成员函数修改结构体成员
+    let mut rect = rect;
+    rect.scale(0.5);
+    println!("{:#?}", rect);
+
+    // 调用 associated function
+    let rect = Rectangle::square(3);
+    println!("{:#?}", rect);
+}
 ```
