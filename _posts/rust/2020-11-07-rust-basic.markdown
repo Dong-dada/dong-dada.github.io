@@ -866,3 +866,39 @@ fn main() {
     println!("{:?}, {:?}", five, six);
 }
 ```
+
+
+# if let 操作符
+
+看起来 if let 是一种语法糖，可以比较方便地获取 enum 里面的值。
+
+```rust
+fn main() {
+    // match 写法
+    let some_u8_value = Some(0u8);
+    match some_u8_value {
+        Some(3) => println!("three"),
+        _ => ()
+    }
+
+    // if let 写法
+    if let Some(3) = some_u8_value {
+        println!("three");
+    }
+
+    let mut count = 0;
+    let coin = Coin::Quarter(UsState::Alaska);
+    // match 写法
+    match coin {
+        Coin::Quarter(ref state) => println!("State quarter from {:?}!", state),
+        _ => count += 1,
+    }
+
+    // if let 写法
+    if let Coin::Quarter(ref state) = coin {
+        println!("State quarter from {:?}!", state);
+    } else {
+        count += 1;
+    }
+}
+```
