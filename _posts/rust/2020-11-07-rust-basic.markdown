@@ -760,3 +760,33 @@ fn main() {
 看起来 rust 里面的枚举与 C++/Java 里的枚举很不一样。不过这种语法让 Optional 等类型实现起来更自然。
 
 
+# Option Enum
+
+Rust 语言中没有 null 的概念，但标准库提供了一个 Option 枚举：
+
+```rust
+enum Option<T> {
+    Some(T),
+    None,
+}
+```
+
+以下是使用 Option 的一些简单例子：
+
+```rust
+fn main() {
+    let some_number = Some(5);              // some_number 类型为 Option<i32>
+    let some_string = Some("a string");     // some_string 类型为 Option<&str>
+    let absent_number: Option<i32> = None;  // 如果要初始化为 None, 那么必须显式指明变量类型
+    println!("{:?}, {:?}, {:?}", some_number, some_string, absent_number);
+
+    let x: i8 = 5;
+    let y: Option<i8> = Some(5);
+    // let z = x + y;                       // 编译错误，Option 和 i8 是不同的类型，不能直接相加
+    let z = x + y.unwrap_or(0);             // 使用 unwrap 获取实际的值
+
+    // 使用 is_some, is_none 方法检查 Option 是否有值
+    println!("y is some? {}", y.is_some());
+    println!("y is none? {}", y.is_none());
+}
+```
