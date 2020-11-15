@@ -790,3 +790,79 @@ fn main() {
     println!("y is none? {}", y.is_none());
 }
 ```
+
+
+# match 操作符
+
+match 操作符用来检查传入的值符合哪种模式，随后执行相应模式的代码，看起来跟 C++/Java 的 switch 差不多。
+
+```rust
+#[derive(Debug)]
+enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter,
+}
+
+fn value_in_cents(coin: Coin) -> u8 {
+    match coin {
+        Coin::Penny => {
+            println!("Lucky penny!");
+            1
+        },
+        Coin::Nickel => 5,
+        Coin::Dime => 19,
+        Coin::Quarter => 25,
+    }
+}
+
+fn main() {
+    println!("The value of {:?} is {}.", Coin::Quarter, value_in_cents(Coin::Quarter));
+}
+```
+
+除此之外 match 操作符还可以用来获取 enum 中保存的值：
+
+```rust
+#[derive(Debug)]
+enum UsState {
+    Alabama,
+    Alaska,
+    // --snip--
+}
+
+#[derive(Debug)]
+enum Coin {
+    Penny,
+    Nickel,
+    Dime,
+    Quarter(UsState),
+}
+
+fn main() {
+    let coin = Coin::Quarter(UsState::Alaska);
+    match coin {
+        Coin::Quarter(state) => {
+            // 使用 match 可以获取到 enum 中保存的值
+            println!("State quarter from {:?}!", state);
+        },
+
+        // 使用 _ 占位符，可以添加默认行为，类似于 C++/Java 中的 default
+        _ => {}
+    };
+}
+```
+
+这种技巧也可以用在 Option 上：
+
+```rust
+fn main() {
+    let five = Some(5);
+    let six = match five {
+        None => None,
+        Some(i) => Some(i + 1),     // 获取到 Option 内的值，加一之后生成一个新的 Option
+    };
+    println!("{:?}, {:?}", five, six);
+}
+```
