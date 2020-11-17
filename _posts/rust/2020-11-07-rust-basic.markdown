@@ -1091,3 +1091,213 @@ fn main() {
 ```
 
 更多信息可以参考 [这篇文章](http://www.sheshbabu.com/posts/rust-module-system/?spm=ata.13261165.0.0.7b6861b6u5SVuw)
+
+
+
+# 常用集合
+
+## Vec 
+
+```rust
+fn main() {
+    // 创建
+    let v: Vec<i32> = Vec::new();
+    // 创建 Vec 的另一种写法(使用 vec! 宏)
+    let v = vec![1, 2, 3];
+
+    // 添加值，注意需要声明为 mut
+    let mut v = Vec::new();
+    v.push(5);
+    v.push(6);
+    v.push(7);
+    v.push(8);
+
+    // 将元素 push 到 Vec 时，所有权将转移给 Vec，这时候需要注意可变引用的作用域问题：
+    let mut v = vec![1, 2, 3, 4, 5];
+    let first = &v[0];
+    v.push(6);
+    // 下面一行代码将导致编译错误，因为 first 的作用区间和 v 重合了
+    // 当你向 Vec 添加元素时，Vec 可能会重新分配内存，导致 first 的引用失效。
+    // println!("The first element is: {}", first);
+
+    // 使用索引访问元素
+    let v = vec![1, 2, 3, 4, 5];
+    let third: &i32 = &v[2];
+    println!("The third element is {}", third);
+    // 如果超出范围，程序将 panic
+    // let nine = &v[8];
+
+    // 使用 get() 方法获取元素，其返回值类型为 Option<&i32>
+    let third = v.get(2);
+    match third {
+        None => println!("There is no third element."),
+        Some(third) => println!("The third element is {}", third),
+    }
+
+    // 遍历 Vec 的元素，只读方式
+    let v = vec![100, 32, 57];
+    for i in &v {
+        println!("{}", i);
+    }
+
+    // 遍历 Vec 的元素，读写方式
+    let v = vec![100, 32, 57];
+    for i in &mut v {
+        *i += 50;
+    }
+}
+```
+
+Vec 的元素必须是同一种类型，但你可以用 Enum 来做一层包装，因为在 rust 中 Enum 可以附加指定类型的数据。
+
+```rust
+enum SpreadsheetCell {
+    Int(i32),
+    Float(f64),
+    Text(String),
+}
+
+// 利用 Enum 在 Vec 中放置不同类型的元素
+let row = vec![
+    SpreadsheetCell::Int(3),
+    SpreadsheetCell::Text(String::from("blue")),
+    SpreadsheetCell::Float(10.12),
+];
+```
+
+## String
+
+String 也是一种集合类型，它底层是通过 Vec<u8> 来实现的。
+
+String 和 &str 都是 utf8 编码的字符串。
+
+```rust
+fn main() {
+    // 创建字符串
+    let mut st = String::new();
+
+    // 实现了 Display trait 的类型，都可以调用 to_string() 方法来获取该类型的字符串表示
+    let data = "initial contents";
+    let s = data.to_string();
+    let s = "initial contents".to_string();
+
+    // 通过 String::from 方法来创建字符串
+    let s = String::from("initial contents");
+
+    // 因为 String 是 UTF-8 编码，所以可以传入各种 Unicode 字符:
+    let hello = String::from("السلام عليكم");
+    let hello = String::from("Dobrý den");
+    let hello = String::from("Hello");
+    let hello = String::from("שָׁלוֹם");
+    let hello = String::from("नमस्ते");
+    let hello = String::from("こんにちは");
+    let hello = String::from("안녕하세요");
+    let hello = String::from("你好");
+    let hello = String::from("Olá");
+    let hello = String::from("Здравствуйте");
+    let hello = String::from("Hola");
+
+    // 添加一个字符串到字符串尾部
+    let mut s1 = String::from("foo");
+    let s2 = "bar";
+    s1.push_str(s2);
+    println!("s2 is {}", s2);   // 注意 push_str 不会夺取参数的所有权，所以此时仍然可以访问 s2
+
+    // 添加一个字符到字符串尾部
+    s1.push('l');
+
+    // 使用 + 操作符来拼接字符串
+    let s1 = String::from("Hello, ");
+    let s2 = String::from("world!");
+    let s3 = s1 + &s2;
+    // 下面一行代码会编译失败，因为 + 操作符会夺取 s1 的所有权，然后生成一个新的变量 s3
+    // 所以使用了 + 操作符拼接字符串之后，第一个字符串就不能被使用了
+    // println!("s1 is {}", s1);
+
+    // 使用 format!() 宏来拼接字符串
+    let s1 = String::from("tic");
+    let s2 = String::from("tac");
+    let s3 = String::from("toe");
+    let s = format!("{}-{}-{}", s1, s2, s3);
+
+    // 你可以通过 [..] 操作符，来获取字符串的字节序列的一部分，这种啊方法不推荐，因为 string 是 UTF-8 编码的，有可能会截取到不完整的字符串
+    let hello = "Здравствуйте";
+    // Здравствуйте 的 utf-8 编码里，前 4 个字节是 Зд, 所以 s 的值是 Зд
+    let s = &hello[0..4];
+    println!("s is {}", s);
+
+    // 遍历字符串中的字符(而不是字节)
+    for c in "नमस्ते".chars() {
+        println!("{}", c);
+    }
+
+    // 遍历字符串中的字节：
+    for b in "नमस्ते".bytes() {
+        println!("{}", b);
+    }
+}
+```
+
+注意使用 + 操作符拼接字符串时，第一个字符串的所有权会被夺走，+ 操作符实际上对应了以下方法：
+
+```rust
+fn add(self, s: &str) -> String {
+    // ...
+}
+```
+
+可以看到参数生命中 self 并不是引用，因此它会把第一个字符串的所有权夺走。
+
+另外可以看到第二个参数实际上是 &str 类型，但是你传入的参数实际上是 &String。之所以可以将 String 和 &String 进行拼接，是因为 Rust 做了自动装包解包的操作，把 &String 转换成了 &str.
+
+
+## HashMap
+
+```rust
+use std::collections::HashMap;
+
+fn main() {
+    // 创建 HashMap
+    let mut scores = HashMap::new();
+
+    // 插入元素
+    scores.insert(String::from("Blue"), 10);
+    scores.insert(String::from("Yellow"), 50);
+
+    // 通过 collect 函数将 Vec 转换为 HashMap
+    let teams = vec![String::from("Blue"), String::from("Yellow")];
+    let initial_scores = vec![10, 50];
+    let mut scores: HashMap<_, _> = teams.into_iter().zip(initial_scores.into_iter()).collect();
+
+    // 插入元素时将夺取参数的所有权
+    let field_name = String::from("Favorite color");
+    let field_value = String::from("Blue");
+    let mut map = HashMap::new();
+    map.insert(field_name, field_value);
+    // 以下代码将导致编译失败，因为 HashMap.insert(key, value) 将会夺取参数的所有权。
+    // println!("field_name = {}, field_value = {}", field_name, field_value);
+
+    // 访问 HashMap 中的元素
+    // get 的返回值是一个 Optional<&i32>
+    let team_name = String::from("Blue");
+    let score = scores.get(&team_name);
+    match score {
+        None => println!("The {} team is not existed.", team_name),
+        Some(score) => println!("The {} team score is {}.", team_name, score),
+    }
+
+    // 遍历 HashMap 中的元素
+    for (key, value) in &scores {
+        println!("{}: {}", key, value);
+    }
+
+    // 使用 entry() 函数，只有 key 不存在时才插入元素
+    let mut scores = HashMap::new();
+    scores.insert(String::from("Blue"), 10);
+    scores.entry(String::from("Blue")).or_insert(50);
+
+    // entry() 函数会返回一个 value 引用，可以用这个引用来修改值
+    let score = scores.entry(String::from("Blue")).or_insert(0);
+    *score += 1;
+}
+```
