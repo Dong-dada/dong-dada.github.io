@@ -902,3 +902,192 @@ fn main() {
     }
 }
 ```
+
+
+# module system
+
+- crate 是一个可执行文件或者一个库。
+    - crate root 是一个源文件，rust 编译器从这个源文件开始编译。
+    - crate root 构成了 crate 的 root module.
+- package 是一个或多个 crate 构成的包。
+    - package 包含类一个 Cargo.toml 文件，这个文件描述了如何编译 package 所包含的 crate。
+    - package 包含 crate 的规则为：
+        - 只能包含 0 或 1 个 library crates
+        - 可以包含任意多个二进制箱 binary crates
+        - 至少有一个 crate, 可以是 library crates, 也可以是 binary crates
+    - src/main.rs 是 binary crate 的 crate root
+    - src/lib.rs 是 library crate 的 crate root, 该 crate 与 package 同名
+    - 如果需要多个 binary crate, 在 src/bin 目录下创建 .rs 文件，每个文件都对应一个 binary crate.
+- package 对 crate 规则的限制看起来很奇怪。为什么 package 下最多只能有一个 library crate，但是可以有多个 binary crate 呢？
+    - 可以参考 [这篇文章](https://stackoverflow.com/questions/54843118/why-can-a-cargo-package-only-have-one-library-target)
+    - 总的来说，cargo 是一个包管理工具，对于一个 package, 当然希望是这个 package 里只有一个 library，不然的话引用一个库还需要 package.library 这样分两层，搞的就很复杂了。
+    - 而对于 binary crate 来说，反正它不是包管理的一部分(不会被其他人依赖)，所以有几个都没有关系。
+
+```s
+# 创建 binary crate
+$cargo new my-project
+     Created binary (application) `my-project` package
+$tree my-project
+my-project
+├── Cargo.toml
+└── src
+    └── main.rs
+
+# 创建 library crate
+$cargo new --lib my-lib
+     Created library `my-lib` package
+$tree my-lib
+my-lib
+├── Cargo.toml
+└── src
+    └── lib.rs
+```
+
+现在我们知道 package 内包含一个或多个 crate, 在 Cargo.toml 文件中定义了依赖。Cargo 会帮助我们下载依赖，构建当前的 package.那么 crate 内部的代码怎么组织呢？rust 怎么从 crate root 找到其他文件中的代码呢？这就需要 mod 出马了。
+
+Rust 的 module system 与其它语言不太一样，它需要你手动来构建 module tree. 比如你代码的文件树如下：
+
+```txt
+.
+├── Cargo.toml
+└── src
+    ├── main.rs
+    └── order.rs
+```
+
+在 order.rs 当中定义了一些结构体、枚举，你想要在 main.rs 当中访问这些代码：
+
+```rust
+// order.rs 文件内容
+
+use chrono::Local;
+
+enum OrderState {
+    Init,
+    PendingPayment,
+    PendingDeliver,
+    Finish,
+}
+
+#[derive(Debug)]
+struct Order {
+    id: i64,
+    order_state: OrderState,
+    create_timestamp_ms: i64,
+    modified_timestamp_ms: i64,
+}
+
+impl Order {
+    fn new() -> Order {
+        Order {
+            id: 0,
+            order_state: OrderState::Init,
+            create_timestamp_ms: Local::now().timestamp_millis(),
+            modified_timestamp_ms: Local::now().timestamp_millis(),
+        }
+    }
+}
+```
+
+你需要在 main.rs 中添加以下代码，让 module tree 中包含 order.rs 中的内容：
+
+```rust
+// 将 order.rs 加入到 modules tree
+pub mod order;
+
+fn main() {
+    // ...
+}
+```
+
+此外，你还需要修改 order.rs，把你想要对外露出的结构体、枚举修改为 public:
+
+```rust
+use chrono::Local;
+
+pub enum OrderState {
+    Init,
+    PendingPayment,
+    PendingDeliver,
+    Finish,
+}
+
+#[derive(Debug)]
+pub struct Order {
+    id: i64,
+    order_state: OrderState,
+    create_timestamp_ms: i64,
+    modified_timestamp_ms: i64,
+}
+
+impl Order {
+    pub fn new() -> Order {
+        Order {
+            id: 0,
+            order_state: OrderState::Init,
+            create_timestamp_ms: Local::now().timestamp_millis(),
+            modified_timestamp_ms: Local::now().timestamp_millis(),
+        }
+    }
+}
+```
+
+这样就可以在 main.rs 中访问到这些代码了：
+
+```rust
+pub mod order;
+
+fn main() {
+    let order = order::Order::new();
+    println!("{:#?}", order);
+}
+```
+
+main.rs 中 `pub mod order;` 这行代码，是告诉 rust 载入同级目录中的 order.rs 文件，或者载入 order/mod.rs 文件，比如你想把文件结构改成下面这种：
+
+```txt
+.
+├── Cargo.toml
+└── src
+    ├── main.rs
+    └── order
+       └── order.rs
+```
+
+想要让 main.rs 访问到 order/order.rs，就需要创建一个 order/mod.rs 文件：
+
+```rust
+// order/mod.rs 文件
+
+pub mod order;
+```
+
+这样 main.rs 中的 `pub mod order;` 这行代码，就可以定位到 order/mod.rs 文件，随后载入其中的 modules.
+
+因为添加了一个文件夹，所以 path 需要修改一下：
+
+```rust
+pub mod order;
+
+fn main() {
+    // path 里多了一个 order
+    let order = order::order::Order::new();
+    println!("{:#?}", order);
+}
+```
+
+上面的代码提到了 path 的概念，意思是访问 module 的时候需要指明这个 module 在 module tree 中的位置。你可以使用 use 关键字来导入 path 下的内容，这样就不需要每次都写完整 path 了：
+
+```rust
+pub mod order;
+
+// 使用 use 关键字导入 module 中的内容
+use crate::order::order::Order;
+
+fn main() {
+    let order = Order::new();
+    println!("{:#?}", order);
+}
+```
+
+更多信息可以参考 [这篇文章](http://www.sheshbabu.com/posts/rust-module-system/?spm=ata.13261165.0.0.7b6861b6u5SVuw)
