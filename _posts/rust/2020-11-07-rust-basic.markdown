@@ -1480,3 +1480,198 @@ impl Guess {
     }
 }
 ```
+
+
+# 泛型, Trait, Lifetime
+
+## 泛型
+
+```rust
+// 在函数中使用泛型
+// 注意需要 <T: PartialOrd>, 对 T 进行约束，让它支持比较
+fn largest<T: PartialOrd>(list: &[T]) -> &T {
+    let mut largest = &list[0];
+    for item in list {
+        if item > largest {
+            largest = item;
+        }
+    }
+
+    largest
+}
+
+fn main() {
+    let number_list = vec![1, 2, 3, 4, 5];
+    println!("largest number is {}.", largest(&number_list));
+
+    let char_list = vec!['a', 'b', 'c', 'd', 'e'];
+    println!("largest char is {}.", largest(&char_list));
+}
+```
+
+```rust
+// 在结构体中使用泛型
+struct Point<T> {
+    x: T,
+    y: T,
+}
+
+// 在结构体成员函数中使用泛型
+impl<T> Point<T> {
+    fn x(&self) -> &T {
+        &self.x
+    }
+
+    fn y(&self) -> &T {
+        &self.y
+    }
+}
+
+// 也可以只针对特定类型提供成员函数的实现
+impl Point<f32> {
+    fn distance_from_origin(&self) -> f32 {
+        (self.x.powi(2) + self.y.powi(2)).sqrt()
+    }
+}
+
+fn main() {
+    let both_integer = Point { x: 5, y: 10 };
+    println!("x: {}, y: {}", both_integer.x(), both_integer.y());
+
+    let both_float = Point { x: 1.0, y: 1.0 };
+    println!("distance from origin: {}", both_float.distance_from_origin());
+
+    // 以下代码将报错，因为没有对 i32 类型提供 distance_from_origin() 方法
+    //println!("distance from origin: {}", both_integer.distance_from_origin());
+}
+```
+
+```rust
+// 在枚举中使用泛型
+enum Option<T> {
+    Some(T),
+    None,
+}
+
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+```
+
+## Trait
+
+Trait 跟其他语言中的 interface 概念类似。
+
+```rust
+use std::fmt::{Display, Formatter};
+use std::fmt;
+
+// 定义 trait
+trait Summary {
+    fn summarize(&self) -> String;
+}
+
+struct NewsArticle {
+    headline: String,
+    location: String,
+    author: String,
+    content: String,
+}
+
+// 实现 trait
+impl Summary for NewsArticle {
+    fn summarize(&self) -> String {
+        format!("{}, by {} ({})", self.headline, self.author, self.location)
+    }
+}
+
+struct Tweet {
+    username: String,
+    content: String,
+    reply: bool,
+    retweet: bool,
+}
+
+// 实现 Trait
+impl Summary for Tweet {
+    fn summarize(&self) -> String {
+        format!("{}: {}", self.username, self.content)
+    }
+}
+
+impl Display for Tweet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Tweet (username: {}, content: {}, reply: {}, retweet: {})", self.username, self.content, self.reply, self.retweet)
+    }
+}
+
+// Trait 作为函数参数
+fn notify(item: &impl Summary) {
+    println!("Breaking news! {}", item.summarize());
+}
+
+// 要求参数必须实现多个 trait
+fn another_notify(item: &(impl Summary + Display)) {
+    println!("Breaking news! {}", item);
+}
+
+// 返回值中使用 Trait
+fn returns_summarizable() -> impl Summary {
+    Tweet {
+        username: "dong-dada".to_string(),
+        content: "hello rust!".to_string(),
+        reply: false,
+        retweet: false,
+    }
+}
+
+// 注意下面的写法会编译出错，trait 作为返回值时，只能返回某种特定的类型
+// fn returns_summarizable(switch: bool) -> impl Summary {
+//     if switch {
+//         NewsArticle {
+//             headline: String::from(
+//                 "Penguins win the Stanley Cup Championship!",
+//             ),
+//             location: String::from("Pittsburgh, PA, USA"),
+//             author: String::from("Iceburgh"),
+//             content: String::from(
+//                 "The Pittsburgh Penguins once again are the best \
+//                  hockey team in the NHL.",
+//             ),
+//         }
+//     } else {
+//         Tweet {
+//             username: String::from("horse_ebooks"),
+//             content: String::from(
+//                 "of course, as you probably already know, people",
+//             ),
+//             reply: false,
+//             retweet: false,
+//         }
+//     }
+// }
+
+fn main() {
+    let tweet = Tweet {
+        username: "dong-dada".to_string(),
+        content: "hello rust!".to_string(),
+        reply: false,
+        retweet: false,
+    };
+
+    let news_article = NewsArticle {
+        headline: "Chang'e 5 lifts off".to_string(),
+        location: "Beijing".to_string(),
+        author: "dong-dada".to_string(),
+        content: "balabala...".to_string(),
+    };
+
+    notify(&tweet);
+    notify(&news_article);
+    another_notify(&tweet);
+
+    let summary = returns_summarizable().summarize();
+    println!("summary: {}", summary);
+}
+```
