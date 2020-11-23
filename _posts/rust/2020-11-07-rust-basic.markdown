@@ -1301,3 +1301,182 @@ fn main() {
     *score += 1;
 }
 ```
+
+
+# 错误处理
+
+Rust 里包含两种错误 recoverable 和 unrecoverable. 比如文件找不到就是一种 recoverable 错误，你可以创建一个新文件来修复这个错误。unrecoverable 错误通常是 bug 导致，比如访问一块非法内存。
+
+Rust 的错误处理机制并不是基于异常，而是使用 `Result<T, E>` 枚举来表示 recoverable 错误，使用 `panic!` 宏来处理 unrecoverable 错误。
+
+## panic! 宏
+
+panic! 宏执行时，程序将打印出错信息，随后退出。
+
+Unwinding:
+> 默认情况下，panic 发生时程序会进行 unwinding 处理，此时 rust 会退出函数堆栈，并清理每个函数调用中使用到的数据。这个过程可能会比较耗时，你可以在 Cargo.toml 的 `[profile.release]` 中添加 `panic = 'abort'` 来避免 release 版本的包执行 unwinding 操作。
+
+以下例子在代码中调用了 `panic!` 宏：
+
+```rust
+fn main() {
+    panic!("crash and burn");
+}
+```
+
+执行后将打印以下内容：
+
+```s
+$ cargo run
+   Compiling panic v0.1.0 (file:///projects/panic)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.25s
+     Running `target/debug/panic`
+thread 'main' panicked at 'crash and burn', src/main.rs:2:5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace.
+```
+
+可以看到出错信息中提示了 `src/main.rs:2:5` 这行代码处发生了 panic. 你还可以通过设置 `RUST_BACKTRACE=1` 环境变量来打印堆栈信息。
+
+打印堆栈信息的前提是编译结果带有符号。带有符号的前提是编译时没有设置 `--release` 标记。
+
+## Result<T, E> 枚举
+
+```rust
+enum Result<T, E> {
+    Ok(T),
+    Err(E),
+}
+```
+
+例如打开文件时，如果文件不存在，将返回 Err:
+
+```rust
+use std::fs::File;
+
+fn main() {
+    let f = File::open("hello.txt");
+
+    let f = match f {
+        Ok(file) => file,
+        Err(error) => panic!("Problem opening the file: {:?}", error)
+    }
+}
+```
+
+你还可以通过 error.kind() 来确定出现问题的具体原因：
+
+```rust
+use std::fs::File;
+use std::io::ErrorKind;
+
+fn main() {
+    let f = File::open("hello.txt");
+    let f = match f {
+        Ok(file) => file,
+        Err(error) => match error.kind() {
+            ErrorKind::NotFound => match File::create("hello.txt") {
+                Ok(fc) => fc,
+                Err(e) => panic!("Problem creating the file: {:?}", e),
+            },
+            other_error => {
+                panic!("Problem opening the file: {:?}", other_error)
+            }
+        },
+    };
+}
+```
+
+rust 还提供了一些简单写法：
+
+```rust
+use std::fs::File;
+
+fn main() {
+    // unwrap(): 能打开的话，返回 File, 打不开的话调用 panic!
+    let f = File::open("hello.txt").unwrap();
+
+    // expect(): 能打开的话，返回 File, 打不开的话调用 panic!, 并设置出错信息
+    let f = File::open("hello.txt").expect("Failed to open hello.txt");
+}
+```
+
+有的时候我们希望把错误信息往上抛：
+
+```rust
+fn read_username_from_file() -> Result<String, io::Error> {
+    let f = File::open("hello.txt");
+
+    // 打开文件失败的话，把错误往上抛
+    let mut f = match f {
+        Ok(file) => file,
+        Err(e) => return Err(e),
+    };
+
+    let mut s = String::new();
+
+    // 读取文件失败的话，把错误往上抛
+    match f.read_to_string(&mut s) {
+        Ok(_) => Ok(s),
+        Err(e) => Err(e),
+    }
+}
+```
+
+rust 也为这种情况提供了简单写法：
+
+```rust
+fn read_username_from_file() -> Result<String, io::Error> {
+    // 注解结尾的 ?, 表示如果发生了错误，那么直接返回
+    let mut f = File::open("hello.txt")?;
+
+    let mut s = String::new();
+    // 注解结尾的 ?, 表示如果发生了错误，那么直接返回
+    f.read_to_string(&mut s)?;
+
+    // 返回正确结果
+    Ok(s)
+}
+```
+
+上面的代码甚至可以连起来写成一行：
+
+```rust
+fn read_username_from_file() -> Result<String, io::Error> {
+    let mut s = String::new();
+
+    // 连起来写成一行
+    File::open("hello.txt")?.read_to_string(&mut s)?;
+
+    Ok(s)
+}
+```
+
+## 什么时候使用 !panic ?
+
+默认情况下返回 Result 会比较好，因为可以让上层来决定是否要 panic。不过在一些情况下使用 panic! 可能会让事情更简单：
+- 编写原型代码、测试代码时，不需要考虑完善的错误处理机制，直接调用 panic! 宏可以让代码编写更容易。
+- 有的时候你知道代码一定不会出错，比如 `let home: IpAddr = "127.0.0.1".parse().unwrap();` 这行代码中，你知道你传入的一定是一个有效的 ip 地址，因此不可能发生地址解析错误。
+
+有的时候你希望对外提供的函数参数遵守一定的规则，比如传入的 pageSize 不能大于 200。如果传了 500 过来，你应该立刻调用 panic! 宏，这样调用方可以在开发期间就知道传入 500 是不对的。
+
+创建对象的时候，你可以把类似的规则封装在 new 函数里，而不是让调用方直接操作成员变量来指定：
+
+```rust
+pub struct Guess {
+    value: i32,
+}
+
+impl Guess {
+    pub fn new(value: i32) -> Guess {
+        if value < 1 || value > 100 {
+            panic!("Guess value must be between 1 and 100, got {}.", value);
+        }
+
+        Guess { value }
+    }
+
+    pub fn value(&self) -> i32 {
+        self.value
+    }
+}
+```
