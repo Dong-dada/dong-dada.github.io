@@ -44,7 +44,7 @@ public final bool compareAndSet(int old, int next) {
 
 可以看到原子操作当中包含了一个循环，它不断检查值有没有被其他线程修改，只有在没有修改的情况下才把这个值修改为目标值，这样就保证了对这个值的修改是原子的，不会出现两个线程同时修改一个值的情况。
 
-根据上面的原理，原子操作在并发量比较高的时候可能会有问题，因为许多个线程都在修改同一个值，可能会有一些线程每次比较都发现值被修改了，然后就循环很多次。
+根据上面的原理，原子操作在并发量高，或者说对变量的修改比较频繁的情况下可能会有问题，因为每次 CompareAndSwap 的时候，都检查到变量被其他线程修改了，然后 CompareAndSwap 一直失败，就会导致当前线程循环很多次。
 
 
 ## ABA 问题
@@ -111,7 +111,7 @@ pop()
 
 ## ABA 问题的解决方法
 
-JDK 里使用时间戳给数值增加了一个版本号，来解决 ABA 问题。总的来说，就是每次进行 CompareAndSet 操作时，不仅检查当前值跟旧值是否一致，还会检查版本号是否一致，只有在两者都一致的情况下，才更新值和版本号。
+JDK 中的 AtomicStampedReference 类给数值增加了一个版本号，来解决 ABA 问题。总的来说，就是每次进行 CompareAndSet 操作时，不仅检查当前值跟旧值是否一致，还会检查版本号是否一致，只有在两者都一致的情况下，才更新值和版本号。
 
 我们之前提过 incrementAndGet() 是不会有 ABA 问题的，因此利用这种方式来修改版本号，然后再用版本号来保障对目标值的修改不受 ABA 问题的影响。
 
@@ -121,7 +121,7 @@ package tech.dada;
 import java.util.concurrent.atomic.AtomicStampedReference;
 
 /**
- * @author dongyu
+ * @author dongdada
  */
 public class Application {
 
