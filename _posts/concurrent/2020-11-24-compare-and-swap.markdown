@@ -44,8 +44,52 @@ public final bool compareAndSet(int old, int next) {
 
 可以看到原子操作当中包含了一个循环，它不断检查值有没有被其他线程修改，只有在没有修改的情况下才把这个值修改为目标值，这样就保证了对这个值的修改是原子的，不会出现两个线程同时修改一个值的情况。
 
+## 性能问题
+
 根据上面的原理，原子操作在并发量高，或者说对变量的修改比较频繁的情况下可能会有问题，因为每次 CompareAndSwap 的时候，都检查到变量被其他线程修改了，然后 CompareAndSwap 一直失败，就会导致当前线程循环很多次。
 
+比如下面的代码:
+
+```java
+package tech.dada;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * @author dongyu
+ */
+public class Application {
+
+    public static AtomicInteger atomicInteger = new AtomicInteger();
+
+    public static void main(String[] args) throws InterruptedException {
+        // 线程一
+        new Thread(() -> {
+            long beginMillis = System.currentTimeMillis();
+            for (int i = 0; i < 100000; ++i) {
+                atomicInteger.incrementAndGet();
+            }
+            System.out.println("thread1 cost: " + (System.currentTimeMillis() - beginMillis));
+        }).start();
+
+        // 线程二
+        new Thread(() -> {
+            long beginMillis = System.currentTimeMillis();
+            for (int i = 0; i < 100000; ++i) {
+                atomicInteger.incrementAndGet();
+            }
+            System.out.println("thread2 cost: " + (System.currentTimeMillis() - beginMillis));
+        }).start();
+
+        Thread.sleep(3000);
+        System.out.println("result: " + atomicInteger.get());
+    }
+}
+```
+
+如果两个线程同时跑，各自的耗时是 8ms 左右, 如果只有一个线程在跑，耗时是 3ms 左右。
+
+不过工作中很难遇到修改频率这么高的情况，程序毕竟还要跑别的逻辑，执行其他指令，所以一般这种性能影响可以忽略。如果频率真的特别高(十万级别)，再来考虑这方面的影响。
 
 ## ABA 问题
 
