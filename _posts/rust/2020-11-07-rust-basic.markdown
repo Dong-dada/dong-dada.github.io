@@ -1679,6 +1679,8 @@ fn main() {
 
 ## Lifetime
 
+只有引用才涉及到了生命周期的概念，其他类型不涉及。
+
 Rust 当中的所有引用都有一个生命周期，这个生命周期表示了引用的作用域。大多情况下你不需要关心引用的作用域，编译期会帮你做各种检查。但有时候有一些必要的信息编译器没办法知道，就需要你手动标记生命周期。
 
 ```rust
@@ -1711,7 +1713,122 @@ Rust 当中的所有引用都有一个生命周期，这个生命周期表示了
 
 以上代码不会编译失败，编译器编译的时候发现 r 引用了 b, 并且 b 的生命周期比 r 大，因此认为编译成功。
 
+### 函数中使用 lifetime
+
 在上面的两种情况下，编译器都能判断出来生命周期是否合法。但有一些情况下编译器是判断不出来的，比如下面的代码，要在运行期才能做出判断。
+
+```rust
+fn longest(x: &str, y: &str) -> &str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+```
+
+上面的代码中，编译器和我们都不知道要返回的引用是 x 的引用还是 y 的引用。此时可以使用 lifetime annotation 对参数、返回值的生命周期进行标注，告知编译器他们生命周期之间的关系。
+
+```rust
+// 使用 lifetime 注解，对参数和返回值的生命周期进行标注
+// 下面的注解表示参数 x, y 和返回值，三者在函数内必须有相同的生命周期。
+// 话句话说返回值的 lifetime 与参数中比较小的那个 lifetime 一样。
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+
+
+fn main() {
+    let string1 = String::from("long string is long");
+
+    // result 生命周期和 string2 一致，因此下面代码可以编译通过
+    {
+        let string2 = String::from("xyz");
+        let result = longest(string1.as_str(), string2.as_str());
+        println!("The longest string is {}", result);
+    }
+
+    // result 生命周期和 string2 一致，因此下面代码无法编译通过
+    let result;
+    {
+        let string2 = String::from("xyz");
+        result = longest(string1.as_str(), string2.as_str());
+    }
+    println!("The longest string is {}", result);
+}
+```
+
+注意 lifetime annotation 标记是用来告诉编译器变量之间的生命周期关系的，如果你写出的代码实际上不能满足这个关系，那么会编译失败。
+
+```rust
+// 以下代码将编译失败
+
+// 告知编译器 返回值的生命周期是 x 和 y 当中比较小的那一个
+fn longest<'a>(x: &str, y: &str) -> &'a str {
+    // 实际上返回值的生命周期是局部变量的生命周期
+    let result = String::from("really long string");
+    result.as_str()
+}
+```
+
+### 结构体中使用 lifetime
+
+在结构体中使用引用作为成员变量，此时要设置 lifetime annotation:
+
+```rust
+// 表示成员变量 part 的生命周期，必须大于等于 ImportantExcerpt 对象的生命周期
+struct ImportantExcerpt<'a> {
+    part: &'a str,
+}
+
+fn main() {
+    let novel = String::from("Call me Ishmael. Some years ago...");
+    let first_sentence = novel.split('.').next().expect("Could not find a '.'");
+    let i = ImportantExcerpt {
+        part: first_sentence,
+    };
+}
+```
+
+### Lifetime 什么情况下可以省略
+
+如果函数只有一个参数、一个返回值，那么 lifetime annotation 标记可以省略，编译器实际上会自动帮我们加上注解:
+
+```rust
+// 一个参数、一个返回值的函数，编译器会默认加上注解，表示返回值的生命周期至少与参数的生命周期相同
+fn first_word<'a>(s: &'a str) -> &'a str {
+    // ...
+}
+```
+
+如果没有设置 lifetime annotation，编译器会按照以下三个规则来进行设置：
+1. 函数中的每个引用类型的参数，都各自有一个 lifetime annotation，比如有两个引用参数的函数，会自动增加 lifetime annoation，变成类似 `fn foo<'a, 'b>(x: &'a i32, y: &'b i32)` 的样子，也就是表示参数的的生命周期是彼此独立的。
+2. 如果函数只有一个引用类型的参数，那么它的 lifetime 会被赋值给所有返回值：`fn foo<'a>(x: &'a i32) -> &'a i32`。也就是表示返回值的生命周期默认与参数的一样。
+3. 如果函数有多个引用类型的参数，但其中一个参数是 `&self` 或者 `&mut self`。此时 `&self` 的 lifetime 将被赋值给所有返回值。也就是返回值的生命周期默认与结构体对象本身一样。
+
+
+```rust
+impl<'a> ImportantExcerpt<'a> {
+    // 如果是结构体成员函数，那么返回值的 lifetime 默认与 &self 一样
+    fn announce_and_return_part(&self, announcement: &str) -> &str {
+        println!("Attention please: {}", announcement);
+        self.part
+    }
+}
+```
+
+### The Static Lifetime
+
+`'static` 表示引用在整个应用生命周期内都可用。所有的 string 字面量都是 `'static` 的:
+
+```rust
+let s: &'static str = "I have a static lifetime.";
+```
+
 
 
 
