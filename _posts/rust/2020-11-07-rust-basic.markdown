@@ -1830,5 +1830,70 @@ let s: &'static str = "I have a static lifetime.";
 ```
 
 
+# 单元测试
 
+使用 `#[test]` 属性修饰方法，即可将该方法标记为测试用例。
+
+```rust
+pub fn add_two(a: i32) -> i32 {
+    internal_adder(a, 2)
+}
+
+fn internal_adder(a: i32, b: i32) -> i32 {
+    return a + b;
+}
+
+// #[cfg(test)] 表示 module 内的代码仅会在 cargo test 时被编译
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exploration() {
+        // 在测试用例中使用断言
+        assert_eq!(2 + 2, 4);
+    }
+
+    #[test]
+    fn another() {
+        // 在测试用例中使用 panic
+        panic!("Make this test fail");
+    }
+
+    // 使用 #[ignore] 属性来跳过用例的执行
+    #[test]
+    #[ignore]
+    fn expensive_test() {
+        // 耗时操作
+    }
+
+    #[test]
+    fn internal() {
+        // rust 中可以对私有方法进行测试
+        assert_eq!(4, internal_adder(2, 2));
+    }
+}
+```
+
+随后即可使用 `cargo test` 命令来运行所有用例。
+
+
+## Cargo 命令
+
+```s
+# 默认情况下单元测试是并行跑的，可以通过 --test-threads 参数来设置线程数量
+$ cargo test -- --test-threads=1
+
+# 默认情况下，测试通过的用例，其 stdout 不会展示出来，通过 --show-outpu 参数可以展示这些内容
+$ cargo test -- --show-output
+
+# 默认情况下 cargo test 将运行项目中的所有用例，可以传入用例的名称，这样只会执行一部分用例。
+# 只执行名称中包含 `add` 的用例
+$ cargo test add
+
+# 单独运行一下被跳过的用例
+$ cargo test -- --ignored
+```
+
+## 测试代码的组织
 
