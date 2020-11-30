@@ -1258,7 +1258,7 @@ use std::collections::HashMap;
 
 fn main() {
     // 创建 HashMap
-    let mut scores = HashMap::new();
+    let mut scores: HashMap<String, u32> = HashMap::new();
 
     // 插入元素
     scores.insert(String::from("Blue"), 10);
@@ -1895,5 +1895,228 @@ $ cargo test add
 $ cargo test -- --ignored
 ```
 
-## 测试代码的组织
+
+# 函数式语言的特性 - Closure 和 Iterator
+
+## Closure
+
+Closure 是一种可以保存变量或者参数的匿名函数。你可以把方法及其上下文保存起来，然后在另外一个地方执行，达到类似于延迟执行的效果。
+
+先来看一个简单的例子:
+
+```rust
+use std::thread;
+use std::time::Duration;
+
+// 模拟一个耗时的调用，它的业务含义是根据输入的强度，输出锻炼计划
+fn simulated_expensive_calculation(intensity: u32) -> u32 {
+    println!("calculating slowly...");
+    thread::sleep(Duration::from_secs(2));
+    return intensity;
+}
+
+fn generate_workout(intensity: u32, random_number: u32) {
+    expensive_result = simulated_expensive_calculation(intensity);
+
+    if intensity < 25 {
+        // 如果强度较低，那么先做若干次俯卧撑，再做若干次仰卧起坐
+        println!("Today, do {} push-ups!", expensive_result);
+        println!("Next, do {} sit-ups", expensive_result);
+    } else {
+        // 如果强度比较高，随机休息一下，其它时间再按照较高强度来练习
+        if random_number == 3 {
+            println!("Take a break today! Remember to stay hydrated!");
+        } else {
+            println!("Today, run for {} minutes!", expensive_result);
+        }
+    }
+}
+
+fn main() {
+    let simulated_user_specified_value = 10;
+    let simulated_random_number = 7;
+
+    generate_workout(simulated_user_specified_value, simulated_random_number);
+}
+```
+
+上述代码中，耗时调用是在进入 generate_workout 的时候立刻被执行的，我们可以使用 closure 对其重构，使耗时调用在需要的时候被延迟执行:
+
+```rust
+use std::thread;
+use std::time::Duration;
+
+fn generate_workout(intensity: u32, random_number: u32) {
+    // 把耗时调用放到 closure 里面，让它延迟执行
+    let expensive_closure = |num| {
+        println!("calculating slowly...");
+        thread::sleep(Duration::from_secs(2));
+        return intensity;
+    };
+
+    if intensity < 25 {
+        // 如果强度较低，那么先做若干次俯卧撑，再做若干次仰卧起坐
+        println!("Today, do {} push-ups!", expensive_closure(intensity));
+        println!("Next, do {} sit-ups", expensive_closure(intensity));
+    } else {
+        // 如果强度比较高，随机休息一下，其它时间再按照较高强度来练习
+        if random_number == 3 {
+            println!("Take a break today! Remember to stay hydrated!");
+        } else {
+            println!("Today, run for {} minutes!", expensive_closure(intensity));
+        }
+    }
+}
+
+fn main() {
+    let simulated_user_specified_value = 10;
+    let simulated_random_number = 7;
+
+    generate_workout(simulated_user_specified_value, simulated_random_number);
+}
+```
+
+不过重构之后耗时调用被执行了两次，我们可以构造一个 Cacher，把计算的结果缓存起来:
+
+```rust
+use std::thread;
+use std::time::Duration;
+
+struct Cacher<T>
+where T: Fn(u32) -> u32,
+{
+    calculation: T,
+
+    // 缓存计算结果
+    value: Option<u32>,
+}
+
+impl<T> Cacher<T>
+where T: Fn(u32) -> u32,
+{
+    fn new(calculation: T) -> Cacher<T> {
+        Cacher {
+            calculation,
+            value: None
+        }
+    }
+
+    fn value(&mut self, arg: u32) -> u32 {
+        // 已经计算过的话直接返回，没有计算过的话调用 calculation 方法进行计算
+        match self.value {
+            Some(v) => v,
+            None => {
+                let v = (self.calculation)(arg);
+                self.value = Some(v);
+                return v;
+            }
+        }
+    }
+}
+
+fn generate_workout(intensity: u32, random_number: u32) {
+    // 把耗时调用放到 closure 里面，让它延迟执行
+    let mut expensive_result = Cacher::new(|num: u32| -> u32 {
+        println!("calculating slowly...");
+        thread::sleep(Duration::from_secs(2));
+        return num;
+    });
+
+    if intensity < 25 {
+        // 如果强度较低，那么先做若干次俯卧撑，再做若干次仰卧起坐
+        println!("Today, do {} push-ups!", expensive_result.value(intensity));
+        println!("Next, do {} sit-ups", expensive_result.value(intensity));
+    } else {
+        // 如果强度比较高，随机休息一下，其它时间再按照较高强度来练习
+        if random_number == 3 {
+            println!("Take a break today! Remember to stay hydrated!");
+        } else {
+            println!("Today, run for {} minutes!", expensive_result.value(intensity));
+        }
+    }
+}
+
+fn main() {
+    let simulated_user_specified_value = 10;
+    let simulated_random_number = 7;
+
+    generate_workout(simulated_user_specified_value, simulated_random_number);
+}
+```
+
+不过上面的代码还是有点问题，首先 Cacher 只能缓存一个值，如果传给 Cacher::value() 的 intensity 不一样，它不会再次计算；其次 Cacher 的 calculation 只能接受 u32 类型的参数，输出 u32 类型的返回值，不够通用。
+
+第一个问题比较好解决，用一个 HashMap 来存储参数和返回值就好了，第二个问题需要用到泛型，试了几回没有成功。
+
+```rust
+struct Cacher<T>
+where T: Fn(u32) -> u32
+{
+    calculation: T,
+    values: HashMap<u32, u32>,
+}
+
+impl<T> Cacher<T>
+where T: Fn(u32) -> u32
+{
+    fn new(calculation: T) -> Cacher<T> {
+        Cacher {
+            calculation,
+            values: HashMap::new(),
+        }
+    }
+
+    fn value(&mut self, arg: u32) -> u32 {
+        let value = self.values.get(&arg);
+        match value {
+            Some(v) => v.clone(),
+            None => {
+                let v = (self.calculation)(arg);
+                self.values.insert(arg, v);
+                return v;
+            }
+        }
+    }
+}
+```
+
+总的来说上面的例子都可以用普通的函数来实现，不过 Closure 还有一个普通函数不具备的能力：它可以把局部变量等内容存起来，然后延迟地去访问它：
+
+```rust
+fn main() {
+    let x = 4;
+
+    let equal_to_x = |z| {
+        // 判断传入的值与局部变量 x 是否相等
+        return z == x;
+    };
+
+    let y = 4;
+
+    assert!(equal_to_x(y));
+}
+```
+
+对于捕获的变量，Clusure 需要使用额外的内存来存储它。Cluster 捕获变量的方式有以下几种：
+- FnOnce: 将获取变量的所有权；
+- FnMut: 将会借用变量(获取变量的可变引用)，并且修改这个变量
+- Fn: 将会借用变量(获取变量的不可变引用)
+
+如果你希望让 closure 强制获取到变量的所有权，可以使用 `move` 关键字：
+
+```rust
+fn main() {
+    let x = vec![1, 2, 3];
+
+    // 使用 move 关键字，让 closure 夺取变量 x 的所有权
+    let equal_to_x = move |z| z == x;
+
+    // 以下代码将导致报错，因为 x 的所有权已经被 closure 夺走了
+    println!("can't use x here: {:?}", x);
+
+    let y = vec![1, 2, 3];
+
+    assert!(equal_to_x(y));
+}
+```
 
