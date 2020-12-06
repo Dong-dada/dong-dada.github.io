@@ -2120,3 +2120,136 @@ fn main() {
 }
 ```
 
+
+## Iterators
+
+示例:
+
+```rust
+#[test]
+fn test_iterator_basic() {
+    let vec = vec![1, 2, 3];
+
+    // 获取 Vector 的迭代器
+    let iter = vec.iter();
+
+    // 使用迭代器遍历 Vector 的所有元素
+    for value in iter {
+        println!("Got: {}", value);
+    }
+
+    // 迭代器返回的是元素的引用类型，因此可以通过迭代器来修改元素
+    let mut vec = vec;
+    let iter = vec.iter_mut();
+    for value in iter {
+        *value += 1;
+    }
+    println!("{:?}", vec);
+}
+
+#[test]
+fn test_iterator_next() {
+    let vec = vec![1, 2, 3];
+
+    // 也可以调用 next() 方法来获取迭代器的下一个元素，注意需要用 mut 修饰，因为 next() 方法将修改迭代器内的数据
+    let mut iter = vec.iter();
+
+    // next() 方法返回的是一个 Option
+    assert_eq!(iter.next(), Some(&1));
+    assert_eq!(iter.next(), Some(&2));
+    assert_eq!(iter.next(), Some(&3));
+    assert_eq!(iter.next(), None);
+}
+
+#[test]
+fn test_iterator_sum() {
+    let vec = vec![1, 2, 3];
+    let iter = vec.iter();
+
+    // sum() 方法会把每个元素加起来
+    let total: i32 = iter.sum();
+
+    assert_eq!(total, 6);
+}
+
+#[test]
+fn test_iterator_map() {
+    let vec: Vec<i32> = vec![1, 2, 3];
+
+    // 迭代器可以通过 map().collect() 实现类似于 java Stream API 的效果。
+    // 也就是依次对每个元素执行 map(), filter() 等操作，最后再把这些元素合并成一个新的 Vector 返回
+    let vec: Vec<i32> = vec.iter()
+        .map(|x| x + 1)
+        .filter(|x| x % 2 == 0)
+        .collect();
+
+    assert_eq!(vec, vec![2, 4]);
+}
+```
+
+## 通过实现 Iterator Trait 来创建自己的迭代器
+
+Iterator Trait 的定义如下，你需要实现 next() 方法:
+
+```rust
+pub trait Iterator {
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
+
+    // methods with default implementations elided
+}
+```
+
+```rust
+struct Counter {
+    count: u32,
+}
+
+impl Counter {
+    fn new() -> Counter {
+        Counter { count: 0 }
+    }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // 实现 next() 方法，返回的 count 每次加 1，最大值为 5
+        if self.count < 5 {
+            self.count += 1;
+            Some(self.count)
+        } else {
+            None
+        }
+    }
+}
+
+#[test]
+fn calling_next_directly() {
+    let mut counter = Counter::new();
+
+    assert_eq!(counter.next(), Some(1));
+    assert_eq!(counter.next(), Some(2));
+    assert_eq!(counter.next(), Some(3));
+    assert_eq!(counter.next(), Some(4));
+    assert_eq!(counter.next(), Some(5));
+    assert_eq!(counter.next(), None);
+}
+
+#[test]
+fn using_other_iterator_trait_methods() {
+    // 实现 Iterator trait 之后，就可以调用 Iterator 的各种方法了
+
+    // Iterator.skip(n) 方法, 能够跳过迭代器的前 n 个元素
+    // Iterator.zip() 方法，能够将两个迭代器合并在一起，每次迭代都返回一个 tuple, 其中包含了两个迭代器的迭代结果
+
+    let sum: u32 = Counter::new()
+        .zip(Counter::new().skip(1))    // (1, 2), (2, 3), (3, 4), (4, 5)
+        .map(|(a, b)| a * b)    // 2, 6, 12, 20
+        .filter(|x| x % 3 == 0) // 6, 12
+        .sum();
+    assert_eq!(18, sum);
+}
+```
