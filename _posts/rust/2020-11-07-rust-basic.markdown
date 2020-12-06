@@ -53,6 +53,83 @@ edition = "2018"
 rand = "0.5.5"         # 像这样就可以添加依赖，只需要 crate 名称以及版本号
 ```
 
+## 使用 Release Profiles
+
+```s
+# 执行 release 版本
+$ cargo build --release
+```
+
+你可以在 Cargo.toml 中对 profile.* 文件进行修改，来控制编译过程:
+
+```toml
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+```
+
+# 文档注释
+
+```rust
+/// Divide two numbers.
+///
+/// # Examples
+///
+/// ```
+/// let result = my_crate::div(10, 2);
+/// assert_eq!(result, 5);
+/// ```
+///
+/// # Panics
+///
+/// If second number is zero, panic occurred.
+///
+/// ```should_panic
+/// // panics on division by zero
+/// my_crate::div(10, 0);
+/// ```
+pub fn div(a: i32, b: i32) -> i32 {
+    if b == 0 {
+        panic!("Divide-by-zero error");
+    }
+
+    a / b
+}
+```
+
+按照以上格式对 pub fn 进行注释，随后输入以下命令，就能够生成文档：
+
+```s
+$ cargo doc --open
+```
+
+生成的文档如下图所示:
+
+![]({{ site.url }}/asset/rust_doc_example.png)
+
+文档注释有个好处，其中的测试用例会在每次 `cargo test` 的时候被运行，从而保证文档和代码的一致性。
+
+```
+PS D:\code\rust\rust-lib-demo> cargo test
+    Finished test [unoptimized + debuginfo] target(s) in 0.01s
+     Running target\debug\deps\my_crate-aaae9c20b6eaebe3.exe
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+   Doc-tests my_crate
+
+running 2 tests
+test src\lib.rs - div (line 14) ... ok
+test src\lib.rs - div (line 5) ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+你可以参考 [官网文档](https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html) 来了解文档注释的更多用法。
 
 # 打印
 
@@ -1093,6 +1170,22 @@ fn main() {
 更多信息可以参考 [这篇文章](http://www.sheshbabu.com/posts/rust-module-system/?spm=ata.13261165.0.0.7b6861b6u5SVuw)
 
 
+## Workspaces
+
+有时候你希望可以统一管理多个 package，这时候可以使用 workspace 功能。Workspace 中可以包含一系列 packages，这些 packages 共享同一个 Cargo.lock 文件和输出目录。
+
+Workspace 的使用很简单，只要在文件夹根目录定义一个 Cargo.toml 文件，输入以下内容即可:
+
+```rust
+[workspace]
+
+members = [
+    "rust-demo-app",
+    "rust-demo-lib"
+]
+```
+
+members 中的内容就是要包含在这个 workspace 中的 package.
 
 # 常用集合
 
