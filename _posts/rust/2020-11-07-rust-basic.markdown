@@ -2346,3 +2346,162 @@ fn using_other_iterator_trait_methods() {
     assert_eq!(18, sum);
 }
 ```
+
+
+# 智能指针
+
+Rust 中的引用是一种通用的指针，你可以用 `&` 符号来借用它所指向的值。相比引用而言，智能指针具有更多的功能。
+
+Rust 标准库中提供了以下几种智能指针:
+- `Box<T>` 用于在堆上分配内存;
+- `Rc<T>` 能够让一块内存被多个 owner 持有;
+- `Ref<T>` 和 `RefMut<T>` 这两种类型通过 `RefCell<T>` 进行访问，它可以在运行期而非编译期保障 borrowing rules.
+
+## Box<T>
+
+`Box<T>` 类似于 C++ 当中的 `std::unique_ptr<T>`，通常用在以下场合：
+- 类型的大小在编译期无法确定，要在运行期才能确定，但是你又必须在确定大小的场合下访问该类型的变量，也就是递归类型。
+- 类型的数据量很大，因此希望在转移所有权时不要进行拷贝。
+- 希望持有基类指针，也就是希望持有 Trait 而非具体实现。
+
+简单示例:
+
+```rust
+fn main() {
+    let b = Box::new(5);
+    println!("b = {}", b);
+}
+```
+
+递归类型：
+
+```rust
+use crate::List::{Cons, Nil};
+
+// 递归类型无法在编译时知道大小
+enum List {
+    Cons(i32, List),
+    Nil,
+}
+
+fn main() {
+    // 以下代码将导致编译错误，因为出现了递归类型
+    let list = Cons(1, Cons(2, Cons(3, Nil)));
+}
+```
+
+```rust
+use crate::List::{Cons, Nil};
+
+// 用智能指针来引用递归类型，这样就可以在编译期让类型有确定的大小。
+#[derive(Debug)]
+enum List {
+    Cons(i32, Box<List>),
+    Nil,
+}
+
+fn main() {
+    let list = Cons(1, Box::new(Cons(2, Box::new(Cons(3, Box::new(Nil))))));
+    println!("{:#?}", list);
+}
+```
+
+`Box<T>` 实现了 `Deref` Trait，因此可以像使用引用那样来使用 `Box<T>`。此外 `Box<T>` 还实现了 `Drop` Trait，它会在指针离开作用域的时候销毁相关内容。
+
+## Deref Trait
+
+实现 `Deref` Trait 可以让你自定义 *解引用操作符(dereference operator)* `*` 的行为。`Box<T>` 实现了 `Deref` Trait，因此你可以像使用普通引用那样来使用 `Box<T>`。
+
+```rust
+fn main() {
+    let x = 5;
+    let y = &x;
+
+    // 对普通的引用类型使用解引用操作符
+    assert_eq!(5, *y);
+
+    let x = 5;
+    let y = Box::new(x);
+
+    // 对 Box<T> 变量使用解引用操作符
+    assert_eq!(5, *y);
+}
+```
+
+`Deref` Trait 的实现关键在于，其中定义的 `deref()` 方法返回了实际对象的引用：
+
+```rust
+use std::ops::Deref;
+
+struct MyBox<T>(T);
+
+impl<T> MyBox<T> {
+    fn new(x: T) -> MyBox<T> {
+        MyBox(x)
+    }
+}
+
+impl<T> Deref for MyBox<T> {
+    type Target = T;
+
+    // 注意 deref() 的返回值是 T 的引用
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+fn hello(name: &str) {
+    println!("Hello, {}!", name);
+}
+
+fn main() {
+    let x = 5;
+    let y = MyBox::new(x);
+
+    // *y 实际上是调用了 *(y.deref())
+    assert_eq!(5, *y);
+
+    let m = MyBox::new(String::from("Rust"));
+    // 注意因为这里的 MyBox 实现了 Deref Trait, 因此 Rust 能够进行隐式转换
+    // 它首先将 &m 从 &MyBox<String> 类型转换为 &String 类型，
+    // 因为 String 也实现了 Deref Trait，因此 Rust 随后将 &String 类型转换为 &str 类型
+    hello(&m);
+}
+```
+
+## Drop Trait
+
+```rust
+struct CustomSmartPointer {
+    data: String,
+}
+
+// Drop trait 类似于 C++ 里的析构函数，你可以在指针及其内容被析构时做一些事情
+impl Drop for CustomSmartPointer {
+    fn drop(&mut self) {
+        // 打一行日志记录对象析构
+        println!("Dropping CustomSmartPointer with data `{}`", self.data);
+    }
+}
+
+fn main() {
+    let c = CustomSmartPointer {
+        data: String::from("my stuff"),
+    };
+    let d = CustomSmartPointer {
+        data: String::from("other stuff"),
+    };
+    println!("CustomSmartPointers created.");
+
+    // 使用 std::mem::drop() 方法可以提前析构一个对象
+    // 注意 drop(c) 会夺取所有权，所以调用了 drop(c) 之后就不能再访问这个变量了。
+    std::mem::drop(c);
+    println!("CustomSmartPointers dropped the end of main.")
+
+    // 输出结果为:
+    // CustomSmartPointers created.
+    // Dropping CustomSmartPointer with data `my stuff`
+    // CustomSmartPointers dropped the end of main.
+    // Dropping CustomSmartPointer with data `other stuff`
+}
+```
