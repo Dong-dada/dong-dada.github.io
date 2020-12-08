@@ -2633,3 +2633,57 @@ mod tests {
     }
 }
 ```
+
+注意 `RefCell<T>` 是在运行期维护了 borrows rule, 因此以下代码会在运行期出现 panic 错误：
+
+```rust
+impl Messenger for MockMessenger {
+    fn send(&self, msg: &str) {
+        // 同一个变量有两个可变引用，在运行期报 BorrowMutError 错误
+        let mut one_borrow = self.sent_messages.borrow_mut();
+        let mut two_borrow = self.sent_messages.borrow_mut();
+        one_borrow.push(String::from(msg));
+        two_borrow.push(String::from(msg));
+    }
+}
+```
+
+报错内容如下:
+
+```
+thread 'main' panicked at 'already borrowed: BorrowMutError'
+```
+
+## 结合 Rc<T> 和 RefCell<T> 来让多个所有者持有可变引用
+
+`Rc<T>` 让一个变量可以有多个所有者，但这些所有者持有的都是不可变引用。`RefCell<T>` 可以让你修改不可变的变量。把这两个结合起来，就可以让一份数据被多个 owner 持有，并且这些 owner 都能修改这个变量。
+
+```rust
+use std::rc::Rc;
+use std::cell::RefCell;
+use crate::List::{Cons, Nil};
+
+#[derive(Debug)]
+enum List {
+    Cons(Rc<RefCell<i32>>, Rc<List>),
+    Nil
+}
+
+fn main() {
+    let value = Rc::new(RefCell::new(5));
+    let a = Rc::new(Cons(Rc::clone(&value), Rc::new(Nil)));
+    let b = Cons(Rc::new(RefCell::new(3)), Rc::clone(&a));
+    let c = Cons(Rc::new(RefCell::new(4)), Rc::clone(&a));
+
+    *value.borrow_mut() += 10;
+
+    println!("a after = {:?}", a);
+    println!("b after = {:?}", b);
+    println!("c after = {:?}", c);
+
+    // 输出以下内容，注意 value 的值被修改后也会影响到其它变量
+    // a after = Cons(RefCell { value: 15 }, Nil)
+    // b after = Cons(RefCell { value: 3 }, Cons(RefCell { value: 15 }, Nil))
+    // c after = Cons(RefCell { value: 4 }, Cons(RefCell { value: 15 }, Nil))
+}
+```
