@@ -2505,3 +2505,131 @@ fn main() {
     // Dropping CustomSmartPointer with data `other stuff`
 }
 ```
+
+## RC<T> 引用计数智能指针
+
+有时候某个值可能会有多个 owner, 比如在图数据结构中，可能会有多条边指向相同的节点，从概念上说这些节点应该被所有的边拥有，直到没有边在拥有节点时，该节点才能被释放。
+> 注意 Rc<T> 是非线程安全的。
+
+```rust
+use crate::List::{Cons, Nil};
+use std::rc::Rc;
+
+enum List {
+    Cons(i32, Rc<List>),
+    Nil
+}
+
+fn main() {
+    // 使用 Rc<T>::new() 方法来创建一个 Rc 指针，使用 Rc::strong_count() 来获取当前的引用计数
+    let a = Rc::new(Cons(5, Rc::new(Cons(10, Rc::new(Nil)))));
+    println!("count after creating a = {}", Rc::strong_count(&a));
+
+    // 使用 Rc::clone() 方法来复制一个 Rc 指针，此时 a, b 都指向同样的内容
+    let b = Cons(3, Rc::clone(&a));
+    println!("count after creating b = {}", Rc::strong_count(&a));
+
+    {
+        let c = Cons(4, Rc::clone(&a));
+        println!("count after creating c = {}", Rc::strong_count(&a));
+    }
+    println!("count after c goes out of scope = {}", Rc::strong_count(&a));
+
+    // 输出以下内容:
+    // count after creating a = 1
+    // count after creating b = 2
+    // count after creating c = 3
+    // count after c goes out of scope = 2
+}
+```
+
+## RefCell<T>
+
+重新回忆一下 Rust 的 borrowing rules:
+- 任何时候，你只能拥有 一个可变引用 **或者** 多个不可变引用。
+- 引用必须总是有效的。
+
+对于基本的引用类型以及 `Box<T>` 来说，borrowing rules 是在编译期被保障的。而 `RefCell<T>` 的作用则是在运行期保障 borrowing rules，如果运行期发生了 borrowing rules 破坏的情况，程序会 panic.
+
+总的来说，`RefCell<T>` 主要用在这样的一种场景下：编译器认为你的代码没有遵守 borrowing rules 因此拒绝了编译, 但你知道你的代码遵守了 borrowing rules, 你希望你的代码能够编译通过。
+
+以下是选择智能指针的原因概述：
+- `Rc<T>` 允许一个值有多个所有者；`Box<T>` 和 `RefCell<T>` 只允许有一个所有者；
+- `Box<T>` 支持编译期的 immutable 和 mutable borrows 检查；`Rc<T>` 仅支持编译期的 immutable borrows 检查；`RefCell<T>` 支持运行期的 immutable 和 mutable borrows 检查。
+- 因为 `RefCell<T>` 允许运行期的 mutable borrows 检查，所以即使 `RefCell<T>` 是不可变的，你也可以通过 `RefCell<T>` 来修改变量。
+
+以下是一个使用 `RefCell<T>` 的例子，在这个例子中 `Messenger` Trait 的 `sent(&self, message: &str)` 方法指明了 self 是不可变的，但我们希望 MockMessenger 可以把消息记录下来。
+
+```rust
+pub trait Messenger {
+    fn send(&self, msg: &str);
+}
+
+pub struct LimitTracker<'a, T: Messenger> {
+    messenger: &'a T,
+    value: usize,
+    max: usize
+}
+
+impl<'a, T> LimitTracker<'a, T>
+where T: Messenger,
+{
+    pub fn new(messenger: &T, max: usize) -> LimitTracker<T> {
+        LimitTracker {
+            messenger,
+            value: 0,
+            max,
+        }
+    }
+
+    pub fn set_value(&mut self, value: usize) {
+        self.value = value;
+        let percentage_of_max = self.value as f64 / self.max as f64;
+        if percentage_of_max >= 1.0 {
+            self.messenger.send("Error: You are over your quota!");
+        } else if percentage_of_max >= 0.9 {
+            self.messenger.send("Urgent warning: You've used up over 90% of your quota!");
+        } else if percentage_of_max >= 0.75 {
+            self.messenger.send("Warning: You've used up over 75% of your quota!");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    struct MockMessenger {
+        sent_messages: RefCell<Vec<String>>,
+    }
+
+    impl MockMessenger {
+        fn new() -> MockMessenger {
+            MockMessenger {
+                sent_messages: RefCell::new(vec![]),
+            }
+        }
+    }
+
+    impl Messenger for MockMessenger {
+        // send() 方法的 &self 是不可变的，但这时候我们希望修改 sent_messages 变量的内容
+        // 为了达成这个目的，可以使用 RefCell<T> 指针指向 sent_messages
+        fn send(&self, msg: &str) {
+            // 尽管 self 是不可变的，但是可以通过 RefCell::borrow_mut() 方法来获取可变引用
+            self.sent_messages.borrow_mut().push(String::from(msg));
+        }
+    }
+
+    #[test]
+    fn it_sends_an_over_75_percent_warning_message() {
+        let mock_messenger = MockMessenger::new();
+        let mut limit_tracker = LimitTracker::new(&mock_messenger, 100);
+
+        limit_tracker.set_value(80);
+
+        // 通过 RefCell::borrow() 来获取不可变引用
+        assert_eq!(mock_messenger.sent_messages.borrow().len(), 1);
+    }
+}
+```
