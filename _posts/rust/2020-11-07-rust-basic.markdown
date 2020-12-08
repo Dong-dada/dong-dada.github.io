@@ -2687,3 +2687,135 @@ fn main() {
     // c after = Cons(RefCell { value: 4 }, Cons(RefCell { value: 15 }, Nil))
 }
 ```
+
+## 使用 Weak<T> 循环引用导致的内存泄漏
+
+虽然 rust 有很多机制来帮助我们实现内存安全，但还是有些情况 rust 没法检查出来，比如循环引用：
+
+```rust
+use std::rc::Rc;
+use std::cell::RefCell;
+use crate::List::{Cons, Nil};
+
+#[derive(Debug)]
+enum List {
+    // Cons 中的第二个变量，指向另一个节点，从而形成链表
+    Cons(i32, RefCell<Rc<List>>),
+    Nil
+}
+
+impl List {
+    // tail 函数用于获取下个节点
+    fn tail(&self) -> Option<&RefCell<Rc<List>>> {
+        match self {
+            Cons(_, item) => Some(item),
+            Nil => None
+        }
+    }
+}
+
+fn main() {
+    // 创建一个节点 a
+    let a = Rc::new(Cons(5, RefCell::new(Rc::new(Nil))));
+    println!("a initial rc count = {}", Rc::strong_count(&a));
+    println!("a next item = {:?}", a.tail());
+
+    // 创建一个节点 b, 并让节点 b 指向节点 a
+    let b = Rc::new(Cons(10, RefCell::new(Rc::clone(&a))));
+    println!("a rc count after b creation = {}", Rc::strong_count(&a));
+    println!("b initial rc count = {}", Rc::strong_count(&b));
+    println!("b next item = {:?}", b.tail());
+
+    // 让 a 节点指向 b 节点，从而形成循环引用
+    if let Some(link) = a.tail() {
+        *link.borrow_mut() = Rc::clone(&b);
+    }
+
+    // 此时 a 和 b 的引用计数都是 2
+    // main 函数执行结束后，因为 a 和 b 离开了作用域，因此引用计数变为 1，变量不会被销毁
+    println!("b rc count after changing a = {}", Rc::strong_count(&b));
+    println!("a rc count after changing b = {}", Rc::strong_count(&a));
+
+    // 以下代码将导致 stack overflow, 因为 println 会一直尝试打印 next 节点的内容，不断循环
+    println!("a next item = {:?}", a.tail());
+
+    // 输出结果:
+    // a initial rc count = 1
+    // a next item = Some(RefCell { value: Nil })
+    // a rc count after b creation = 2
+    // b initial rc count = 1
+    // b next item = Some(RefCell { value: Cons(5, RefCell { value: Nil }) })
+    // b rc count after changing a = 2
+    // a rc count after changing b = 2
+    // a next item = Some(RefCell { value: Cons(10, RefCell { ....
+    // thread 'main' has overflowed its stack
+}
+```
+
+使用 `Weak<T>` 来避免循环引用问题：
+
+```rust
+use std::cell::RefCell;
+use std::rc::{Rc, Weak};
+
+#[derive(Debug)]
+struct Node {
+    value: i32,
+    // 在 children 成员中记录子节点列表，如此一来可以构造出树形结构
+    children: RefCell<Vec<Rc<Node>>>,
+    // 在 parent 成员中记录父节点，如此一来可以方便搜索，注意此处使用了 Weak<T> 指针
+    parent: RefCell<Weak<Node>>,
+}
+
+fn main() {
+    // 创建一个节点 leaf
+    let leaf = Rc::new(Node {
+        value: 3,
+        parent: RefCell::new(Weak::new()),
+        children: RefCell::new(vec![]),
+    });
+    // 此时提权会失败
+    println!("leaf parent = {:?}", leaf.parent.borrow().upgrade());
+
+    // 创建一个节点，把 leaf 作为它的子节点
+    let branch = Rc::new(Node {
+        value: 5,
+        parent: RefCell::new(Weak::new()),
+        children: RefCell::new(vec![Rc::clone(&leaf)]),
+    });
+    // 把 branch 作为 leaf 的父节点
+    *leaf.parent.borrow_mut() = Rc::downgrade(&branch);
+
+    // 此时提权可以成功
+    println!("leaf parent = {:#?}", leaf.parent.borrow().upgrade());
+
+    // 输出结果
+    // leaf parent = None
+    // leaf parent = Some(
+    //     Node {
+    //         value: 5,
+    //         children: RefCell {
+    //             value: [
+    //                 Node {
+    //                     value: 3,
+    //                     children: RefCell {
+    //                         value: [],
+    //                     },
+    //                     parent: RefCell {
+    //                         value: (Weak),
+    //                     },
+    //                 },
+    //             ],
+    //         },
+    //         parent: RefCell {
+    //             value: (Weak),
+    //         },
+    //     },
+    // )
+}
+```
+
+最后说下 `Rc<T>` 和 `Weak<T>` 的实现原理：
+- `Rc<T>` 会记录两个指针，一个指向数据，另一个指向共享数据块。在共享数据块里记录了引用计数。每次调用 `Rc<T>::clone()` 时，除了复制这两份指针，还会将共享数据块中的引用计数加一。每次 `Rc<T>` 被 drop 时，会检查共享数据快中的引用计数是否为 0, 如果为 0, 则删除原始数据。
+- `Weak<T>` 需要通过 `Rc<T>::downgrade()` 来创建，它和 `Rc<T>` 指向同一个共享数据块。共享数据块里除了记录引用计数 reference count 之外，还会记录一个 weak count, 表示弱引用的计数。reference count 变成 0 之后，`Rc<T>` 指向的原始资源会被销毁，如果此时 weak count 不为 0，那么共享数据块不会被销毁。直到所有 `Weak<T>` 被释放，weak count 变成 0 之后，共享数据块才会被销毁。
+- 通过 `Weak<T>::upgrade()` 进行提权时，会检查其中的 reference count 是不是已经变成 0 了，如果是，则提权失败；如果大于 0，则会将 reference count 加一，然后创建一个新的 `Rc<T>` 出来。
