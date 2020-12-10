@@ -2819,3 +2819,370 @@ fn main() {
 - `Rc<T>` 会记录两个指针，一个指向数据，另一个指向共享数据块。在共享数据块里记录了引用计数。每次调用 `Rc<T>::clone()` 时，除了复制这两份指针，还会将共享数据块中的引用计数加一。每次 `Rc<T>` 被 drop 时，会检查共享数据快中的引用计数是否为 0, 如果为 0, 则删除原始数据。
 - `Weak<T>` 需要通过 `Rc<T>::downgrade()` 来创建，它和 `Rc<T>` 指向同一个共享数据块。共享数据块里除了记录引用计数 reference count 之外，还会记录一个 weak count, 表示弱引用的计数。reference count 变成 0 之后，`Rc<T>` 指向的原始资源会被销毁，如果此时 weak count 不为 0，那么共享数据块不会被销毁。直到所有 `Weak<T>` 被释放，weak count 变成 0 之后，共享数据块才会被销毁。
 - 通过 `Weak<T>::upgrade()` 进行提权时，会检查其中的 reference count 是不是已经变成 0 了，如果是，则提权失败；如果大于 0，则会将 reference count 加一，然后创建一个新的 `Rc<T>` 出来。
+
+
+# 并发编程
+
+## 线程
+
+Rust 中的线程并不是绿色线程，它跟操作系统线程是 1:1 的关系，rust 线程也是由操作系统进行调度的。
+
+```rust
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    // 使用 thread::spawn() 来创建线程，需要传入一个 closure
+    // spawn 是 产卵 的意思，看起来是把创建子线程的过程类比成了产卵。。。
+    let handler = thread::spawn(|| {
+        for i in 1..10 {
+            println!("hi number {} from the spawned thread!", i);
+
+            // 调用 thread::sleep() 来交出控制权
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+
+    for i in 1..5 {
+        println!("hi number {} from the main thread!", i);
+        thread::sleep(Duration::from_millis(1));
+    }
+
+    // thread::spawn() 的返回值是一个 JoinHandle, 可以调用 JoinHandle::join() 来等待线程执行结束
+    handler.join().unwrap();
+}
+```
+
+如果希望把值传入子线程，可以使用 `move` 关键字，它会让 closure 获取到值的所有权：
+
+```rust
+use std::thread;
+
+fn main() {
+    let values = vec![1, 2, 3];
+
+    // 使用 move 关键字，把所有权交给 closure, 否则会编译报错
+    let handle = thread::spawn(move || {
+        println!("Here's a vector: {:?}", values);
+    });
+
+    handle.join().unwrap();
+}
+```
+
+注意在 rust 当中，如果子线程发生了 panic, 其它线程并不会受到影响:
+
+```rust
+use std::thread;
+
+fn main() {
+    let handle = thread::spawn(|| {
+        // 子线程 panic 之后，进程不会结束，其它线程仍然可以继续执行
+        panic!("thread panic!");
+    });
+    handle.join().unwrap_or_default();
+
+    println!("main thread!");
+
+    // 输出结果:
+    // thread '<unnamed>' panicked at 'thread panic!', src/main.rs:5:9
+    // stack backtrace:
+    //    0: <std::sys_common::backtrace::_print::DisplayBacktrace as core::fmt::Display>::fmt
+    //    1: core::fmt::write
+    //    2: std::io::Write::write_fmt
+    //    3: std::panicking::default_hook::{{closure}}
+    //    4: std::panicking::default_hook
+    //    5: std::panicking::rust_panic_with_hook
+    //    6: std::panicking::begin_panic
+    //    7: rust_demo::main::{{closure}}
+    // note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+    // main thread!
+}
+```
+
+
+## 管道
+
+在并发编程中，有个重要的课题是如何消息的传递，[Go language documentation](https://golang.org/doc/effective_go.html#concurrency) 中有句口号：“Do not communicate by sharing memory; instead, share memory by communicating.”
+
+Rust 当中提供了名为 channel 的工具来帮助我们在线程间传递数据：
+
+```rust
+use std::thread;
+use std::sync::mpsc;
+
+fn main() {
+    // 创建一个管道，管道两端分别是 tx(transmitter, 用于发送数据), rx(receiver, 用于接收数据)
+    // mpsc 是 multiple producer single consumer 的缩写，也就是多个生产者，单个消费者
+    let (tx, rx) = mpsc::channel();
+
+    // 创建子线程，使用 move 关键字把 tx 传递给子线程
+    thread::spawn(move || {
+        let value = String::from("Hi~");
+        tx.send(value).unwrap();
+
+        // 数据通过 tx.send() 发送出去之后，所有权就被转移走了，此后就不能再使用这个数据了
+        // 加入以下代码将导致编译错误
+        // println!("value is {}", value);
+    });
+
+    // 使用 rx 接收管道上发过来的数据
+    // rx.recv() 将阻塞当前线程，直到收到管道上发来的数据
+    let received_value = rx.recv().unwrap();
+    println!("Got: {}", received_value);
+
+    // 输出结果：
+    // Got: Hi~
+}
+```
+
+下面的例子展示了子线程通过管道发送多条数据给主线程的情况:
+
+```rust
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    let (tx, rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let vals = vec![
+            String::from("hi"),
+            String::from("from"),
+            String::from("the"),
+            String::from("thread"),
+        ];
+
+        for val in vals {
+            tx.send(val).unwrap();
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    for received in rx {
+        println!("Got: {}", received);
+    }
+
+    // 输出结果
+    // Got: hi
+    // Got: from
+    // Got: the
+    // Got: thread
+}
+```
+
+下面的例子展示了多个生产者，单个消费者的情况：
+
+```rust
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
+
+fn main() {
+    let (tx, rx) = mpsc::channel();
+    let tx1 = mpsc::Sender::clone(&tx);
+    thread::spawn(move || {
+        let values = vec![
+            String::from("hi"),
+            String::from("from"),
+            String::from("the"),
+            String::from("thread"),
+        ];
+        for value in values {
+            tx1.send(value).unwrap();
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    thread::spawn(move || {
+        let vals = vec![
+            String::from("more"),
+            String::from("messages"),
+            String::from("for"),
+            String::from("you"),
+        ];
+
+        for val in vals {
+            tx.send(val).unwrap();
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    for received in rx {
+        println!("Got: {}", received);
+    }
+
+    // 输出结果
+    // Got: hi
+    // Got: more
+    // Got: messages
+    // Got: from
+    // Got: for
+    // Got: the
+    // Got: thread
+    // Got: you
+}
+```
+
+## 状态共享
+
+通过管道可以把数据发送给另外一个线程，但有时候我们希望数据能够被多个线程并发地访问。管道中的数据具有单一所有权，数据能够被多个线程并发访问，像是这个数据具有多个所有者。
+
+### Mutex
+
+Mutex 是 *mutual exclusion(相互排斥)* 的缩写。使用 mutex 可以保护你的数据，让你的数据在同一时间只能被一个线程访问。
+
+使用 mutex 需要遵守以下两个规则：
+- 在使用数据前必须要尝试获取锁(acquire lock)；
+- 使用完数据后必须要释放锁，这样其它线程才能获取到它；
+
+使用 `Mutex<T>` 的简单例子:
+
+```rust
+use std::sync::{Mutex, MutexGuard};
+
+fn main() {
+    // 创建 mutex，实际上做了两件事：
+    // 1. 在对上创建一块内存，存放一个初始值为 5 的 i32 变量
+    // 2. 创建 mutex, 并让 mutex 保护这块内存
+    let m = Mutex::new(5);
+
+    {
+        // 要访问 mutex 所保护的内存，首先要调用 Mutex<T>::lock() 来获取锁
+        // Mutex<T>::lock() 将会返回一个 MutexGuard<T> 对象，它其实是个智能指针，指向所保护的内存
+        // 当 MutexGuard<T> 指针离开作用域之后，它会释放 Mutex<T> 的锁
+        let mut num : MutexGuard<i32> = m.lock().unwrap();
+
+        // MutexGuard<T> 实现了类似于 RefCell<T> 的内部可变性，所以你可以修改变量
+        *num = 6;
+    }
+
+    println!("m = {:?}", m);
+}
+```
+
+以下是一个在多个线程中访问 `Mutex<T>` 的例子，这个例子会编译失败：
+
+```rust
+use std::sync::Mutex;
+use std::thread;
+
+fn main() {
+    let counter = Mutex::new(0);
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        // 创建 10 个线程，每个线程都尝试获取锁
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("Result: {}", *counter.lock().unwrap());
+
+    // 产生以下编译错误
+    //   --> src/main.rs:10:36
+    //    |
+    // 5  |     let counter = Mutex::new(0);
+    //    |         ------- move occurs because `counter` has type `std::sync::Mutex<i32>`, which does not implement the `Copy` trait
+    // ...
+    // 10 |         let handle = thread::spawn(move || {
+    //    |                                    ^^^^^^^ value moved into closure here, in previous iteration of loop
+    // 11 |             let mut num = counter.lock().unwrap();
+    //    |                           ------- use occurs due to use in closure
+}
+```
+
+可以看到上述代码编译失败的原因是，counter 在第一次循环的时候被 move 到了第一个子线程里，然后在第二次循环的时候，因为 counter 已经被移走了，所以没法再被 move 到第二个线程里。
+
+现在我们想要共享变量的所有权，所以用移动语义是行不通的，我们可以用 `Rc<T>` 来让 `Mutex<T>` 有多个所有者：
+
+```rust
+use std::sync::Mutex;
+use std::thread;
+use std::rc::Rc;
+
+fn main() {
+    let counter = Rc::new(Mutex::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        // 创建 10 个线程，每个线程都尝试获取锁
+        // 使用 Rc<T> 来共享 counter 的所有权
+        let counter = Rc::clone(&counter);
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("Result: {}", *counter.lock().unwrap());
+
+    // 产生以下编译错误
+    // error[E0277]: `std::rc::Rc<std::sync::Mutex<i32>>` cannot be sent between threads safely
+    //    --> src/main.rs:13:22
+    //     |
+    // 13  |           let handle = thread::spawn(move || {
+    //     |  ______________________^^^^^^^^^^^^^_-
+    //     | |                      |
+    //     | |                      `std::rc::Rc<std::sync::Mutex<i32>>` cannot be sent between threads safely
+    // 14  | |             let mut num = counter.lock().unwrap();
+    // 15  | |             *num += 1;
+    // 16  | |         });
+    //     | |_________- within this `[closure@src/main.rs:13:36: 16:10 counter:std::rc::Rc<std::sync::Mutex<i32>>]`
+    //     |
+    //    ::: /Users/dongyu/.rustup/toolchains/stable-x86_64-apple-darwin/lib/rustlib/src/rust/src/libstd/thread/mod.rs:616:8
+    //     |
+    // 616 |       F: Send + 'static,
+    //     |          ---- required by this bound in `std::thread::spawn`
+    //     |
+    //     = help: within `[closure@src/main.rs:13:36: 16:10 counter:std::rc::Rc<std::sync::Mutex<i32>>]`, the trait `std::marker::Send` is not implemented for `std::rc::Rc<std::sync::Mutex<i32>>`
+    //     = note: required because it appears within the type `[closure@src/main.rs:13:36: 16:10 counter:std::rc::Rc<std::sync::Mutex<i32>>]`
+}
+```
+
+很遗憾，使用 `Rc<T>` 来共享 `Mutex<T>` 之后，产生了另一个编译错误。这个编译错误是说 `Rc<Mutex<T>>` 无法被安全地 move 给线程。编译器告诉我们，之所以无法被安全地被 move 给线程，是因为 `Rc<Mutex<T>>` 没有实现 `Send` trait.
+
+`Rc<T>` 之所以没有实现 `Send` Trait, 是因为它无法做到原子性地更新 reference count。Rust 提供了 `Arc<T>` 类型来解决这个问题，Arc 是 *atomically reference counted* 的缩写，也就是原子性的引用计数。
+
+```rust
+use std::sync::{Mutex, Arc};
+use std::thread;
+
+fn main() {
+    let counter = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        // 创建 10 个线程，每个线程都尝试获取锁
+        // 使用 Arc<T> 来共享 counter 的所有权
+        let counter = Arc::clone(&counter);
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("Result: {}", *counter.lock().unwrap());
+
+    // 输出结果
+    // Result: 10
+}
+```
