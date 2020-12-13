@@ -3738,3 +3738,133 @@ fn main() {
 }
 ```
 
+
+# Unsafe
+
+在 Unsafe Rust 当中，你可以做到以下几件事：
+- 解引用得到裸指针；
+- 调用 unsafe function；
+- 访问或修改不可变的静态变量；
+- 实现 unsafe trait;
+- 访问 union 的字段；
+
+要使用 unsafe rust，你需要使用 `unsafe` 关键字，然后把不安全的代码用大括号括起来。
+
+使用了 `unsafe` 关键字，并不会关掉 borrow checker 等 rust 当中的安全检查机制，只是让你有能力执行以上几种操作而已。
+
+## 裸指针
+
+裸指针分为两种类型 `*const T` 和 `*mut T`，分别表示不可变和可变的裸指针。 
+
+```rust
+fn main() {
+    let mut num = 5;
+    // 把不可变引用转为不可变裸指针
+    let r1 = &num as *const i32;
+    // 把可变引用转为可变裸指针
+    let r2 = &mut num as *mut i32;
+    
+    // 你可以在 safe block 当中创建裸指针，但你必须在 unsafe block 当中使用裸指针
+    unsafe {
+        println!("r1 is: {}", *r1);
+        println!("r2 is: {}", *r2);
+    }
+
+    // 把特定地址转为不可变裸指针
+    let address = 0x012345usize;
+    let r = address as *const i32;
+}
+```
+
+## 调用 unsafe 方法
+
+```rust
+unsafe fn dangerous() {
+}
+
+fn main() {
+    
+    // 在 unsafe block 当中可以调用 unsafe function
+    unsafe {
+        dangerous();
+    }
+}
+```
+
+## 把 unsafe 代码包装到 safe function
+
+```rust
+use std::slice;
+
+// 把一个 &mut [i32] 数组，分割为两个 &mut [i32] 数组
+fn split_at_mut(slice: &mut [i32], mid: usize) -> (&mut [i32], &mut [i32]) {
+    let len = slice.len();
+    assert!(mid <= len);
+
+    // 获取裸指针
+    let ptr = slice.as_mut_ptr();
+
+    // 在 unsafe block 中，把 &mut [i32] 数组，分成两个数组
+    unsafe {
+        return (slice::from_raw_parts_mut(ptr, mid),
+                slice::from_raw_parts_mut(ptr.add(mid), len - mid));
+    }
+}
+
+fn main() {
+    let mut array = [1, 2, 3, 4, 5, 6];
+
+    // 调用 safe function
+    let (array_a, array_b) = split_at_mut(&mut array, 3);
+    println!("array_a: {:?}", array_a);
+    println!("array_b: {:?}", array_b);
+
+    // 输出结果
+    // array_a: [1, 2, 3]
+    // array_b: [4, 5, 6]
+}
+```
+
+## 使用 extern 关键字访问其他语言的函数
+
+```rust
+// 使用 extern "C" 来声明 C 语言的函数
+extern "C" {
+    fn abs(input: i32) -> i32;
+}
+
+fn main() {
+    unsafe {
+        println!("Absolute value of -3 according to C: {}", abs(-3));
+    }
+}
+```
+
+```rust
+// 也可以使用 extern 关键字来暴露 rust 函数给 C 语言调用
+#[no_mangle]
+pub extern "C" fn call_from_c() {
+    println!("Just called a Rust function from C!");
+}
+```
+
+## 修改或访问可变的静态变量
+
+```rust
+// 默认情况下，rust 当中的静态变量是不可变的，如果你希望访问可变的静态变量，那么这些代码需要用 unsafe block 括起来
+static mut COUNTER: u32 = 0;
+
+fn add_to_count(inc: u32) {
+    unsafe {
+        COUNTER += inc;
+    }
+}
+
+fn main() {
+    add_to_count(3);
+
+    unsafe {
+        println!("COUNTER: {}", COUNTER);
+    }
+}
+```
