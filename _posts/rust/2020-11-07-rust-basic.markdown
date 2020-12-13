@@ -3369,3 +3369,372 @@ fn main() {
 使用 trait object 有两个限制：
 - 方法的返回值不能是 self;
 - 方法的参数不能是泛型类型;
+
+
+# Patterns 和 Matching
+
+Pattern 是 rust 中的一种特殊的语法，由 `match` 表达式加上其他的一些内容组成：
+- 字面量
+- 数组、枚举、结构体、tuple
+- 变量
+- 通配符
+- 占位符
+
+Pattern 的基本语法如下:
+
+```rust
+match VALUE {
+    PATTERN => EXPRESSION,
+    PATTERN => EXPRESSION,
+    PATTERN => EXPRESSION,
+}
+```
+
+match 表达式有个要求是，它的 pattern 必须能够描述 value 的所有情况，你可以使用 `_` 来表示满足其他情况时应该怎样处理，类似于 C/C++ 当中 switch 语句的 `default`。Rust 要求所有情况都必须被列出来，而在 C/C++ 当中，允许你不写 default 语句。
+
+## if let 条件表达式
+
+if let 表达式可以跟 `else if`, `else if let`, `else` 等表达式混用。
+
+```rust
+fn main() {
+    let favorite_color: Option<&str> = None;
+    let is_tuesday = false;
+    let age: Result<u8, _> = "34".parse();
+
+    if let Some(color) = favorite_color {
+        // 如果 favorite_color 这个 Option 枚举的值为 Some，那么使用 color 获取 Some 中的值
+        println!("Using your favorite color, {}, as the background", color);
+    } else if is_tuesday {
+        println!("Tuesday is green day");
+    } else if let Ok(age) = age {
+        // 如果 age 这个 Result 枚举的值为 Ok, 那么使用 age 获取 Ok 当中的值
+        if age > 30 {
+            println!("Using purple as the background color");
+        } else {
+            println!("Using orange as the background color");
+        }
+    } else {
+        println!("Using blue as the background color");
+    }
+
+    // 输出结果
+    // Using purple as the background color
+}
+```
+
+## while let 条件循环
+
+```rust
+fn main() {
+    let mut stack = Vec::new();
+    stack.push(1);
+    stack.push(2);
+    stack.push(3);
+
+    // 如果 stack.pop() 返回的 Option 枚举，其值为 Some, 那么使用 top 获取 Some 中的值
+    while let Some(top) = stack.pop() {
+        println!("{}", top);
+    }
+}
+```
+
+## for Loops
+
+```rust
+fn main() {
+    let v = vec!['a', 'b', 'c'];
+
+    // 使用 enumerate() 方法将 Iterator 转换为生成 (index, value) 的 Iterator
+    // 使用 (index, value) pattern 来获取迭代器返回的值
+    for (index, value) in v.iter().enumerate() {
+        println!("{} is at index {}", value, index);
+    }
+}
+```
+
+## Pattern 用在函数参数中
+
+```rust
+// pattern 也可以用在函数参数上面
+// 比如使用 pattern 来表示函数接受一个 tuple, 其类型为 &(i32, i32)
+fn print_coordinates(&(x, y): &(i32, i32)) {
+    println!("Current location: ({}, {})", x, y);
+}
+
+fn main() {
+    let point = (3, 5);
+    print_coordinates(&point);
+}
+```
+
+## Refutablity
+
+Pattern 有两种组成形式：refutable and irrefutable(可驳倒、不可驳倒)。如果一个 pattern 能够匹配到任意传入的值，那么这个 pattern 就是 inrefutable 的，比如 `let x = 5;` 这种 pattern, 因为 x 能够匹配任何东西，所以它是 inrefutable 的。如果一个 pattern 有可能匹配不到传入的值，那么它就是 refutable 的，比如 `if let Some(x) = a_value;` 这行语句当中 `Some(x)` 就是一个 refutable 的 pattern， 因为 `a_value` 有可能是个 `None` 此时 `Some(x)` 就会跟它匹配不上了。
+
+函数参数、let 语句、for 循环，这几种情况只能接受 inrefutable patterns, 因为没有匹配上的话，程序做不了任何事情。
+
+`if let`, `while let` 表达式可以接收 refutable patterns, 因为程序可以在条件不满足时作一些其他的处理。
+
+参考以下代码，这样以后遇到类似错误的时候你能知道原因：
+
+```rust
+fn main() {
+    let str_opt: Option<&str> = None;
+    // let 表达式只能接收 irrefutable pattern
+    let Some(str) = str_opt;
+    println!("str is {}", str);
+
+    // 输出以下报错:
+    // error[E0005]: refutable pattern in local binding: `None` not covered
+    //    --> rust-demo-app\src\main.rs:4:9
+    //     |
+    // 4   |     let Some(str) = str_opt;
+    //     |         ^^^^^^^^^ pattern `None` not covered
+    //     |
+    //    ::: C:\Users\dongyu\.rustup\toolchains\stable-x86_64-pc-windows-msvc\lib/rustlib/src/rust\library\core\src\option.rs:149:5
+    //     |
+    // 149 |     None,
+    //     |     ---- not covered
+    //     |
+    //     = note: `let` bindings require an "irrefutable pattern", like a `struct` or an `enum` with only one variant
+    //     = note: for more information, visit https://doc.rust-lang.org/book/ch18-02-refutability.html
+    //     = note: the matched value is of type `std::option::Option<&str>`
+    // help: you might want to use `if let` to ignore the variant that isn't matched
+    //     |
+    // 4   |     if let Some(str) = str_opt { /* */ }
+    //     |
+}
+```
+
+```rust
+fn main() {
+    if let x = 5 {
+        println!("{}", x);
+    }
+
+    // 编译会成功，但产生以下告警：
+    // warning: irrefutable if-let pattern
+    //  --> rust-demo-app\src\main.rs:2:5
+    //   |
+    // 2 | /     if let x = 5 {
+    // 3 | |         println!("{}", x);
+    // 4 | |     }
+    //   | |_____^
+    //   |
+    //   = note: `#[warn(irrefutable_let_patterns)]` on by default
+    //
+    // warning: 1 warning emitted
+    //
+    //     Finished dev [unoptimized + debuginfo] target(s) in 0.59s
+    //      Running `D:\code\rust\rust-demo\target\debug\rust-demo-app.exe`
+    // 5
+}
+```
+
+## Pattern 语法
+
+### 匹配字面量
+
+```rust
+fn main() {
+    let x = 1;
+
+    // 匹配变量的值是否是某个字面量
+    match x {
+        1 => println!("one"),
+        2 => println!("two"),
+        3 => println!("three"),
+        _ => println!("anything"),
+    }
+}
+```
+
+### 匹配命名变量
+
+也就是之前写过的 `if let Some(x) = some_option_value;` 这种写法，`Some(x)` 在匹配到值之后，还使用变量 `x` 把值存储了下来。
+
+```rust
+fn main() {
+    let x = Some(5);
+    let y = 10;
+
+    match x {
+        Some(50) => println!("Got 50"),
+
+        // 如果 x 是 Some, 那么使用变量 y 来获取 Some 当中的值
+        // 注意，这里的 y 是一个新的变量，所以之前定义的 y 不会受到影响
+        Some(y) => println!("Matched, y = {:?}", y),
+        _ => println!("Default case, x = {:?}", x),
+    }
+
+    println!("at the end: x = {:?}, y = {:?}", x, y);
+
+    // 输出结果:
+    // Matched, y = 5
+    // at the end: x = Some(5), y = 10
+}
+```
+
+### 同时匹配多个 Pattern
+
+```rust
+fn main() {
+    let x = 1;
+
+    match x {
+        // 使用 `|` 关键字可以同时匹配多个 pattern
+        1 | 2 => println!("one or two"),
+        3 => println!("three"),
+        _ => println!("anything"),
+    }
+}
+```
+
+### 使用 `..=` 关键字匹配范围
+
+```rust
+fn main() {
+    let x = 5;
+    match x {
+        // 匹配数字 [1, 5]
+        1..=5 => println!("one through five"),
+        _ => println!("something else"),
+    }
+
+    let x = 'c';
+    match x {
+        // 匹配字符 [a, j]
+        'a'..='j' => println!("early ASCII letter"),
+        'k'..='z' => println!("late ASCII letter"),
+        _ => println!("something else"),
+    }
+}
+```
+
+### 使用 pattern 获取结构体内的成员
+
+```rust
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let p = Point { x: 0, y: 7 };
+
+    // 使用 pattern 获取结果体内的成员，将其使用 a, b 这两个变量来存储
+    let Point { x: a, y: b } = p;
+    assert_eq!(0, a);
+    assert_eq!(7, b);
+}
+```
+
+你还可以在 match 表达式里，只匹配结构体的一部分成员：
+
+```rust
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let p = Point { x: 0, y: 7 };
+
+    match p {
+        // 只匹配 y
+        Point { x, y: 0 } => println!("On the x axis at {}", x),
+        // 只匹配 x
+        Point { x: 0, y } => println!("On the y axis at {}", y),
+        // 任意
+        Point { x, y } => println!("On neither axis: ({}, {})", x, y),
+    }
+}
+```
+
+### 使用 pattern 获取枚举的值
+
+```rust
+enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(i32, i32, i32),
+}
+
+fn main() {
+    let msg = Message::ChangeColor(0, 160, 255);
+
+    match msg {
+        Message::Quit => {
+            println!("The Quit variant has no data to destructure.")
+        }
+        // 使用 pattern 来获取 Move 枚举内的值，并使用 x, y 这两个变量来存储
+        Message::Move { x, y } => {
+            println!(
+                "Move in the x direction {} and in the y direction {}",
+                x, y
+            );
+        }
+        // 使用 pattern 来获取 Write 枚举内的值，并使用 text 这个变量来存储
+        Message::Write(text) => println!("Text message: {}", text),
+        // 使用 pattern 来获取 ChangeColor 枚举内的值，并使用 r, g, b 这三个变量来存储
+        Message::ChangeColor(r, g, b) => println!(
+            "Change the color to red {}, green {}, and blue {}",
+            r, g, b
+        ),
+    }
+}
+```
+
+你甚至还可以使用 pattern 来获取嵌套类型单中的值:
+
+```rust
+enum Color {
+    Rgb(i32, i32, i32),
+    Hsv(i32, i32, i32),
+}
+
+enum Message {
+    Quit,
+    Move { x: i32, y: i32 },
+    Write(String),
+    ChangeColor(Color),
+}
+
+fn main() {
+    let msg = Message::ChangeColor(Color::Hsv(0, 160, 255));
+
+    match msg {
+        Message::ChangeColor(Color::Rgb(r, g, b)) => println!(
+            "Change the color to red {}, green {}, and blue {}",
+            r, g, b
+        ),
+        Message::ChangeColor(Color::Hsv(h, s, v)) => println!(
+            "Change the color to hue {}, saturation {}, and value {}",
+            h, s, v
+        ),
+        _ => (),
+    }
+}
+```
+
+### 使用 .. 来忽略值的其他部分:
+
+```rust
+fn main() {
+    struct Point {
+        x: i32,
+        y: i32,
+        z: i32,
+    }
+
+    let origin = Point { x: 0, y: 0, z: 0 };
+
+    match origin {
+        // 只需要 x 就好了，使用 .. 来忽略 Point 中的其他字段
+        Point { x, .. } => println!("x is {}", x),
+    }
+}
+```
+
