@@ -3186,3 +3186,186 @@ fn main() {
     // Result: 10
 }
 ```
+
+
+# 面向对象
+
+可以利用 pub 关键字，来选择性的公开结构体、枚举、成员变量、成员函数，从而达到面向对象思想中 "封装" 的效果:
+
+```rust
+// 使用 pub 修饰结构体，让这个结构体对外可见
+pub struct AveragedCollection {
+    // 不使用 pub 修饰成员变量，这样成员变量对外界来说是私有的
+    list: Vec<i32>,
+    average: f64,
+}
+
+impl AveragedCollection {
+    // 使用 pub 修饰成员函数，这样成员函数对外界来说是公开的
+    pub fn push(&mut self, value: i32) {
+        self.list.push(value);
+
+        // 调用私有函数
+        self.update_average();
+    }
+
+    pub fn pop(&mut self) -> Option<i32> {
+        let result = self.list.pop();
+        match result {
+            None => None
+            Some(value) => {
+                self.update_average();
+                Some(value)
+            }
+        }
+    }
+
+    pub fn average(&self) -> f64 {
+        self.average
+    }
+
+    // 不使用 pub 修饰成员函数，这样成员函数是私有的
+    fn update_average(&mut self) {
+        let total: i32 = self.list.iter().sum();
+        self.average = total as f64 / self.list.len() as f64;
+    }
+}
+```
+
+Rust 不支持让 struct 继承自另一个 struct。在代码中使用继承一般出于两种原因：
+- 重用代码：当你继承了别的类，就可以使用它已有的实现。要在 rust 当中做到这点，可以在 Trait 当中为要复用的函数提供默认实现。然后让  struct 实现这个 trait 来复用这段代码，也可以在实现 trait 之后 override 这段代码。
+- 多态：如果有点多个 object 都具备了某种特征，那么你可以替换他们。Rust 使用泛型来对不同的类型进行抽象，然后使用 trait 来限定这些类型必须提供哪些功能。
+
+使用 trait 默认实现的方式来复用代码:
+
+```rust
+trait Summary {
+    // summarize 的默认实现
+    fn summarize(&self) -> String {
+        return String::from("Hello");
+    }
+}
+
+struct NewsArticle {
+    headline: String,
+    location: String,
+    author: String,
+    content: String,
+}
+
+impl Summary for NewsArticle {
+    // 覆写默认实现
+    fn summarize(&self) -> String {
+        format!("{}, by {} ({})", self.headline, self.author, self.location)
+    }
+}
+
+struct Tweet {
+    username: String,
+    content: String,
+    reply: bool,
+    retweet: bool,
+}
+
+impl Summary for Tweet {
+    // 不覆盖，使用默认实现
+}
+
+fn main() {
+    let article = NewsArticle {
+        headline: "Chang'e 5 lifts off".to_string(),
+        location: "Beijing".to_string(),
+        author: "dong-dada".to_string(),
+        content: "balabala...".to_string(),
+    };
+    println!("article summary: {}", article.summarize());
+
+    let tweet = Tweet {
+        username: "dong-dada".to_string(),
+        content: "hello rust!".to_string(),
+        reply: false,
+        retweet: false,
+    };
+    println!("tweet summary: {}", tweet.summarize());
+}
+```
+
+使用 trait object 实现的多态效果:
+
+```rust
+trait Draw {
+    fn draw(&self);
+}
+
+#[derive(Debug)]
+struct Button {
+    width: u32,
+    height: u32,
+    label: String,
+}
+
+impl Draw for Button {
+    fn draw(&self) {
+        println!("Draw button: {:?}", self)
+    }
+}
+
+#[derive(Debug)]
+struct SelectBox {
+    width: u32,
+    height: u32,
+    options: Vec<String>,
+}
+
+impl Draw for SelectBox {
+    fn draw(&self) {
+        println!("Draw select button: {:?}", self)
+    }
+}
+
+struct Screen {
+    // components 成员是一个 vector, 其中保存了一堆 `trait objects`
+    // 所谓的 trait object, 是指一个指针，这个指针即指向了实现某个 trait 的类型，也指向了一个虚表，在这个虚表上可以查找到相应的方法
+    // trait object 的申明方式是 指针 + dyn + trait type
+    components: Vec<Box<dyn Draw>>,
+}
+
+impl Screen {
+    fn run(&self) {
+        for component in self.components.iter() {
+            component.draw();
+        }
+    }
+}
+
+fn main() {
+    let screen = Screen {
+        components: vec![
+            Box::new(SelectBox {
+                width: 75,
+                height: 10,
+                options: vec![
+                    String::from("Yes"),
+                    String::from("Maybe"),
+                    String::from("No"),
+                ],
+            }),
+            Box::new(Button {
+                width: 50,
+                height: 10,
+                label: String::from("OK"),
+            }),
+        ],
+    };
+
+    screen.run();
+
+    // 输出结果
+    // Draw select button: SelectBox { width: 75, height: 10, options: ["Yes", "Maybe", "No"] }
+    // Draw button: Button { width: 50, height: 10, label: "OK" }
+}
+```
+
+使用 trait object 有两个限制：
+- 方法的返回值不能是 self;
+- 方法的参数不能是泛型类型;
