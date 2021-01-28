@@ -2,7 +2,7 @@
 layout: post
 title:  "学习 libtorrent tutorial"
 date:   2017-11-14 17:39:30 +0800
-categories: libtorrent
+categories: torrent
 ---
 
 * TOC

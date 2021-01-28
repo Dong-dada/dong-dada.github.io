@@ -2,7 +2,7 @@
 layout: post
 title:  "BEP3 The BitTorrent Protocol Specification"
 date:   2017-11-27 23:47:30 +0800
-categories: libtorrent
+categories: torrent
 ---
 
 * TOC

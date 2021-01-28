@@ -2,7 +2,7 @@
 layout: post
 title:  "编译 libtorrent 并运行 demo"
 date:   2017-11-09 00:08:30 +0800
-categories: libtorrent
+categories: torrent
 ---
 
 * TOC
