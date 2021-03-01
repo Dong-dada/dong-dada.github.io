@@ -1,0 +1,80 @@
+---
+layout: post
+title:  "Kubernetes - Kubectl 工具"
+date:   2021-03-01 12:57:30 +0800
+categories: k8s
+---
+
+* TOC
+{:toc}
+
+# 增删改查资源对象
+
+```
+# 创建资源对象
+$ kubectl create -f my-service.yaml
+
+# 可以一次指定多个 yaml
+$ kubectl create -f my-service.yaml my-rc.yaml
+
+# 可以指定一个文件夹
+$ kubectl create -f <directory>
+
+
+# 查看资源对象
+$ kubectl get pods
+
+# 查看 default 命名空间内的所有 rc, service
+$ kubectl get rc,service
+
+
+# 描述资源对象
+$ kubectl describe nodes <node-name>
+
+# 显示 Pod 详细信息
+$ kubectl describe pods/<pod-name>
+
+# 显示由 RC 管理的 Pod 的信息
+$ kubectl describe pods <rc-name>
+
+
+# 删除资源对象
+$ kubectl delete -f pod.yaml
+
+# 删除包含某个 label 的所有 pod 和 services
+$ kubectl delete pods,services -l name=<label-name>
+
+# 删除所有 pod
+$ kubectl delete pods --all
+
+
+# 执行容器命令
+# 未指定容器名，则默认在第一个容器中执行，`date` 就是要执行的命令
+$ kubectl exec <pod-name> date
+
+# 选定容器来执行 date 命令
+$ kubectl exec <pod-name> -c <container-name> date
+
+# 登录容器
+$ kubectl exec -it <pod-name> -c <container-name> /bin/bash
+
+
+# 查看容器日志
+$ kubectl logs <pod-name>
+
+# 跟踪查看容器日志，类似于 tail -f
+$ kubectl logs -f <pod-name> -c <container-name>
+
+
+# 如果资源对象不存在则创建，否则更新
+$ kubectl apply -f app.yaml
+
+
+# 在线编辑运行中的资源对象
+$ kubectl edit deploy nginx
+
+
+# 为资源对象设置标签
+# 为 default namespace 设置 testing=true 标签
+$ kubectl label namespaces default testing=true
+```
