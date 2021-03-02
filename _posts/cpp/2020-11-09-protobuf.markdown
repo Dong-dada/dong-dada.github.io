@@ -12,293 +12,370 @@ categories: cpp
 
 最后需要集成 Protocol Buffer 库，来使用编译好的 .h, .cc 文件。
 
-# proto2 示例
-
-proto2 版本的示例
-
-```proto
-syntax = "proto2";
-
-// 定义该文件所属的 package, 主要是为了解决名称空间冲突问题
-// 对于生成对的 C++ 代码而言，这个 package 名称会体现为 namespace 名称
-// 比如 package envoy.admin.v2alpha, 对应 C++ 代码中的命名空间为 envoy::admin::v2alpha
-package tutorial;
-
-// message 表示一个数据结构，比如这里的 message Person, 表示最终将生成一个 Person 类
-message Person {
-  // 数据结构内的字段类型包括 bool, int32, float, double, string 等，也可以是自定义类型
-  optional string name = 1;
-
-  // "=1", "=2" 是一个 tag, 在二进制编码的时候唯一标识了某个字段，估计是为了节省大小
-  optional int32 id = 2;
-
-  // optional 表示该字段可选，如果设置为 required, 那么表示这个字段是必填的
-  // 如果一个字段被声明为 optional, 但是却没有设置这个值，那么会传入一个默认值:
-  // 数字类型的默认值是 0, 字符串类型的默认值是空字符串, 布尔类型的默认值是 false
-  // 每个字段都必须被 optional, required, repeated 这三者之一来修饰
-  optional string email = 3;
-
-  enum PhoneType {
-    MOBILE = 0;
-    HOME = 1;
-    WORK = 2;
-  }
-
-  message PhoneNumber {
-    optional string number = 1;
-    optional PhoneType type = 2 [default = HOME];
-  }
-
-  // repeated 表示这个字段是个列表
-  repeated PhoneNumber phones = 4;
-}
-
-message AddressBook {
-  repeated Person people = 1;
-}
-```
-
-输入以下命令，就可以在当前目录生成 .h, .cc 文件:
-
-```
-protoc --cpp_out=./ address_book.proto
-```
-
-生成的文件中包含了以下几个方法：
-
-```cpp
-  // name
-  inline bool has_name() const;
-  inline void clear_name();
-  inline const ::std::string& name() const;
-  inline void set_name(const ::std::string& value);
-  inline void set_name(const char* value);
-  inline ::std::string* mutable_name();
-
-  // id
-  inline bool has_id() const;
-  inline void clear_id();
-  inline int32_t id() const;
-  inline void set_id(int32_t value);
-
-  // email
-  inline bool has_email() const;
-  inline void clear_email();
-  inline const ::std::string& email() const;
-  inline void set_email(const ::std::string& value);
-  inline void set_email(const char* value);
-  inline ::std::string* mutable_email();
-
-  // phones
-  inline int phones_size() const;
-  inline void clear_phones();
-  inline const ::google::protobuf::RepeatedPtrField< ::tutorial::Person_PhoneNumber >& phones() const;
-  inline ::google::protobuf::RepeatedPtrField< ::tutorial::Person_PhoneNumber >* mutable_phones();
-  inline const ::tutorial::Person_PhoneNumber& phones(int index) const;
-  inline ::tutorial::Person_PhoneNumber* mutable_phones(int index);
-  inline ::tutorial::Person_PhoneNumber* add_phones();
-```
-
-此外，每个 message 都会包含以下几个方法：
-
-```cpp
-// 检查是否所有 required 字段都被填充了值
-bool IsInitialized() const final
-
-// 返回一个 human-readable 的字符串
-string DebugString() const;
-
-// 拷贝
-void CopyFrom(const Person& from);
-
-// 删除 message 里的所有值
-void Clear();
-```
-
-此外，每个 protocol buffer 类都包含以下几个序列化、反序列化方法：
-
-```cpp
-// 将 message 序列化为 string
-bool SerializeToString(string* output) const;
-
-// 从 string 反序列化出 message
-bool ParseFromString(const string& data);
-
-// 将 message 序列化为 C++ ostream
-bool SerializeToOstream(ostream* output) const;
-
-// 从 ostream 中反序列化出 message
-bool ParseFromIstream(istream* input);
-```
-
-以下是使用生成好的 .h 文件来读写 protocol buffer 消息的示例：
-
-```cpp
-#include <iostream>
-#include <fstream>
-#include <string>
-#include "address_book.pb.h"
-using namespace std;
-
-// 该方法将提示用户输入用户名、电话号码等信息，随后将这些信息填充到 message 里面
-void PromptForAddress(tutorial::Person* person) {
-    cout << "Enter person ID number: ";
-    int id;
-    cin >> id;
-    person->set_id(id);
-    cin.ignore(256, '\n');
-
-    cout << "Enter name: ";
-    getline(cin, *person->mutable_name());
-
-    cout << "Enter email address (blank for none): ";
-    string email;
-    getline(cin, email);
-    if (!email.empty()) {
-        person->set_email(email);
-    }
-
-    while (true) {
-        cout << "Enter a phone number (or leave blank to finish): ";
-        string number;
-        getline(cin, number);
-        if (number.empty()) {
-            break;
-        }
-
-        tutorial::Person::PhoneNumber* phone_number = person->add_phones();
-        phone_number->set_number(number);
-
-        cout << "Is this a mobile, home, or work phone? ";
-        string type;
-        getline(cin, type);
-        if (type == "mobile") {
-            phone_number->set_type(tutorial::Person::MOBILE);
-        } else if (type == "home") {
-            phone_number->set_type(tutorial::Person::HOME);
-        } else if (type == "work") {
-            phone_number->set_type(tutorial::Person::WORK);
-        } else {
-            cout << "Unknown phone type.  Using default." << endl;
-        }
-    }
-}
-
-// 该方法将先从文件中解析出 message, 随后提示用户向通讯录中写入新的联系人信息
-int main(int argc, char* argv[]) {
-    // Verify that the version of the library that we linked against is
-    // compatible with the version of the headers we compiled against.
-    GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-    if (argc != 2) {
-        cerr << "Usage:  " << argv[0] << " ADDRESS_BOOK_FILE" << endl;
-        return -1;
-    }
-
-    tutorial::AddressBook address_book;
-
-    {
-        // Read the existing address book.
-        fstream input(argv[1], ios::in | ios::binary);
-        if (!input) {
-            cout << argv[1] << ": File not found.  Creating a new file." << endl;
-        } else if (!address_book.ParseFromIstream(&input)) {
-            cerr << "Failed to parse address book." << endl;
-            return -1;
-        }
-    }
-
-    // Add an address.
-    PromptForAddress(address_book.add_people());
-
-    {
-        // Write the new address book back to disk.
-        fstream output(argv[1], ios::out | ios::trunc | ios::binary);
-        if (!address_book.SerializeToOstream(&output)) {
-            cerr << "Failed to write address book." << endl;
-            return -1;
-        }
-    }
-
-    // Optional:  Delete all global objects allocated by libprotobuf.
-    google::protobuf::ShutdownProtobufLibrary();
-
-    return 0;
-}
-```
-
-以下代码展示了如何读取 protocol buffer 序列化后的文件：
-
-```cpp
-#include <iostream>
-#include <fstream>
-#include <string>
-#include "addressbook.pb.h"
-using namespace std;
-
-// Iterates though all people in the AddressBook and prints info about them.
-void ListPeople(const tutorial::AddressBook& address_book) {
-  for (int i = 0; i < address_book.people_size(); i++) {
-    const tutorial::Person& person = address_book.people(i);
-
-    cout << "Person ID: " << person.id() << endl;
-    cout << "  Name: " << person.name() << endl;
-    if (person.has_email()) {
-      cout << "  E-mail address: " << person.email() << endl;
-    }
-
-    for (int j = 0; j < person.phones_size(); j++) {
-      const tutorial::Person::PhoneNumber& phone_number = person.phones(j);
-
-      switch (phone_number.type()) {
-        case tutorial::Person::MOBILE:
-          cout << "  Mobile phone #: ";
-          break;
-        case tutorial::Person::HOME:
-          cout << "  Home phone #: ";
-          break;
-        case tutorial::Person::WORK:
-          cout << "  Work phone #: ";
-          break;
-      }
-      cout << phone_number.number() << endl;
-    }
-  }
-}
-
-// Main function:  Reads the entire address book from a file and prints all
-//   the information inside.
-int main(int argc, char* argv[]) {
-  // Verify that the version of the library that we linked against is
-  // compatible with the version of the headers we compiled against.
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-
-  if (argc != 2) {
-    cerr << "Usage:  " << argv[0] << " ADDRESS_BOOK_FILE" << endl;
-    return -1;
-  }
-
-  tutorial::AddressBook address_book;
-
-  {
-    // Read the existing address book.
-    fstream input(argv[1], ios::in | ios::binary);
-    if (!address_book.ParseFromIstream(&input)) {
-      cerr << "Failed to parse address book." << endl;
-      return -1;
-    }
-  }
-
-  ListPeople(address_book);
-
-  // Optional:  Delete all global objects allocated by libprotobuf.
-  google::protobuf::ShutdownProtobufLibrary();
-
-  return 0;
-}
-```
-
-
 # proto3 语法规则
 
-可查阅 [这篇文章](https://developers.google.com/protocol-buffers/docs/proto3)。
+## 定义消息
+
+```protobuf
+syntax = "proto3";
+
+message SearchRequest {
+  string query = 1;
+  int32 page_number = 2;
+  int32 result_per_page = 3;
+}
+```
+
+- 参考以上语法来定义一个 message, 同一个 proto 文件中可以定义多个 message.
+- 如果要使用 `proto3`，必须在文件开头使用 `syntax = "proto3";` 来声明，否则将被认为是 proto2.
+- 消息的每个字段都必须设定一个 **field numbers**, 这个数字用来在二进制报文中唯一标识一个字段，一经赋值就不能再被改变。
+  - [1~15] 之间的 field numbers 编码时只会占用 1 个字节；[16~2047] 之间的 field numbers 编码时会占用 2 个字节。所以你应该把那些经常使用的字段留给 [1~15] 之间的 field numbers.
+- 字段可取的 scalar 类型可参考 [这个表格](https://developers.google.com/protocol-buffers/docs/proto3#scalar)
+- 各个 scalar 类型都有固定的默认值，如果 message 的某个字段没有指定值，则会取默认值。
+  - 字符串的默认值是空字符串
+  - bytes 的默认值是 empty bytes;
+  - bool 的默认值是 false;
+  - 数字类型的默认值是 0;
+  - 枚举类型的默认值是第一个枚举值，这个枚举值必须为 0;
+  - message 类型的字段，其默认值取决于具体语言。对 C++ 而言，你可以使用 `has_XXX()` 来检查该字段是否有值。具体可以参考 [官方文档](https://developers.google.com/protocol-buffers/docs/reference/cpp-generated#embeddedmessage)。
+
+
+## 消息中的 reserved 关键字
+
+```protobuf
+message Foo {
+  reserved 2, 15, 9 to 11;
+  reserved "foo", "bar";
+}
+```
+
+- 使用 `reserved` 关键字可以将 *field numbers* 以及字段名置为保留。这样 *field numbers* 以及字段名就不会被占用；
+- `reserved` 关键字的一个常见用处是，你想要删除消息内的一个字段，并且希望以后其他人不要再次定义这个字段，以免被老版本的程序错误识别。
+
+
+## 消息中的 repeated 关键字
+
+```protobuf
+syntax = "proto3";
+
+message Person {
+  int32 id = 1;
+  string name = 2;
+  string email = 3;
+  repeated string phone_numbers = 4;
+}
+```
+
+- `message` 中的字段如果使用 `repeated` 关键字修饰，则该字段是一个 **有序的** 列表。
+
+
+## 枚举
+
+```protobuf
+message SearchRequest {
+  string query = 1;
+  int32 page_number = 2;
+  int32 result_per_page = 3;
+  enum Corpus {
+    UNIVERSAL = 0;
+    WEB = 1;
+    IMAGES = 2;
+    LOCAL = 3;
+    NEWS = 4;
+    PRODUCTS = 5;
+    VIDEO = 6;
+  }
+  Corpus corpus = 4;
+}
+```
+
+- 枚举的第一个值必须是 0;
+- 在反序列化的时候，如果未识别的 enum 值将被保留，这个值怎么被处理取决于语言。对于 C++ 和 Go 这样支持开放 enum 类型值的语言来说，未识别的值将被保存为一个整型。对于 Java 这样不支持开放 enum 类型值的语言来说，需要用特殊的访问方式才能拿到这个未识别的整型。
+
+
+## 枚举的 allow_alias 选项
+
+```protobuf
+message MyMessage1 {
+  enum EnumAllowingAlias {
+    option allow_alias = true;
+    UNKNOWN = 0;
+    STARTED = 1;
+    RUNNING = 1;
+  }
+}
+message MyMessage2 {
+  enum EnumNotAllowingAlias {
+    UNKNOWN = 0;
+    STARTED = 1;
+    // RUNNING = 1;  // Uncommenting this line will cause a compile error inside Google and a warning message outside.
+  }
+}
+```
+
+- 枚举中可以指定一个 `allow_alias` 选项，这个选项被指定时，可以允许两个枚举值公用同一个 number。此时这两个枚举值代表相同含义。
+
+
+## 枚举中的 reserved 关键字
+
+```protobuf
+enum Foo {
+  reserved 2, 15, 9 to 11, 40 to max;
+  reserved "FOO", "BAR";
+}
+```
+
+## 消息类型作为字段
+
+```protobuf
+message SearchResponse {
+  repeated Result results = 1;
+}
+
+message Result {
+  string url = 1;
+  string title = 2;
+  repeated string snippets = 3;
+}
+```
+
+- 同一个 proto 文件中的消息类型可以直接作为另一个消息的字段使用；
+- 消息类型作为字段时，不需要提前定义；
+
+
+## 导入定义
+
+```protobuf
+import "myproject/other_protos.proto";
+```
+
+- 使用 `import` 关键字可以把另一个 proto 文件中的 message 等定义导入到当前文件，类似于 C/C++ 的 `#include "foo.h"` 操作。
+- **注意这个特性不支持 Java**。
+
+
+## public import
+
+- 假设有三个文件 A.proto, B.proto, C.proto。
+  - A.proto 中 `import B.proto`
+  - B.proto 中 `import C.proto`
+  - 那么 A 中仅能看到 B 里定义的 message，看不到 C 里定义的 message；换句话说，通过 `import` 只能看到直接引入的定义，看不到间接引入的定义；
+- 如果希望 A 中也能看到 C 里定义的 message，那么可以在 B.proto 中使用 `public import C.proto`
+  - `public import` 的作用是把所引用的东西都设置为公开，也就是允许其他人看到。
+
+`public import` 的一个常见用法是 proto 内容的移动。
+- 比方说你定义了一个 proto 文件 `v1alpha/address.proto`。现在因为版本稳定，你希望把它移动到 `v1/address.proto`。
+- 如果直接移动的话，你需要修改所有的 `import v1alpha/address.proto` 为 `import v1/address.proto`，比较麻烦。
+- 这种情况下可以把内容移动到 `v1/address.proto`，然后在 `v1alpha/address.proto` 中使用 `public import v1/address.proto`。这样原先的 `import v1alpha/address.proto` 不需要改动，仍然可以看到原先的定义。
+
+```protobuf
+// v1alpha/address.proto
+public import "v1/address.proto";
+```
+
+```protobuf
+// v1/address.proto
+message Address {
+  // ...
+}
+```
+
+
+需要注意的是，如果 .proto 文件中只有一个 service 定义，则生成的 C++ 代码中会缺少 service descriptor。因此需要添加一个 dummy message。可以看下 [这个 issue](https://github.com/protocolbuffers/protobuf/issues/4221)。
+
+
+## 内嵌类型
+
+```protobuf
+message SearchResponse {
+  message Result {
+    string url = 1;
+    string title = 2;
+    repeated string snippets = 3;
+  }
+  repeated Result results = 1;
+}
+
+message SomeOtherMessage {
+
+  SearchResponse.Result result = 1;
+}
+```
+
+- 你可以在 message 的 body 里面再定义其它 message 或 enum。
+- 对于内嵌类型，可以使用 `_Parent_._Type_` 这样的形式来访问。
+
+
+## 更新消息定义
+
+更新消息定义时要记住以下规则：
+- 不要修改 field numbers
+- 对于新增的字段，老版本生成的代码仍然可以正常工作，只是会忽略新增字段，新版本如果读到了老版本的消息，那么新增字段会被设置为默认值。
+- 字段就可以被移除，只要你能保证不再使用移除字段的 field numbers。你可以通过 `reserved` 关键字来保证这一点。
+- `int32`, `uint32`, `int64`, `uint64`, `bool`，这几种类型是相互兼容的。你可以把一个字段从 `int32` 类型改为 `uint32` 类型。这几种类型的转换满足 C++ 的规则，比如 `int64` 转 `int32` 时将发生截断。
+- `sint32` 和 `sint64` 之间是兼容的，但它们与其它类型不兼容。
+- 如果 `bytes` 是 UTF-8 字符串，那么它与 `string` 兼容。
+- 如果 `bytes` 是 内嵌 message 编码后的字节数组，那么它与这个 内嵌 message 兼容。
+- `fixed32` 与 `sfixed32` 兼容；`fixed64` 与 `sfixed64` 兼容。
+- 对于 `string`, `bytes`, 和 message 字段来说，proto2 的 `optional` 与 `repeated` 是兼容的。如果客户端使用 `optional` 来接收一个 `repeated` 消息，那么对于主类型，客户端将获取 `repeated` 消息的最后一个值来作为 `optional` 字段的值；对于 message 类型，客户端将会把 `repeated` 列表中的所有元素合并起来。
+- `enum` 与 `int32`, `uint32`, `int64`, `uint64` 兼容。
+- 把一个单独的值改为 `oneof` 类型也是兼容的。如果你能保证多个字段同时只有一个值被设置，那么把这些字段合起来改成 `oneof` 类型也是兼容的。把一个字段移动到已存在的 `oneof` 中是不兼容的。
+
+
+## Any
+
+`Any` 类型让你可以在不引入 proto 文件的情况下定义一个 message 字段，看起来有点像 Java 的 Object。`Any` 指向一个序列化后的字节数组，可以按照需要解析成相应的消息。使用 `Any` 时要导入 `google/protobuf/any.proto`。
+
+```protobuf
+import "google/protobuf/any.proto";
+
+message ErrorStatus {
+  string message = 1;
+  repeated google.protobuf.Any details = 2;
+}
+```
+
+随后你可以在客户端代码中，使用 `PackFrom()` 将消息序列化到 `Any` 字段里，使用 `UnpackTo()` 从 `Any` 字段里解析出消息：
+
+```cpp
+// Storing an arbitrary message type in Any.
+NetworkErrorDetails details = ...;
+ErrorStatus status;
+status.add_details()->PackFrom(details);
+
+// Reading an arbitrary message from Any.
+ErrorStatus status = ...;
+for (const Any& detail : status.details()) {
+  if (detail.Is<NetworkErrorDetails>()) {
+    NetworkErrorDetails network_error;
+    detail.UnpackTo(&network_error);
+    ... processing network_error ...
+  }
+}
+```
+
+
+## Oneof
+
+`oneof` 有点类似于 C/C++ 里的 `union`，如果有多个字段，同时只有一个字段有效，那么可以用 `oneof` 包裹起来。
+
+你可以使用 `case()` 或 `WhickOneof()` 方法来检查 `oneof` 的哪个字段生效。
+
+```protobuf
+message SampleMessage {
+  oneof test_oneof {
+    string name = 4;
+    SubMessage sub_message = 9;
+  }
+}
+```
+
+- 注意 `map` 和 `repeated` 字段不能放在 `oneof` 里面。
+- 设置了 `oneof` 中的一个字段，则其它字段将被清除。
+- 如果客户端收到的消息内包含了 `oneof` 中的多个字段，则只最后一个字段会有效。
+- `oneof` 本身不能被 `repeated` 修饰。
+- 如果你把一个 `oneof` 字段设置成了默认值，比如 `int32` 字段设置成了 `0`，则这个字段会被标记为有效，它的值也会被编码到报文里。
+
+```cpp
+SampleMessage message;
+SubMessage* sub_message = message.mutable_sub_message();
+message.set_name("name");      // Will delete sub_message
+sub_message->set_...            // Crashes here
+```
+
+以上代码中，由于调用 `set_name` 后 `sub_message` 被删除了，所以在这之后访问 `sub_message` 将会导致崩溃。
+
+```cpp
+SampleMessage msg1;
+msg1.set_name("name");
+SampleMessage msg2;
+msg2.mutable_sub_message();
+msg1.swap(&msg2);
+CHECK(msg1.has_sub_message());
+CHECK(msg2.has_name());
+```
+
+以上代码中，使用 `Swap()` 来交换两个 message 时，`oneof` 字段也会按预期被交换。
+
+
+## Maps
+
+你可以使用以下语法来定义 Map:
+
+```
+map<key_type, value_type> map_field = N;
+```
+
+其中 `key_type` 可以是整型或者字符串，`value_type` 可以是 **除 map 以外** 的任意类型。
+
+```protobuf
+map<string, Project> projects = 3;
+```
+
+- map 字段不能被 `repeated` 修饰。
+- map 顺序不能保证。
+- 生成 text format 时，map 字段将按照 key 排序。
+- 客户端解析报文时，如果遇到重复的 key, 将取最后一个值。如果是从 text format 解析，那么可能会解析失败。
+- 如果 map 里有 key 但没有 value，那么这个 value 如何解析取决于相应的语言，对于 C++, Java 来说，会解析出默认值。
+
+
+## Packages
+
+你可以在 `.proto` 文件中指定 `package` 字段，来避免名字冲突。
+
+```protobuf
+package foo.bar;
+message Open { ... }
+```
+
+此时在其它 `package` 里的消息，需要使用 package 限定符来访问消息定义：
+
+```protobuf
+message Foo {
+  ...
+  foo.bar.Open open = 1;
+  ...
+}
+```
+
+- 对于 C++ 而言，`package` 会被转换为 `namespace`。
+- 对于 Java 而言，`package` 会被转换为 `Java package`，除非你指定了 `java_package` 选项。
+
+
+## Services
+
+```protobuf
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+```
+
+如果你在 RPC 服务中使用你定义的消息。可以使用 `service` 关键字，`service` 可以帮你生成 RPC 服务的接口定义。
+
+gRPC 能够与 ProtoBuf 很好地兼容。其它 RPC 框架也可能适合于 ProtoBuf，具体可以参考 [Proto2 Language Guide](https://developers.google.com/protocol-buffers/docs/proto#services)。
+
+
+## JSON 映射
+
+Proto3 能够被编码为 JSON 格式，也可以从 JSON 转换为 Proto3。
+
+转换规则可以参考 [这个表格](https://developers.google.com/protocol-buffers/docs/proto3#json)
+
+
+## 选项
+
+`.proto` 文件可以被多种选项修饰。option 不会影响消息定义，只是会在特定上下文中发生作用。一些 option 是文件级别，还有一些是 message 级别，还有一些是字段级别。
+
+以下是一些通用的选项：
+- java_package(文件级别)，用于指定 java package，因为 java package 的命名规则是从后往前的，比如 `com.dada.api.address`，但 proto 里面一般不想要前面的 `com.dada`，所以可以使用 java_package 来修改 proto 生成的 java package。
+- java_outer_classname(文件级别)，用于指定生成的最外层 Java class 名称，如果没有指定这个选项，那么生成的 Java Class 是以 .proto 文件的驼峰命名法命名的。
+- java_multiple_files(文件级别)，默认情况下一个 `.proto` 文件会生成一个 `.java` 文件，`.proto` 中定义的所有消息、枚举、服务都会被放到以 `java_outer_classname` 命名的类当中。如果设置这个选项为 true, 那么 `.proto` 文件中的每个消息、枚举、服务都会生成单独的类。
+- optimize_for(文件级别)，可以指定生成代码的优化方式：
+  - SPEED
+  - CODE_SIZE
+  - LITE_RUNTIME
+- deprecated(字段级别)，设置为 true 表示该字段将被废弃。
+
+```protobuf
+// 字段级别的选项
+int32 old_field = 6 [deprecated = true];
+```
