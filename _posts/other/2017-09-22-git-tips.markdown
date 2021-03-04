@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "git 小知识点"
+title:  "git - 小知识点"
 date:   2017-09-22 10:38:30 +0800
 categories: other
 ---
@@ -385,3 +385,42 @@ git config --global --replace-all core.pager "less -F -X"
 可以看到，其实是要设置 git 的 core.paper, 其中 less 是一个命令行下的查看工具, -F 表示如果屏幕可以容纳得下内容，就把内容直接打印到屏幕，而不是在 less 里展示, -X 表示强制展示到屏幕(大概是这个意思)。
 
 设置完毕后 git log 就可以直接展示到 zsh 命令行里了。
+
+
+## Git 当中的 remote 和 upstream
+
+执行 `git remote -v` 可以检查仓库目前有哪些 remote:
+
+```s
+$ git remote -v
+origin	git@github.com:Dong-dada/colorful-torrent.git (fetch)
+origin	git@github.com:Dong-dada/colorful-torrent.git (push)
+```
+
+简单来说 remote 表示一个远程远程仓库，origin 是名字，后面的是 url。
+
+如果你在本地 init 出来一个仓库，这时候执行 `git remote -v` 是查不出来东西的，因为这个本地仓库没有跟任何远程仓库建立关联。
+
+执行 `git remote add` 命令就可以添加一个远程仓库。
+
+```s
+# 添加远程仓库，并将其命名为 origin
+$ git remote add origin git@github.com:Dong-dada/colorful-torrent.git
+```
+
+这时候就可以从远程仓库拉到代码了。
+
+在本地创建一个分支，然后执行以下命令把这个分支 push 到远程仓库:
+
+```s
+$ git push origin feature-xxx:feature-xxx
+```
+
+这个时候执行 git pull 拉代码是拉不到的，因为本地分支和远程分支没有关联，这时候就需要执行 `git push --set-upstream` 命令来建立这种关联：
+
+```s
+# 让当前分支跟踪 origin 远程仓库的 feature-xxx 分支
+$ git push --set-upstream origin feature-xxx
+```
+
+remote, upstream 这些知识不仅用在创建仓库、创建分支这些场景下，也可用在代码合并的场景下。比如有个项目，既有开源代码维护在 github, 也有内部代码维护在公司的 gitlab 上。这时候就可以给本地仓库添加两个 remote, 在创建分支的时候也可以让不同的分支追踪不同的远程仓库分支。
