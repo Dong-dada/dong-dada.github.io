@@ -174,10 +174,37 @@ class Country {
 }
 ```
 
+# 类型别名
 
-# 基本类型
+也就是给类型起另外一个名字，有点像 C++ 里的 `using StringPtr = std::unique_ptr<std::string>;` 这种用法。使用 `typealias` 关键字就可以给类型起别名:
 
-## 字符串
+```swift
+typealias AudioSample = UInt16
+```
+
+
+# 字符串
+
+## Unicode 和 Character
+
+Swift 的 String 类型基于 Unicode Scalar Value 来构建，每个 Unicode Scalar Value 在内存中占 21 bit 内存。这里的 Unicode Scalar Value 与 Character 类型不是一回事儿，并不是说一个 Character 就一定对应一个 Unicode 码。因为有一些字符是由两个 Unicode 码拼接起来的，比如字符 `é` 既可以用 "\u{E9}" 表示，也可以用 "\u{65}\u{301}" 表示:
+
+```swift
+let eAcute: Character = "\u{E9}"                // é
+let combinedEAcute: Character = "\u{65}\u{301}" // e followed by ́
+                                                // eAcute is é, combinedEAcute is é
+```
+
+String 提供的访问 Character 的方法，都考虑了上面的情况，即使是两个 Unicode Scalar Value 表示的字符，也只会对应一个 Character 值。
+
+## 字符串拼接
+
+可以使用 `+` 来拼接字符串:
+
+```swift
+var variableString = "Horse"
+variableString += " and carriage"
+```
 
 下面的语法可以让你比较简单地拼接字符串：
 
@@ -188,6 +215,8 @@ let appleSummary = "I have \(apples) apples."
 let fruitSummary = "I have \(apples + oranges) pieces of fruit."
 ```
 
+## 多行字符串
+
 使用三个双引号(`"""`) 可以比较方便地声明多行字符串：
 
 ```swift
@@ -197,6 +226,36 @@ And then I said "I have \(apples + oranges) pieces of fruit."
 """
 ```
 
+下面这张图展示了多行字符串中空格的忽略方式:
+
+![]( {{site.url}}/asset/multilineStringWhitespace.png )
+
+## 转义字符
+
+字符串字面值当中可以包含以下两种特殊字符
+- 转义字符: `\0`, `\\`, `\t`, `\n`, `\r` , `\"`, `\'`
+- Unicode 码: `\u{2665}`，`\u{24}`
+
+你可以使用 `#" "#` 把字符串括起来，这样可以在字面量中禁用转义:
+
+```swift
+print(#"Line 1\nLine 2"#)   // Line 1\nLine 2
+```
+
+多行字符串中也可以使用 `# #` 语法:
+
+```swift
+let jsonStr = #"""
+{
+  "name":"dongdada",
+  "age":12
+}
+"""#
+print(jsonStr)
+```
+
+
+# 复合类型
 
 ## 数组
 
@@ -281,15 +340,6 @@ print(http200Status.description)
 ```swift
 var httpStatus: (Int, String) = (200, "Hello")
 httpStatus = (404, "Not Found")
-```
-
-
-## 类型别名
-
-也就是给类型起另外一个名字，有点像 C++ 里的 `using StringPtr = std::unique_ptr<std::string>;` 这种用法。使用 `typealias` 关键字就可以给类型起别名:
-
-```swift
-typealias AudioSample = UInt16
 ```
 
 
