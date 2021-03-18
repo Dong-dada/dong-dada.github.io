@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "GDB 小技巧"
+title:  "C++ - GDB 小技巧"
 date:   2020-11-06 11:00:30 +0800
 categories: cpp
 ---
@@ -8,17 +8,45 @@ categories: cpp
 * TOC
 {:toc}
 
-# 查看变量内容
+编译成可执行文件后，直接运行 `gdb ${文件路径}`，就可以调试该程序。
 
-在断点处直接输入变量名即可。也可以调用变量的方法：
+
+# 常用命令
+
+| 命令 | 说明 | 示例 |
+|:--|:--|:--|
+| b(break) | 设置断点 | `b src/main.cc:123` |
+| r(run) | 启动程序，可传入参数 | `r --test_filter=MainTest:Basic` |
+| info b | 查看断点列表 | |
+| delete | 按照序号删除断点 | `delete 1-10` 删除 1~10 序号的断点 |
+| c(continue) | 执行到下个断点 | |
+| n(next) | 执行下一行 | |
+| s(step) | 尝试进入函数 | |
+| finish | 运行直到当前函数返回 | |
+| p(print) | 打印变量 | `p str.c_str()` |
+| bt | 查看调用栈 | |
+| set args | 设置命令行参数 | |
+| show args | 查看命令行参数 | |
+| l(list) | 显示当前代码，默认显示 10 行 |  |
+| display | 设置一个表达式，每次单步运行后，都会打印出表达式的值 | `display str` |
+| watch | 监视一个表达式，表达式的值改变后，程序会终端 | `watch str` |
+| q(quit) | 退出调试 | |
+| call | 调用一个函数 | `call test(123)` |
+| shell | 执行 shell 程序，比如清屏 | `shell clear` |
+
+
+# 保存断点
+
+使用 `save breakpoint` 命令可以将断点保存到一个文件当中:
 
 ```
-route_config.group()
-"HSF"
-route_config.name()
-"routes"
-route_config.interface()
-"com.demo.OrderService"
+(gdb) save breakpoint main.bp
+```
+
+下次启动调试的时候，通过 `-x` 参数指定断点文件，这样就会加载之前保存的断点文件:
+
+```
+gdb bin/main -x main.bp
 ```
 
 
