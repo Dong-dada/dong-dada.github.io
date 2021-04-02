@@ -35,6 +35,21 @@ categories: cpp
 | shell | 执行 shell 程序，比如清屏 | `shell clear` |
 
 
+# 设置命令行参数
+
+启动 gdb 后，可以使用 set args 命令设置命令行参数:
+
+```
+(gdb) set args abc
+```
+
+另外一种方式是在运行 `run` 命令的时候附加命令行参数:
+
+```
+(gdb) run abc
+```
+
+
 # 保存断点
 
 使用 `save breakpoint` 命令可以将断点保存到一个文件当中:
@@ -70,3 +85,25 @@ from libstdcxx.v6.printers import register_libstdcxx_printers
 register_libstdcxx_printers (None)
 end
 ```
+
+
+# 显示 shared_ptr 内容
+
+打印 shared_ptr 等结构时，可以先把 shared_ptr 打印出来，找到对象类型和目标地址。随后通过 `p *(${Type})${Address}` 这样的命令来打印指针指向的对象:
+
+```
+(gdb) p order
+$1 = warning: RTTI symbol not found for class 'std::_Sp_counted_ptr_inplace<Order, std::allocator<Order>, (__gnu_cxx::_Lock_policy)2>'
+warning: RTTI symbol not found for class 'std::_Sp_counted_ptr_inplace<Order, std::allocator<Order>, (__gnu_cxx::_Lock_policy)2>'
+std::shared_ptr<Order> (use count 1, weak count 0) = {get() = 0x417e80}
+
+(gdb) p *(Order*)0x417e80
+$2 = {id = 10, product_name = "Lumia 950"}
+```
+
+如上，先从 order 这个 `shared_ptr` 变量中找到类型 `Order` 和地址 `0x417e80`，然后通过 `p *(Order*)0x417e80` 命令查看对象内容。
+
+
+# LLDB 命令
+
+LLDB 和 GDB 的命令挺像的，[这份文档](https://lldb.llvm.org/use/map.html) 是两者的对比。
