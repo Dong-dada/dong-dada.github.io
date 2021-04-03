@@ -1415,3 +1415,274 @@ func main() {
   io.Copy(os.Stdout, &r)	// You cracked the code!
 }
 ```
+
+
+# 并发
+
+## Goroutine
+
+Go 程（goroutine）是由 Go 运行时管理的轻量级 "线程"。使用关键字 `go` 就可以启动并执行一个 goroutine:
+
+```go
+go f(x, y, z)
+```
+
+注意，f, x, y, z 的求值发生在当前 goroutine 中，而 f 的执行发生在新的 goroutine 中。
+
+```go
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func say(s string) {
+	for i := 0; i < 5; i++ {
+		time.Sleep(100 * time.Millisecond)
+		fmt.Println(s)
+	}
+}
+
+func main() {
+  // 在当前 goroutine 中执行 say 函数
+	say("hello")
+
+  // 在新的 goroutine 中执行 say 函数
+	go say("world")
+}
+```
+
+
+## Channel
+
+Channel 是两个 goroutine 之间交换数据的管道:
+
+```go
+// 创建一个可以传输 int 类型数据的 channel
+ch := make(chan int)
+
+// 将 v 发送至信道 ch。
+ch <- v
+
+// 从 ch 接收值并赋予 v。
+v := <-ch
+```
+
+默认情况下，发送和接收操作在另一端准备好之前会阻塞，看一个具体的例子：
+
+```go
+package main
+
+import "fmt"
+
+func sum(s []int, c chan int) {
+	sum := 0
+	for _, v := range s {
+		sum += v
+	}
+
+  // 将和送入 channel
+	c <- sum
+}
+
+func main() {
+	s := []int{7, 2, 8, -9, 4, 0}
+
+	c := make(chan int)
+	go sum(s[:len(s)/2], c)
+	go sum(s[len(s)/2:], c)
+
+  // 从 c 中接收
+	x, y := <-c, <-c
+
+	fmt.Println(x, y, x+y)
+}
+```
+
+在上面的例子中，首先启动了两个 goroutine, 它们会通过 channel 发送计算结果，如果接收端还没有准备好(`x, y := <-c, <-c` 还没有被调用)，则发送操作就会被阻塞。
+
+
+### Channel 的缓冲区
+
+Channel 可以带有缓冲区，及时接收端还没有准备好，发送端也可以把数据先放到缓冲区里，这样就不会阻塞发送端。上述例子中缓冲区的大小是 0，因此发送端被阻塞了。以下是一个使用了缓冲区的例子:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+  // make 的第二个参数指定了缓冲区大小
+	ch := make(chan int, 2)
+	ch <- 1
+	ch <- 2
+	fmt.Println(<-ch)
+	fmt.Println(<-ch)
+}
+```
+
+缓冲区只是延缓了阻塞发生的时间，如果缓冲区满了，那么发送端还是会被阻塞，如果缓冲区为空，那么接收端也还是会被阻塞。
+
+
+### 关闭 channel
+
+发送端如果没有数据要发送了，可以调用 `close(ch)` 函数来关闭 channel，接收端可以使用以下语法来判断管道是否被关闭了:
+
+```go
+// 管道被关闭的话 ok 为 false
+v, ok := <-ch
+```
+
+使用 `for i := range ch` 可以不断从 channel 中接收数据，直到对方关闭 channel:
+
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func fibonacci(n int, c chan int) {
+	x, y := 0, 1
+	for i := 0; i < n; i++ {
+		c <- x
+		x, y = y, x+y
+	}
+	close(c)
+}
+
+func main() {
+	c := make(chan int, 10)
+
+  // 启动一个 goroutine 来输出斐波那契数列
+	go fibonacci(cap(c), c)
+
+  // 不断从 channel 中获取数字，直到对方关闭
+	for i := range c {
+		fmt.Println(i)
+	}
+}
+```
+
+
+### 使用 select 语句等待多个 channel 被激活
+
+`select` 语句使一个 Go 程可以等待多个通信操作。`select` 会阻塞到某个分支可以继续执行为止，这时就会执行该分支。当多个分支都准备好时会随机选择一个执行：
+
+```go
+package main
+
+import "fmt"
+
+func fibonacci(c, quit chan int) {
+	x, y := 0, 1
+	for {
+		select {
+		case c <- x:
+			x, y = y, x+y
+		case <-quit:
+			fmt.Println("quit")
+			return
+		}
+	}
+}
+
+func main() {
+	c := make(chan int)
+	quit := make(chan int)
+	go func() {
+		for i := 0; i < 10; i++ {
+			fmt.Println(<-c)
+		}
+
+    // 通过 quit 管道来停止 goroutine
+		quit <- 0
+	}()
+	fibonacci(c, quit)
+}
+```
+
+
+### select 语句的 default case
+
+`default` 会在所有 case 都不满足，也就是所有 channel 都被阻塞的情况下被调用。所以它可以实现 `尝试从 channel 中读取数据，读不到的话就怎样怎样` 的逻辑:
+
+```go
+select {
+case i := <-c:
+    // 使用 i
+default:
+    // 从 c 中接收会阻塞时执行
+}
+```
+
+
+## sync.Mutex 互斥量
+
+如果我们不需要管道通信，只是想保证每次只有一个 Go 程能够访问一个共享的变量，可以使用 go 标准库提供的 `sync.Mutex` 这一数据结构，它提供了 `Lock()` 和 `Unlock()` 两个方法:
+
+```go
+package main
+
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
+type SafeCounter struct {
+	v   map[string]int
+  // 通过 sync.Mutex 来保护 SafeCounter
+	mux sync.Mutex
+}
+
+func (c *SafeCounter) Inc(key string) {
+	c.mux.Lock()
+	
+  // Lock 之后同一时刻只有一个 goroutine 能访问 c.v
+	c.v[key]++
+
+	c.mux.Unlock()
+}
+
+func (c *SafeCounter) Value(key string) int {
+	c.mux.Lock()
+  // 把 Unlock 放到 defer 里面，这样整个函数都会被 mutex 保护
+	defer c.mux.Unlock()
+	
+  return c.v[key]
+}
+
+func main() {
+	c := SafeCounter{v: make(map[string]int)}
+	for i := 0; i < 1000; i++ {
+		go c.Inc("somekey")
+	}
+
+	time.Sleep(time.Second)
+	fmt.Println(c.Value("somekey"))
+}
+```
+
+
+# 包管理
+
+![]( {{site.url}}/asset/go-modules.svg )
+
+- package: 同一个文件夹下的代码，属于同一个 package
+- module: 一个类似于仓库、模块的东西，module 之间可以有依赖关系。module 的根目录有个 `go.mod` 文件，其中定义了当前 module 的一些信息，也定义了对其他 module 的依赖(`require` 关键字)
+- 代码中可以通过 `import` 关键字导入其他 `package`
+
+此外 Go 还提供了一些命令，方便对 module 进行操作:
+
+```
+// 创建一个名为 example.com/hello 的 module
+go mod init example.com/hello
+
+// 运行当前目录的 module
+go run .
+
+// 根据代码中的 `import` 关键字，修改 go.mod, 引入正确的依赖
+go mod tidy
+```
