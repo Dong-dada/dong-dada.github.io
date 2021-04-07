@@ -8,7 +8,7 @@ categories: cpp
 * TOC
 {:toc}
 
-编译成可执行文件后，直接运行 `gdb ${文件路径}`，就可以调试该程序。
+编译成可执行文件后，直接运行 `gdb ${文件路径}`，就可以调试该程序。如果是要调试 core dump, 则运行 `gdb ${文件路径} ${崩溃文件}`。
 
 
 # 常用命令
@@ -33,6 +33,10 @@ categories: cpp
 | q(quit) | 退出调试 | |
 | call | 调用一个函数 | `call test(123)` |
 | shell | 执行 shell 程序，比如清屏 | `shell clear` |
+| bt(backtrace) | 查看所有栈帧 | `bt -full 10` 打印 10 层栈帧，`-full` 表示打印局部变量信息 |
+| frame | 查看指定序号的栈帧 | `frame 1` 栈帧编号可以用 bt 命令看到 |
+| info args | 打印当前栈帧中的函数参数 | `info args` |
+| info locals | 打印当前栈帧中的局部变量 | `info locals` |
 
 
 # 设置命令行参数
