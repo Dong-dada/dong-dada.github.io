@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Bazel"
+title:  "C++ - Bazel 基础知识"
 date:   2020-11-04 19:47:30 +0800
 categories: cpp
 ---
@@ -8,55 +8,324 @@ categories: cpp
 * TOC
 {:toc}
 
-Bazel 文件结构示例：
+<style type="text/css" rel="stylesheet">
+code {
+  white-space : pre-wrap !important;
+}
+</style>
 
+# 概念
+
+Bazel 是个构建系统，涉及到以下几个概念:
+
+![]( {{site.url}}/asset/bazel-concept.png )
+
+看起来比较简单，只有下列几个核心概念：
+- WORKSPACE: 工作空间，类似于 "项目", "仓库" 之类的概念，是一个相对比较大的代码集合，包含在一个目录里面。用 WORKSPACE 文件来标识。
+- package: 包，一个比较小的代码集合，一个 WORKSPACE 里可以有许多包。包使用 BUILD 文件来标识，在 BUILD 文件中定义了如何把包内代码编译成若干 target。
+- target: 编译的产物，也就是 库 或者 可执行文件。target 的生成方式由 package 的 BUILD 文件描述。Bazel 以 target 为维度进行依赖管理，BUILD 文件中定义了某个 target 的生成需要依赖哪些其他 target，被依赖的 target 可以来自于当前 WORKSPACE 的 package、其他 WORKSPACE 的 package, 也可以依赖其他构建系统生成的 target.
+
+```py
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+# hello-greet.cc, hello-greet.h 将编译出 hello-greet 库
+cc_library(
+    name = "hello-greet",
+    srcs = ["hello-greet.cc"],
+    hdrs = ["hello-greet.h"],
+)
+
+
+# hello-world.cc 将编译出 hello-world 可执行文件
+cc_binary(
+    name = "hello-world",
+    srcs = ["hello-world.cc"],
+    deps = [
+        # 依赖当前 package 的 hello-greet 库
+        ":hello-greet",
+        # 依赖 lib 这个 package 的 hello-time 库
+        "//lib:hello-time",
+    ],
+)
 ```
-.
-├── README.md
-├── WORKSPACE
-├── main
-│   ├── BUILD
-│   ├── hello-greet.cc
-│   ├── hello-greet.h
-│   └── hello-world.cc
-└── lib
-    ├── BUILD
-    ├── hello-time.cc
-    ├── hello-time.h
-    ├── date
-    │   ├── BUILD
-    │   ├── hello-date.cc
-    │   └── hello-date.h
-    └── utils
-        ├── time-utils.cc
-        └── time-utils.h
+
+除了依赖 WORKSPACE 内的 target, 还可以依赖外部 WORKSPACE 的 target, 这时候需要在当前项目的 WORKSPACE 中下载外部 WORKSPACE 的代码，然后在当前项目的 BUILD 文件中定义对外部 target 的依赖:
+
+```py
+# WORKSPACE 文件
+workspace(name = "hello_world")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# 下载 abseil 代码
+http_archive(
+    name = "absl",
+    strip_prefix = "abseil-cpp-master",
+    urls = ["https://github.com/abseil/abseil-cpp/archive/master.zip"],
+)
 ```
 
-除了 .h, .cc 这些源码文件以外，还有两种特殊的问题:
-- WORKSPACE: 位于整个项目文件夹的根目录，定义了一个 bazel 工作空间。
-    - 整个工作空间中仅会有一个 WORKSPACE 文件。子文件夹中的 WORKSPACE 文件会被忽略。
-    - 创建一个空的 WORKSPACE 文件，即可将所在文件夹指定为 bazel 工作空间。
-- BUILD: 定义一个 bazel package。
-    - 你想让哪个文件夹中的东西成为一个包，就在这个文件夹下创建一个 BUILD 文件。
-    - package 的管理范围包括子目录下的东西，**但不包括子 package 所包括的内容**。比如 lib 这个包下面有两个文件夹 date, utils，因为 date 文件夹里创建了 BUILD 文件，所以 lib 包的管理范围不包括 date 文件夹；而 utils 文件夹下没有创建 BUILD 文件，所以它里面的内容存在于 lib 包的管理范围内。
-
-
-BUILD 文件示例:
-
+```py
+# BUILD 文件
+cc_binary(
+    name = "hello",
+    srcs = ["hello.cc"],
+    deps = [
+        # 使用 @absl 来引用外部 WORKSPACE，absl 是对方的名字
+        "@absl//absl/strings"
+    ]
+)
 ```
-load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+编写 WORKSPACE, BUILD 文件时候使用的语言是一种被称为 starlark 的 python 方言。关于 starlark 语言的情况可以参考 [这篇文章](https://docs.bazel.build/versions/master/skylark/language.html)。
+
+
+# 场景
+
+Bazel 的概念看起来很简单，不过实际使用会有点复杂，有必要针对具体问题描述一下解决方案。
+
+## WORKSPACE 的传递性依赖需要在顶层配置
+
+这个标题的意思是对应这种场景: 有三个 WORKSPACE，stage3 依赖 stage2, stage2 依赖 stage1。
+
+在这种情况下，虽然 stage3 对于 stage1 的依赖是间接的，你还是要在 stage3 的 WORKSPACE 中把 stage1 的代码下载下来。
+
+对于 bazel 来说，WORKSPACE 维度上是没有依赖关系的，换句话说，构建的时候 bazel 不会自动根据外部 WORKSPACE 的定义下载相应代码，所以你需要在当前 WORKSPACE 中把外部 WORKSPACE 的依赖也下载下来。
+
+Bazel 的依赖管理是 target 维度的，你可以在 target 里通过 `@stage2//lib:hello-greet` 这样的语法来依赖外部 WORKSPACE 的 target，bazel 会在构建的时候通过 `@stage2` 这个前缀来查找代码仓库，从而找到依赖的 target。
+
+看一个具体的例子:
+
+```py
+# stage1 的 BUILD 文件，提供了 hello-greet 库
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "hello-greet",
+    srcs = ["hello-greet.cc"],
+    hdrs = ["hello-greet.h"],
+    visibility = ["//visibility:public"],
+)
+```
+
+```py
+# stage2 的 WORKSPACE 文件，引入了 stage1
+
+workspace(name = "stage2")
+
+local_repository(
+    name = "stage1",
+    path = "../stage1",
+)
+```
+
+```py
+# stage2 的 BUILD 文件，提供了 hello-time 库，这个库依赖 stage1 的 hello-greet 库
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "hello-time",
+    srcs = ["hello-time.cc"],
+    hdrs = ["hello-time.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@stage1//lib:hello-greet"
+    ]
+)
+```
+
+```py
+# stage3 的 WORKSPACE 文件，引入了 stage2, bazel 并不会自动引入 stage1
+
+workspace(name = "stage3")
+
+local_repository(
+    name = "stage2",
+    path = "../stage2",
+)
+```
+
+```py
+# stage3 的 BUILD 文件，定义了 hello-world target，依赖 stage2 的 hello-time 库
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
 
 cc_binary(
     name = "hello-world",
     srcs = ["hello-world.cc"],
+    deps = [
+        "@stage2//lib:hello-time",
+    ],
 )
 ```
 
-BUILD 文件中有个很重要的概念叫做 build rule, 它告诉了 bazel 如何构建出目标产物。比如示例中的 cc_binary 就是 bazel 内置的一个 build rule, 表示要构建的是一个可执行文件。
+在上述情况下，stage2 可以正常编译，但 stage3 编译时会报错:
+
+```
+ERROR: /private/var/tmp/_bazel_xxx/3180551eb887332738cb26905f4710bf/external/stage2/lib/BUILD:3:11: 
+no such package '@stage1//lib': The repository '@stage1' could not be resolved and referenced by '@stage2//lib:hello-time'
+```
+
+报错表明，在编译 `@stage2//lib:hello-time` 的时候，发现它依赖了 `@stage1//lib`，但是 `@stage1` 仓库无法被解析出来。这是因为 `stage1` 代码没有在 WORKSPACE 中被下载下来，为此你需要修改 WORKSPACE 文件，下载这个间接依赖:
+
+```py
+# stage3 的 WORKSPACE 文件，手动引入了间接依赖 stage1
+
+workspace(name = "stage3")
+
+local_repository(
+    name = "stage1",
+    path = "../stage1",
+)
+
+local_repository(
+    name = "stage2",
+    path = "../stage2",
+)
+```
 
 
+## 提供依赖函数
+
+上一个场景有个很显然的问题: 我们很难知道我们所依赖的仓库引入了哪些间接依赖，但 bazel 又要求我们手动引入这些间接依赖，这样就很麻烦。
+
+对于库的开发者，可以提供一个依赖函数，让依赖这个库的人调用这个函数去下载依赖。
+
+比方说之前提到的 `stage2`, 可以提供一个依赖函数:
+
+```py
+# stage2 的 repository.bzl 文件，外部可以载入这个文件中的函数
+
+# 外部调用这个函数即可引入 stage2 的依赖
+def stage2_deps():
+    native.local_repository(
+        name = "stage1",
+        path = "../stage1",
+    )
+```
+
+```py
+# stage2 的 WORKSPACE 文件
+
+workspace(name = "stage2")
+
+# local_repository(
+#     name = "stage1",
+#     path = "../stage1",
+# )
+
+# 改为调用函数的方式来引入 stage1 依赖
+load("//bazel:repositories.bzl", "stage2_deps")
+stage2_deps()
+```
+
+```py
+# stage3 的 WORKSPACE 文件
+workspace(name = "stage3")
+
+# 不再需要手动引入，只需调用 stage2 的依赖函数即可
+# local_repository(
+#     name = "stage1",
+#     path = "../stage1",
+# )
+
+local_repository(
+    name = "stage2",
+    path = "../stage2",
+)
+
+load("@stage2//bazel:repositories.bzl", "stage2_deps")
+stage2_deps()
+```
+
+这种方式显然更好一些，现在 stage3 不需要了解 stage1 这个间接依赖了，只需要调用 stage2 的依赖函数即可。
 
 
+## 依赖函数引用 package 时，需要考虑依赖方的情况
+
+有时候你会需要在依赖函数中引用 package 里的一些东西，比方说希望使用自己定义的 BUILD 文件来编译所依赖的代码:
+
+```py
+# stage2 的 repositories.bzl 文件
+
+def stage2_deps():
+    native.new_local_repository(
+        name = "stage1",
+        path = "../stage1/lib",
+
+        # 指定使用 stage2/bazel/stage1.BUILD 来编译 stage1 的代码
+        build_file = "//bazel:stage1.BUILD"
+    )
+```
+
+```py
+# stage2/bazel/stage1.BUILD 文件
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    # 给 target 起个其它名字
+    name = "another-greet",
+    srcs = ["hello-greet.cc"],
+    hdrs = ["hello-greet.h"],
+    visibility = ["//visibility:public"],
+)
+```
+
+这个时候编译 stage2 是没有问题的。但如果不加修改就编译 stage3 的话，就会有问题:
+
+```
+ERROR: Error fetching repository: /Users/dongyu/Documents/code/cpp/bazel-examples/cpp-tutorial/stage3/WORKSPACE:9:12: Unable to load package for //bazel:stage1.BUILD: not found.
+ERROR: /private/var/tmp/_bazel_dongyu/3180551eb887332738cb26905f4710bf/external/stage2/lib/BUILD:3:11: @stage2//lib:hello-time depends on @stage1//:another-greet in repository @stage1 which failed to fetch. no such package '@stage1//': Unable to load package for //bazel:stage1.BUILD: not found.
+```
+
+错误说明 stage3 加载 stage2 依赖的时候，查找 `//bazel:stage1.BUILD` 文件找不到，这是因为查找的目录是在 stage3 根目录，而非 stage2 根目录，当然找不到相关文件了。解决这个问题，需要修改下 stage2 的依赖函数，指明应当从 `@stage2` 这个仓库中查找文件：
+
+```py
+# stage2 的 repositories.bzl 文件
+
+def stage2_deps():
+    native.new_local_repository(
+        name = "stage1",
+        path = "../stage1/lib",
+
+        # build_file = "//bazel:stage1.BUILD"
+
+        # 指明从 @stage2 仓库查找文件
+        build_file = "@stage2//bazel:stage1.BUILD"
+    )
+```
+
+作为库的提供者，需要注意这类路径问题，避免使用方找不到位置。
 
 
+## 使用 .bazelrc 文件设置编译选项
 
+编译一个 target 时，可以使用 copts 参数来设置编译选项:
+
+```py
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library")
+
+cc_binary(
+    name = "hello-world",
+    srcs = ["hello-world.cc"],
+    deps = [
+        "@stage2//lib:hello-time",
+    ],
+    copts = [
+        # 指定使用 c++17 编译
+        "-std=c++17"
+    ]
+)
+```
+
+但是如果你的库既能支持 c++14, 也能支持 c++17, 就不适合写死在 target 上面，而应该让依赖你的库的人自己来指定 c++ 版本。
+
+这种情况下可以在根目录下提供一个 `.bazelrc` 文件，在文件中定义编译选项:
+
+```py
+# .bazelrc 文件
+
+build --copt=-std=c++17
+```
