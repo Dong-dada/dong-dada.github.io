@@ -41,6 +41,12 @@ categories: cpp
 
 # 设置命令行参数
 
+启动 gdb 的时候，可以在命令后面直接附加参数:
+
+```
+gdb --args a.out 1 2 3
+```
+
 启动 gdb 后，可以使用 set args 命令设置命令行参数:
 
 ```
@@ -118,3 +124,9 @@ LLDB 和 GDB 的命令挺像的，[这份文档](https://lldb.llvm.org/use/map.h
 |:--|:--|:--|
 | settings set target.run-args | 设置命令行参数 | settings set target.run-args hello world |
 | settings set target.env-vars | 设置环境变量 | settings set target.env-vars DEBUG=1 |
+
+启动 lldb 的时候，可以在命令后面直接附加参数:
+
+```
+lldb -- a.out 1 2 3
+```
