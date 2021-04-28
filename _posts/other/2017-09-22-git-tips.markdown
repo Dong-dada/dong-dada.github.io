@@ -8,7 +8,7 @@ categories: other
 * TOC
 {:toc}
 
-## 配置 difftool 和 mergetool
+# 配置 difftool 和 mergetool
 
 在 git 里配置 difftool 和 mergetool, 这样可以用外部工具来查看修改，现在用的是 Araxis Merge, 配置如下：
 
@@ -43,7 +43,7 @@ git config --global difftool.prompt false
 ```
 
 
-## 本地版本回退
+# 本地版本回退
 
 `git reset` 命令可以用来把代码回退到某次 commit 时的版本，比如现在有下面三个提交：
 
@@ -83,7 +83,7 @@ a7286fb (HEAD -> master) HEAD@{4}: commit: add distributed
 
 可以看到 `commit id` 是 `60fe97a`, 那么运行 `git reset --hard 60fe97a` 就可以回到那个版本了。
 
-### 如果在回退时，本地有未提交的修改会怎么样？
+## 如果在回退时，本地有未提交的修改会怎么样？
 
 使用了 `git reset --hard` 进行回退的话，本地未提交的修改会被**删除**, 不管这些修改有没有被 `git add` 到暂存区，这些记录都会消失。
 
@@ -91,21 +91,21 @@ a7286fb (HEAD -> master) HEAD@{4}: commit: add distributed
 
 或者采用如下的办法：
 
-### 如果我只是想回退  commit 记录，不想回退本地代码怎么办？
+## 如果我只是想回退  commit 记录，不想回退本地代码怎么办？
 
 比如某次提交之后发现，提交的内容有问题，这时候你需要把这次提交回退掉，然后把本地的代码修改为正确之后再次提交。
 
 这个时候可以使用 `git reset --mixed` 命令，`--mixed` 与 `--hard` 参数不同，`--hard` 会在回退的过程中把工作区里的内容也一并回退掉，而 `--mixed` 则不会改动工作区，只是把 HEAD 和索引(现在还不懂 Index 是啥)移动到了指定的位置；
 
 
-## cherry-pick
+# cherry-pick
 
 git cherry-pick可以选择某一个分支中的一个或几个commit(s)来进行操作。例如，假设我们有个稳定版本的分支，叫v2.0，另外还有个开发版本的分支v3.0，我们不能直接把两个分支合并，这样会导致稳定版本混乱，但是又想增加一个v3.0中的功能到v2.0中，这里就可以使用cherry-pick了,其实也就是对已经存在的commit 进行再次提交.
 
 剩下的可以查看 [这篇文章](http://www.jianshu.com/p/08c3f1804b36)
 
 
-## 如何删除远程仓库上的提交
+# 如何删除远程仓库上的提交
 
 如果把一些保密的数据提交到 GitHub 了，怎么删除 GitHub 上的这次提交呢？
 
@@ -122,7 +122,7 @@ git push origin +master
 完事儿之后就可以删除远程仓库上的提交了。
 
 
-## 每次往 github 上提交内容都需要输密码，很麻烦，可以去掉吗？
+# 每次往 github 上提交内容都需要输密码，很麻烦，可以去掉吗？
 
 虽然在设置了 SSH key 到 github 上，但每次 `git push` 还是要输入用户名密码，挺奇怪的。
 
@@ -137,7 +137,7 @@ git remote add origin git@github.com:username/repository.git    // 设置新的�
 ```
 
 
-## 分支操作
+# 分支操作
 
 ```
 // 创建一个本地分支
@@ -169,7 +169,7 @@ git push origin --delete feature-xxx
 经常会遇到这种情况，在 master 上开发了一些代码，然后发现这些代码需要新开分支来提交。但如果这时候切换到新建的分支上的话，会因为本地有没提交的代码而导致提交失败。这个时候可以使用 `git stash save` 命令暂存本地的修改，切换完成后再通过 `git stash pop` 将修改还原到新分支上。
 
 
-## pretty log
+# pretty log
 
 直接使用 `git log` 命令查看日志，打印的结果可读性不太好，或者日志太多了，打不下。这时候可以设置 pretty 选项来对输出的日志进行格式化：
 
@@ -193,7 +193,7 @@ git config --global alias.lg "log --color --pretty=format:'%Cred%h%Creset - %s %
 ```
 
 
-## 分支的合并
+# 分支的合并
 
 要合并分支，比如把 `feature-test` 合并到 `master`, 需要首先切换到 `master` 目标分支上，然后使用 `git merge feature-test` 命令把来源分支 `feature-test` 的代码合并到 `master`:
 
@@ -243,11 +243,11 @@ ecbaa08 - master edit (47 minutes ago)
 ```
 
 
-## git merge 的 fast forward 选项
+# git merge 的 fast forward 选项
 
 `git merge` 命令有两个选项 `--ff` 和 `--no-ff`, 分别用来指定是否使用 fast forward 来进行分支合并。
 
-### 什么是 fast forward
+## 什么是 fast forward
 
 fast forward 是快进的意思，且看下图：
 
@@ -265,7 +265,7 @@ bugfix 分支是从 master 分支上拉出来的，在 bugfix 分支提交了一
 
 看起来跟 rebase 有点像。
 
-### 如果不能 fast forward 会怎么样？
+## 如果不能 fast forward 会怎么样？
 
 如果 merge 的时候 master 有新的提交，那么之前的快进操作就无法执行了：
 
@@ -279,20 +279,20 @@ bugfix 分支是从 master 分支上拉出来的，在 bugfix 分支提交了一
 
 ![]( {{site.url}}/asset/git-tips-fast-forward-6.png )
 
-### --no-ff 选项，禁止  fast forward
+## --no-ff 选项，禁止  fast forward
 
 你可以给 `git merge` 加上一个选项 `--no-ff`, 也就是不要进行 fast forward.
 
 这样的话，即使 master 分支没有新增 commit, 也不会进行快进，而是生成一个新的 commit.
 
-### 什么时候使用  --no-ff 选项呢？
+## 什么时候使用  --no-ff 选项呢？
 
 使用 `--no-ff` 选项的优点是它不会把 feature 中的提交记录带入到 master 里面，可以让 master 的提交记录更清晰一些。
 
 如果往 master 合代码都使用 `--no-ff` 选项，那么 master 的提交记录里只会有 `merge branch feature-xxx` 这样的记录，比较简洁。
 
 
-## 标签 tag
+# 标签 tag
 
 git 可以给某个 commit 打上标签，以示重要。
 
@@ -311,7 +311,7 @@ git show v1.4           // 显示某个标签的信息，包括日期、注释�
 git push origin v1.4    // 向远程分支 push 标签
 ```
 
-### checkout 标签
+## checkout 标签
 
 在 Git 中你并不能真的检出一个标签，因为它们并不能像分支一样来回移动。 如果你想要工作目录与仓库中特定的标签版本完全一样，可以使用 `git checkout -b [branchname] [tagname]` 在特定的标签上创建一个新分支：
 
@@ -323,7 +323,7 @@ Switched to a new branch 'version2'
 当然，如果在这之后又进行了一次提交，version2 分支会因为改动向前移动了，那么 version2 分支就会和 v2.0.0 标签稍微有些不同，这时就应该当心了。
 
 
-## rebase 在分支合并中的使用
+# rebase 在分支合并中的使用
 
 先说明一点，branch 只是一个指针，删除一个分支并不意味着这个分支下的所有 commit 都会删除，只是删掉了分支指针而已。
 
@@ -372,7 +372,7 @@ git merge --no-ff feature_01
 参考自 [这篇文章](http://hungyuhei.github.io/2012/08/07/better-git-commit-graph-using-pull---rebase-and-merge---no-ff.html)
 
 
-## zsh 查看 git log 的问题
+# zsh 查看 git log 的问题
 
 在 mac 上用了 zsh 之后，发现每次查看 git log 都会打开一个类似于 vi 的编辑界面，而不是向以前用 bash 那样直接展示到命令行里面。有时候需要复制一些 commit id 不太方便。
 
@@ -387,7 +387,7 @@ git config --global --replace-all core.pager "less -F -X"
 设置完毕后 git log 就可以直接展示到 zsh 命令行里了。
 
 
-## Git 当中的 remote 和 upstream
+# Git 当中的 remote 和 upstream
 
 执行 `git remote -v` 可以检查仓库目前有哪些 remote:
 
@@ -424,3 +424,20 @@ $ git push --set-upstream origin feature-xxx
 ```
 
 remote, upstream 这些知识不仅用在创建仓库、创建分支这些场景下，也可用在代码合并的场景下。比如有个项目，既有开源代码维护在 github, 也有内部代码维护在公司的 gitlab 上。这时候就可以给本地仓库添加两个 remote, 在创建分支的时候也可以让不同的分支追踪不同的远程仓库分支。
+
+
+# 不修改 .gitignore 的情况下忽略未跟踪文件
+
+有时候你本地会添加一些文件，这些文件只有自己在用，或者跟自己的开发环境是绑定的，比如一些配置文件、编译脚本。这些文件不适合提交到仓库里，写到 .gitignore 里也不太合适，文件多的话 .gitignore 文件就不太能懂了。
+
+这种情况下可以修改 `.git/info/exclude` 文件，向其中添加你要忽略的文件和目录，语法跟 .gitignore 一样:
+
+```
+CMakeLists.txt
+sourcefiles.txt
+cmake-build-debug/
+```
+
+修改之后，使用 `git status` 命令就看不到这些文件了。
+
+注意修改这个文件能达到的效果是 "避免某些文件被跟踪"，如果你的文件已经被跟踪了，修改这个文件就没啥用了。
