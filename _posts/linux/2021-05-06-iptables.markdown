@@ -1,0 +1,212 @@
+---
+layout: post
+title:  "Linux - iptables"
+date:   2021-05-06 20:20:30 +0800
+categories: linux
+---
+
+* TOC
+{:toc}
+
+
+# 概念
+
+总的来说 iptables 是一个修改 linux 系统防火墙配置的工具。通过 iptables 可以给防火墙(netfilter)设置各种规则，从而实现 过滤、屏蔽、转发 请求的效果。
+
+
+## 链
+
+下图展示了报文在操作系统中的几种常见流向:
+
+![报文在操作系统中的流向]({{site.url}}/asset/iptables-netfilter.png)
+
+- 到本机某进程的报文：PREROUTING –> INPUT
+- 由本机转发的报文：PREROUTING –> FORWARD –> POSTROUTING
+- 由本机的某进程发出报文（通常为响应报文）：OUTPUT –> POSTROUTING
+
+上面的 PREROUTING, INPUT, FORWARD, POSTROUTING, OUTPUT 在 iptables 中被称为 "链"，不同场景下的报文，会由不同的 "链" 进行处理。之所以叫做链，是因为它下面可以挂一串规则，有点类似于 envoy 当中 filter chain 和 filters 的关系：
+
+![链]({{site.url}}/asset/iptables-filter-chain.png)
+
+除了系统定义的几条链，你还可以创建自定义链。自定义链接不能直接使用，只能被某个默认的链当做动作去调用才能起作用。
+
+
+## 表
+
+操作系统内核包含了各种模块来支持防火墙的功能，比如 iptables_filter 模块负责过滤功能；iptables_nat 模块负责网络地址转换；iptables_mangle 模块负责修改报文。。。这些模块对应的规则可以作用到多个链上。
+
+换句话说，要完成相近的功能，可能需要在不同的链上设置规则。iptables 从这些具有相近功能的规则中抽象出了一个表的概念，用表来管理规则更加符合思考习惯:
+- filter表：负责过滤功能，防火墙; 内核模块: iptables_filter
+- nat表：network address translation，网络地址转换功能; 内核模块: iptable_nat
+- mangle表：拆解报文，做出修改，并重新封装 的功能; 内核模块: iptable_mangle
+- raw表：关闭nat表上启用的连接追踪机制; 内核模块: iptable_raw
+
+这几个表之间有优先级的关系，换句话说在链上的位置有先后之分，并且某个表不一定会修改所有链，因此还有对应关系。这些关系可以用这张图概括：
+
+![]( {{site.url}}/asset/iptables-table.png )
+
+
+## 规则
+
+规则: 根据指定的 **匹配条件** 来尝试匹配每个流经此处的报文，一旦匹配成功，则由规则后面指定的 **处理动作** 进行处理。
+
+比如可以把 源IP，目标IP 作为匹配条件，把 ACCEPT(允许通过), DROP(丢弃数据包) 作为处理动作。
+
+
+# 操作
+
+## 查看规则
+
+使用 `iptables -t <表名> -L -v` 命令可以列出指定表中配置的规则内容，其中 `-v` 参数用于显示经过某个链的数据包数量和大小。
+
+下面这份配置是 istio 的流量拦截配置，它配置在 nat 表上，目的是将当前及其收到和发出的 TCP 流量都转发给一个名为 envoy 的进程，由这个进程来负责流量的分发。具体来说就是将所有进入本机的 tcp 流量转发给 envoy 进程的 15006 端口，将所有从本机发出的 tcp 流量转发给 envoy 进程的 15001 端口：
+
+```
+$ iptables -t nat -L -v
+Chain PREROUTING (policy ACCEPT 2701 packets, 162K bytes)
+ pkts bytes target     prot opt in     out     source               destination
+ 2701  162K ISTIO_INBOUND  tcp  --  any    any     anywhere             anywhere
+
+Chain INPUT (policy ACCEPT 2701 packets, 162K bytes)
+ pkts bytes target     prot opt in     out     source               destination
+
+Chain OUTPUT (policy ACCEPT 79 packets, 6761 bytes)
+ pkts bytes target     prot opt in     out     source               destination
+   15   900 ISTIO_OUTPUT  tcp  --  any    any     anywhere             anywhere
+
+Chain POSTROUTING (policy ACCEPT 79 packets, 6761 bytes)
+ pkts bytes target     prot opt in     out     source               destination
+
+Chain ISTIO_INBOUND (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 RETURN     tcp  --  any    any     anywhere             anywhere             tcp dpt:ssh
+    2   120 RETURN     tcp  --  any    any     anywhere             anywhere             tcp dpt:15090
+ 2699  162K RETURN     tcp  --  any    any     anywhere             anywhere             tcp dpt:15020
+    0     0 ISTIO_IN_REDIRECT  tcp  --  any    any     anywhere             anywhere
+
+Chain ISTIO_IN_REDIRECT (3 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 REDIRECT   tcp  --  any    any     anywhere             anywhere             redir ports 15006
+
+Chain ISTIO_OUTPUT (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 RETURN     all  --  any    lo      127.0.0.6            anywhere
+    0     0 ISTIO_IN_REDIRECT  all  --  any    lo      anywhere            !localhost            owner UID match 1337
+    0     0 RETURN     all  --  any    lo      anywhere             anywhere             ! owner UID match 1337
+   15   900 RETURN     all  --  any    any     anywhere             anywhere             owner UID match 1337
+    0     0 ISTIO_IN_REDIRECT  all  --  any    lo      anywhere            !localhost            owner GID match 1337
+    0     0 RETURN     all  --  any    lo      anywhere             anywhere             ! owner GID match 1337
+    0     0 RETURN     all  --  any    any     anywhere             anywhere             owner GID match 1337
+    0     0 RETURN     all  --  any    any     anywhere             localhost
+    0     0 ISTIO_REDIRECT  all  --  any    any     anywhere             anywhere
+
+Chain ISTIO_REDIRECT (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 REDIRECT   tcp  --  any    any     anywhere             anywhere             redir ports 15001
+```
+
+看到这一长串内容可能会觉得迷糊，不知道从哪里看起。这个需要结合之前放过的那张图来判断:
+
+![]( {{site.url}}/asset/iptables-table.png )
+
+
+### 入口流量
+
+比如我们想知道发送给本机某进程的报文如何被 iptables 处理，从上图可知这种报文会经过 PREROUTING 和 INPUT 两条链。
+
+对于 PREROUTING 这条链，可以看出它将任意来源、任意目标的 tcp 流量转交给了 ISTIO_INBOUND 这条自定义链处理:
+
+```
+Chain PREROUTING (policy ACCEPT 2701 packets, 162K bytes)
+ pkts bytes target     prot opt in     out     source               destination
+ 2701  162K ISTIO_INBOUND  tcp  --  any    any     anywhere             anywhere
+```
+
+对于 ISTIO_INBOUND 这条自定义链，可以看到它通过 RETURN 动作忽略了目标端口为 ssh, 15090, 15020 的流量，RETURN 动作类似于编程语言的 return 语句，也就是退出这条自定义链，返回到 PREROUTING 链中继续执行下一条规则；而对于其它端口的流量，则交给了 ISTIO_IN_REDIRECT 这条自定义链来处理。
+
+```
+Chain ISTIO_INBOUND (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 RETURN     tcp  --  any    any     anywhere             anywhere             tcp dpt:ssh
+    2   120 RETURN     tcp  --  any    any     anywhere             anywhere             tcp dpt:15090
+ 2699  162K RETURN     tcp  --  any    any     anywhere             anywhere             tcp dpt:15020
+    0     0 ISTIO_IN_REDIRECT  tcp  --  any    any     anywhere             anywhere
+```
+
+对于 ISTIO_IN_REDIRECT 这条自定义链，可以看到它通过 REDIRECT 动作，将流量重定向到了 15006 端口:
+
+```
+Chain ISTIO_IN_REDIRECT (3 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 REDIRECT   tcp  --  any    any     anywhere             anywhere             redir ports 15006
+```
+
+INPUT 链没有设置任何规则，无需分析。
+
+
+### 出口流量
+
+如果想知道本机发出的流量如何被 ipstables 处理，从之前的图可知这种报文会经过 OUTPUT, POSTROUTING 链。
+
+对于 OUTPUT 这条链，可以看出它将任意来源、任意目标的 tcp 流量转交给了 ISTIO_OUTPUT 这条自定义链处理:
+
+```
+Chain OUTPUT (policy ACCEPT 79 packets, 6761 bytes)
+ pkts bytes target     prot opt in     out     source               destination
+   15   900 ISTIO_OUTPUT  tcp  --  any    any     anywhere             anywhere
+```
+
+ISTIO_OUTPUT 这条链看起来有一些复杂，它是为了满足 istio 这个业务场景的一些特殊需要，这里不详细介绍每个规则的背景，只提及一些可能有帮助的细节:
+- 出口流量转发给 envoy 之后，envoy 会把流量转发给外部，这部分流量不应该被 ipstables 拦截，否则流量又打给 envoy 的话，就会形成死循环。
+- 要识别出哪些流量是由 envoy 发出的，这里使用了 UID 来标记，我们可以通过配置让 envoy 总是由特定的 UID 启动，这样就能够在 iptables 中通过 owner UID match 来过滤出由 envoy 发出的流量。
+- 规则中展示的 `in`, `out` 表示的是流量是从哪个网卡进来、从哪个网卡发出的。`out` 为 `lo` 表示流量是从本机发往本机的。
+
+```
+Chain ISTIO_OUTPUT (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 RETURN     all  --  any    lo      127.0.0.6            anywhere
+    0     0 ISTIO_IN_REDIRECT  all  --  any    lo      anywhere            !localhost            owner UID match 1337
+    0     0 RETURN     all  --  any    lo      anywhere             anywhere             ! owner UID match 1337
+   15   900 RETURN     all  --  any    any     anywhere             anywhere             owner UID match 1337
+    0     0 ISTIO_IN_REDIRECT  all  --  any    lo      anywhere            !localhost            owner GID match 1337
+    0     0 RETURN     all  --  any    lo      anywhere             anywhere             ! owner GID match 1337
+    0     0 RETURN     all  --  any    any     anywhere             anywhere             owner GID match 1337
+    0     0 RETURN     all  --  any    any     anywhere             localhost
+    0     0 ISTIO_REDIRECT  all  --  any    any     anywhere             anywhere
+```
+
+最终出口流量会被转发给 ISTIO_REDIRECT 处理，经由后者发送到 envoy 的 15001 端口:
+
+```
+Chain ISTIO_REDIRECT (1 references)
+ pkts bytes target     prot opt in     out     source               destination
+    0     0 REDIRECT   tcp  --  any    any     anywhere             anywhere             redir ports 15001
+```
+
+### 排查问题
+
+设置 iptables 规则后，如果没有按照预期拦截流量，可以通过 pkts, bytes 来确认流量都被哪条规则处理过。从而进一步确认问题原因。
+
+之前遇到一个问题，发现流量拦截似乎没有生效，流量没有按照预期打到 envoy 上，检查 iptables 规则发现许多数据包都被 RETURN 了，原因是 owner uid match 没有匹配上 envoy 的 UID。进一步检查发现是启动 envoy 的 UID 没有设置对导致的。
+
+
+## 增删改
+
+新增操作通过 -I 指定将规则插入链的开头(也可以通过 -A 指定将规则插入链的结尾)，-s 表示源地址，-j 表示要执行的动作:
+
+```
+iptables -t filter -I INPUT -s 192.168.1.146 -j DROP
+```
+
+删除操作通过 -D 完成，后面的数字是规则在链当中的序号:
+
+```
+iptables -t filter -D INPUT 3
+```
+
+修改操作可以通过先删除后添加来完成。
+
+
+# 典型场景
+
+待补充各种场景，从而加深印象。。。
