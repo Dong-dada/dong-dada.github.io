@@ -1153,6 +1153,12 @@ let printerFailure = try? send(job: 1885, toPrinter: "Never Has Toner")
 print(printerFailure)       // nil
 ```
 
+此外还有类似的 `try!` 语法，表示 "一定没有错误，可以获取到目标值":
+
+```swift
+listener = try! NWListener(using: .tcp, on: 12345)
+```
+
 ## defer
 
 `defer` 关键字允许你在当前作用于的所有代码执行完毕后再执行一些清理逻辑。无论作用域内的代码是否抛出了错误，`defer` 代码都会被执行，有点像 C++/Java 里的 `finally`，但是 `defer` 不止可以用在异常上面，普通代码也可用:
