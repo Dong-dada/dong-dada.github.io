@@ -85,5 +85,13 @@ $ kubectl label namespaces default testing=true
 ```sh
 # 获取所有 pod, 输出每个 pod 的名称，及 pod 内的容器名称
 $ kubectl get pods -n xxx -o=jsonpath='{range .items[*]}{"\n"}{.metadata.name}{":\t"}{range .spec.containers[*]}{.name}{", "}{end}{end}'
-order-service:	main, mesh, stats
+order-service-1:	main, mesh, stats
+```
+
+
+# 拷贝容器内的文件到本机
+
+```sh
+# 命令格式 kubectl cp -n ${namespace} -c ${container name} ${pod name}:${src file path} ${dst file path}
+$ kubectl cp -n xxx -c main order-service-1:/tmp/config_dump.json ~/Desktop/config_dump.json
 ```
