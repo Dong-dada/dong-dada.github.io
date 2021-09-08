@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Kubernetes - Kubectl 工具"
+title:  "Kubernetes - kubectl 小技巧"
 date:   2021-03-01 12:57:30 +0800
 categories: k8s
 ---
@@ -10,7 +10,7 @@ categories: k8s
 
 # 增删改查资源对象
 
-```
+```shell
 # 创建资源对象
 $ kubectl create -f my-service.yaml
 
@@ -77,4 +77,13 @@ $ kubectl edit deploy nginx
 # 为资源对象设置标签
 # 为 default namespace 设置 testing=true 标签
 $ kubectl label namespaces default testing=true
+```
+
+
+# 使用 json path 查看 pod 内列表
+
+```sh
+# 获取所有 pod, 输出每个 pod 的名称，及 pod 内的容器名称
+$ kubectl get pods -n xxx -o=jsonpath='{range .items[*]}{"\n"}{.metadata.name}{":\t"}{range .spec.containers[*]}{.name}{", "}{end}{end}'
+order-service:	main, mesh, stats
 ```
