@@ -11,7 +11,7 @@ categories: swift
 
 # @State 属性包装器
 
-View 一般是一个 struct，因为 SwiftUI 框架会经常性地销毁和重建 View，因此需要其尽量简单，搞成 class 的话可能会有初始化之类的特殊逻辑，导致 SwiftUI 重新创建它的成本变高。
+View 都是 struct 类型，因为 SwiftUI 框架会经常性地销毁和重建 View，因此需要其尽量简单，搞成 class 的话可能会有初始化之类的特殊逻辑，导致 SwiftUI 重新创建它的成本变高。
 
 这导致没法在 View 内部修改它的属性:
 
@@ -124,6 +124,78 @@ struct ContentView: View {
     }
 }
 ```
+
+
+# Modifier 的顺序
+
+Modifier 的顺序先后对最后的显示效果是有影响的，每个 modifier 都将在之前的基础上创建一个新的 struct，而不是直接修改原有 struct 的属性。比如下面的例子先将 button 的背景设置为红色，随后将 button 的大小设置为 200*200:
+
+```swift
+Button("Hello, world!") {
+    print(type(of: self.body))
+}    
+.background(.red)
+.frame(width: 200, height: 200)
+```
+
+![]( {{site.url}}/asset/swiftui-modifier-order.png )
+
+可以看到使用 `.frame()` 调整大小后，之前设置的红色并不会随之扩展。原因就是因为每个 modifier 都是在之前的基础上创建一个新的 struct, modifier 起到的并不是设置某个属性的效果，而是在原有基础上施加影响的效果。
+
+查看 Button 点击后显示的类型为 `ModifiedContent<ModifiedContent<Button<Text>, _BackgroundStyleModifier<Color>>, _FrameLayout>`。其中的 ModifiedContent 也是一个实现了 View 协议的 struct. 也就是说，第一个 modifier `.background(red)` 创建了一个具有特定大小，为红色的 ModifiedContent View，并将原有的 Button 纳入其中。第二个 modifier `.frame()` 又创建了一个新的 ModifiedContent View，其大小为 200*200，但背景是默认的白色。
+
+更明显的例子是，你可以多次使用相同的 modifier, 此时呈现的结果是这些 modifier 依次对之前的 struct 施加影响，而非覆盖之前的结果:
+
+```swift
+Button("Hello world") {
+    print(type(of: self.body))
+}
+.padding()
+.background(.red)
+.padding()
+.background(.blue)
+.padding()
+.background(.green)
+.padding()
+.background(.yellow)
+```
+
+![]( {{site.url}}/asset/swiftui-modifier-order-2.png )
+
+
+# Environment Modifier
+
+下面代码中为 VStack 设置的 `.font()` modifier 是一个 environment modifier，这意味着 VStack 中的每个 Text 都将被这个 modifier 所修改。这样可以节省在每个 Text 上都设置 modifier 的代码量。你也可以为某个 Text 特殊指定 modifier, 此时它将有更高的优先级:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            Text("Gryffindor")
+                .font(.largeTitle)
+            Text("Hufflepuff")
+            Text("Ravenclaw")
+            Text("Slytherin")
+        }
+        .font(.title)
+    }
+}
+```
+
+并不是所有的 modifier 都是 environment modifier, 比如下面代码的 `.blur()` 就不是。因此 Text 中的 `.blur()` 并不能影响 VStack 中的 `.blur()`:
+
+```swift
+VStack {
+    Text("Gryffindor")
+        .blur(radius: 0)
+    Text("Hufflepuff")
+    Text("Ravenclaw")
+    Text("Slytherin")
+}
+.blur(radius: 5)
+```
+
+除了阅读文档或者亲自实验，没啥有效的办法可以直接区分出一个 modifier 是否是 environment modifier.
 
 
 # 常见控件
