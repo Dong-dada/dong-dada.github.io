@@ -9,9 +9,11 @@ categories: swift
 {:toc}
 
 
-# @State 属性包装器
+# 小知识点
 
-View 都是 struct 类型，因为 SwiftUI 框架会经常性地销毁和重建 View，因此需要其尽量简单，搞成 class 的话可能会有初始化之类的特殊逻辑，导致 SwiftUI 重新创建它的成本变高。
+## @State 属性包装器
+
+View 都是 struct 类型，因为 SwiftUI 框架会经常性地销毁和重建 View，因此需要其尽量简单，搞成 class 的话可能会因为继承等原因导致 class 体积很大，使得 SwiftUI 重新创建它的成本变高。struct 是不允许继承的，没有隐式的成本。
 
 这导致没法在 View 内部修改它的属性:
 
@@ -84,7 +86,7 @@ struct ContentView: View {
 
 
 
-# 双向绑定
+## 双向绑定
 
 除了根据属性显示内容，也可以反过来根据用户输入修改属性，这就被称为 "双向绑定"。
 
@@ -126,7 +128,7 @@ struct ContentView: View {
 ```
 
 
-# Modifier 的顺序
+## Modifier 的顺序
 
 Modifier 的顺序先后对最后的显示效果是有影响的，每个 modifier 都将在之前的基础上创建一个新的 struct，而不是直接修改原有 struct 的属性。比如下面的例子先将 button 的背景设置为红色，随后将 button 的大小设置为 200*200:
 
@@ -163,7 +165,7 @@ Button("Hello world") {
 ![]( {{site.url}}/asset/swiftui-modifier-order-2.png )
 
 
-# Environment Modifier
+## Environment Modifier
 
 下面代码中为 VStack 设置的 `.font()` modifier 是一个 environment modifier，这意味着 VStack 中的每个 Text 都将被这个 modifier 所修改。这样可以节省在每个 Text 上都设置 modifier 的代码量。你也可以为某个 Text 特殊指定 modifier, 此时它将有更高的优先级:
 
@@ -196,6 +198,220 @@ VStack {
 ```
 
 除了阅读文档或者亲自实验，没啥有效的办法可以直接区分出一个 modifier 是否是 environment modifier.
+
+
+## 条件式的 modifier
+
+可以通过三目元算符来让 modifier 根据条件选择不同的参数
+
+```swift
+struct ContentView: View {
+    @State private var useRedText = false
+
+    var body: some View {
+        Button("Hello World") {
+            // flip the Boolean between true and false
+            useRedText.toggle()            
+        }
+        .foregroundColor(useRedText ? .red : .blue)
+    }
+}
+```
+
+也可以在 body 里面使用 `if ... else` 表达式，但这样做性能没有三目表达式好，三目表达式的话允许 SwiftUI 直接渲染原有 button 来提升性能，但 `if ... else` 的话就必须把原有对象销毁再创建一个新的。
+
+```swift
+var body: some View {
+    if useRedText {
+        Button("Hello World") {
+            useRedText.toggle()
+        }
+        .foregroundColor(.red)
+    } else {
+        Button("Hello World") {
+            useRedText.toggle()
+        }
+        .foregroundColor(.blue)
+    }
+}
+```
+
+## @ViewBuilder
+
+虽然 body 属性的类型是 `some View`, 但是你可以直接在 body 里面放置两个 View，这是因为 body 属性经过了 `@ViewBuilder` 的修饰。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        Text("hello")
+        Text("world")
+    }
+}
+```
+
+`@ViewBuilder` 能够自动用合适的容器把多个 View 包装起来。
+
+
+## 将 View 作为属性
+
+你可以把 View 作为属性，并在需要的位置引用它:
+
+```swift
+struct ContentView: View {
+    let motto1 = Text("Draco dormiens")
+    let motto2 = Text("nunquam titillandus")
+
+    var body: some View {
+        VStack {
+            motto1
+            motto2
+        }
+    }
+}
+```
+
+还可以把 view 作为 computed property，这是一个小技巧，普通的 property 是不能引用其它 property 的，但是 computed property 可以。
+
+```swift
+struct ContentView: View {
+    let name = "DongDada"
+
+    var spells: some View {
+        VStack {
+            Text("Hello, \(DongDada)")
+            Text("Hi~")
+        }
+    }
+
+    var body: some View {
+        spells
+    }
+}
+```
+
+## 自定义 View
+
+其实 ContentView 就是个自定义的 View，你可以用类似的方式自定义出其它 View:
+
+```swift
+struct CapsuleText: View {
+    var text: String
+
+    var body: some View {
+        Text(text)
+            .font(.largeTitle)
+            .padding()
+            .foregroundColor(.white)
+            .background(.blue)
+            .clipShape(Capsule())
+    }
+}
+
+struct ContentView: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            CapsuleText(text: "First")
+            CapsuleText(text: "Second")
+                .foregroundColor(.yellow)
+        }
+    }
+}
+```
+
+## 自定义 modifier
+
+通过实现 ViewModifier 接口，可以自定义出新的 modifier。然后通过 View 的 `modifier()` 方法，将这个 modifier 应用上去
+
+```swift
+struct Title: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .font(.largeTitle)
+            .foregroundColor(.white)
+            .padding()
+            .background(.blue)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct ContentView: View {
+    var body: some View {
+        Text("hello")
+            .modifier(Title())
+    }
+}
+```
+
+可以看到 ViewModifier 的 `body()` 方法，其返回值是一个 View, 这意味着你不止可以在原始 view 的基础上施加 modifier, 还可以直接添加别的 View:
+
+```swift
+struct Watermark: ViewModifier {
+    var text: String
+
+    func body(content: Content) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            content
+            Text(text)
+                .font(.caption)
+                .foregroundColor(.white)
+                .padding(5)
+                .background(.black)
+        }
+    }
+}
+```
+
+为了书写简单，可以通过 extension 机制，把自定义 modifier 包装成 View 的一个方法
+
+```swift
+extension View {
+    func watermarked(with text: String) -> some View {
+        // 调用 View 的 modifier 方法
+        modifier(Watermark(text: text))
+    }
+}
+
+struct ContentView: View {
+    var body: some View {
+        Color.blue
+            .frame(width: 200, height: 200)
+            .watermarked(with: "Dong dada")
+    }
+}
+```
+
+## 自定义容器
+
+容器也是一种 View, 所以可以通过类似于自定义 View 的方式来定义自己的容器.
+
+```swift
+struct GridStack<Content: View>: View {
+    let rows: Int
+    let columns: Int
+    // 一个回调函数，由调用方提供，通过它来创建容器内的子控件
+    let content: (Int, Int) -> Content
+    
+    var body: some View {
+        VStack {
+            ForEach(0..<rows, id: \.self) { row in
+                HStack {
+                    ForEach(0..<columns, id: \.self) { column in
+                        content(row, column)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct ContentView: View {
+    var body: some View {
+        GridStack(rows: 10, columns: 5) { row, column in
+            Color(red: Double(row) * 0.1, green: Double(column) * 0.1, blue: 0.0)
+        }
+    }
+}
+```
 
 
 # 常见控件
@@ -495,3 +711,93 @@ struct ContentView: View {
 ```
 
 ![]( {{site.url}}/asset/swiftui-alert.png )
+
+
+## Stepper
+
+Stepper 控件用于选择数字:
+
+```swift
+struct ContentView: View {
+    @State private var sleepAmount = 8.0
+    
+    var body: some View {
+        // 第一个参数是要显示的内容
+        // 第二个参数用于接收输出
+        // 第三个参数用于限制数字范围
+        // 第四个参数用于设置步长
+        Stepper("\(sleepAmount.formatted())", value: $sleepAmount, in: 4...12, step: 0.25)
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-stepper.png )
+
+
+## DatePicker
+
+DatePicker 控件用于选择日期:
+
+```swift
+struct ContentView: View {
+    @State private var wakeUp = Date.now
+    
+    var body: some View {
+        // 第一个参数是个标题，可以用 `.labelsHidden()` 这个 modifier 隐藏标题
+        // 第二个参数用于接收输出
+        // 第三个参数用于指定日期范围
+        // 第四个参数用于选择是否要展示日期或时间
+        DatePicker("Please enter a date", selection: $wakeUp, in: Date.now..., displayedComponents: .hourAndMinute)
+            .labelsHidden()
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-date-picker.png )
+
+
+## List
+
+之前提到的 Form View, 其实也是一种 List, 你可以在 List 里面使用 Section, ForEach:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        List {
+            Section("Section 1") {
+                Text("Static row 1")
+                Text("Static row 2")
+            }
+            
+            Section("Section 2") {
+                ForEach(0..<5) {
+                    Text("Dynamic row \($0)")
+                }
+            }
+            
+            Section("Section 3") {
+                Text("Static row 3")
+                Text("Static row 4")
+            }
+        }
+        .listStyle(.grouped)
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-list-view.png )
+
+不同于 Form 的是，List 不需要使用 ForEach 就能动态的创建出列表项:
+
+```swift
+struct ContentView: View {
+    let people = ["Finn", "Leia", "Luke", "Rey"]
+
+    var body: some View {
+        // 跟 ForEach 一样，你需要指定将列表项的一个属性设置为 id
+        List(people, id: \.self) {
+            Text($0)
+        }
+    }
+}
+```
