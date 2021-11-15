@@ -413,6 +413,118 @@ struct ContentView: View {
 }
 ```
 
+## 动画
+
+### 为 View 变化添加动画
+
+这种方式非常简单，只需要使用 `.animation()` modifier 包装一下 View，这个 View 的变化就会以动画的形式展现，你不需要考虑动画的每一帧是怎么渲染的，SwiftUI 框架会帮你完成这些事。
+
+```swift
+struct ContentView: View {
+
+    @State private var animationAmount = 1.0
+    @State private var bigger = true
+
+    var body: some View {
+        Button("Tap me") {
+            if fabs(animationAmount.distance(to: 2.0)) <= 1e-15 {
+                bigger = false
+            }
+            if fabs(animationAmount.distance(to: 1.0)) <= 1e-15 {
+                bigger = true
+            }
+            
+            animationAmount += bigger ? 0.2 : -0.2
+        }
+        .padding(50)
+        .background(bigger ? .red : .green)
+        .foregroundColor(.white)
+        .clipShape(Circle())
+        .scaleEffect(animationAmount)
+        .animation(.easeInOut, value: animationAmount)
+    }
+}
+```
+
+以上代码有几点需要注意：
+- `.animation()` 的第一个参数是指要附加的动画效果，它更像是描述了变化的快慢，这种效果可以影响颜色、大小、模糊程度等等。
+- `.animation()` 的第二个参数 `value` 用于触发动画的执行，如果发生变化的属性不是传给 `value` 的那个属性，动画就不会被触发。比如上述代码如果把 `value` 改为 `bigger`，那么动画就只在 `bigger` 属性发生变化时才被执行。
+- 如果动画被触发的时候，View 有多个状态发生变化，那么这些变化都会以动画的形式呈现。比如上述代码中，当 `bigger` 或 `animationAmount` 发生变化的时候，都会附加动画效果。
+
+
+除了上述代码中展示的 `.easeInOut`, 还有其它效果的动画可以使用，并且可以为这些效果指定参数:
+
+```swift
+// 指定动画时长
+.animation(.easeInOut(duration: 2), value: animationAmount)
+
+// 延时一秒后开始执行
+.animation(.easeInOut(duration: 2).delay(1), value: animationAmount)
+
+// 动画重复 3 次，执行一次后返回原状，再执行下一次
+.animation(.easeInOut(duration: 1).repeatCount(3, autoreverses: true), value: animationAmount)
+
+// 动画一直重复
+.animation(.easeInOut(duration: 1).repeatForever(autoreverse: true), value: animationAmount)
+
+// .interpolatingSpring 弹跳效果
+.animation(.interpolatingSpring(stiffness: 50, damping: 1), value: animationAmount)
+```
+
+## 为 Binding 属性变化添加动画
+
+这种方式下，动画的作用目标是 binding 属性，而不是 View。当 binding 属性发生变化时，动画效果会作用在绑定了这个属性的 view 上面。比如下面的例子，Stepper 修改了 `$animationAmount` 的值之后，Button 会按照指定的动画效果进行缩放。
+
+在动画过程中，Binding 属性的值并不会逐渐修改，动画的作用目标还是 View。
+
+```swift
+struct ContentView: View {
+
+    @State private var animationAmount = 1.0
+
+    var body: some View {
+        VStack {
+            // Binding 属性支持 `.animation()` 方法，可以将属性的变化以动画效果来呈现
+            Stepper("Scale amount", value: $animationAmount.animation(.easeOut), in: 0.6...10, step: 0.2)
+            
+            Spacer()
+            
+            Button("Tap me") {
+            }
+            .padding(50)
+            .background(.red)
+            .foregroundColor(.white)
+            .clipShape(Circle())
+            .scaleEffect(animationAmount)
+        }
+    }
+}
+```
+
+## 为普通属性变化添加动画
+
+为 View 添加 `.animation()` modifier, 可以让 View 的所有变化以动画的方式呈现。为 Binding 属性添加 `.animation()` modifier，可以让该属性的变化以动画方式呈现。还有一种方法是使用 `withAnimation()` closure 来让普通属性的变化以动画方式呈现:
+
+```swift
+struct ContentView: View {
+
+    @State private var animationAmount = 0.0
+
+    var body: some View {
+        Button("Tap me") {
+            withAnimation(.easeInOut) {
+                animationAmount += 180
+            }
+        }
+        .padding(50)
+        .background(.red)
+        .foregroundColor(.white)
+        .clipShape(Circle())
+        .rotation3DEffect(.degrees(animationAmount), axis: (x: 0, y: 1, z: 0))
+    }
+}
+```
+
 
 # 常见控件
 
