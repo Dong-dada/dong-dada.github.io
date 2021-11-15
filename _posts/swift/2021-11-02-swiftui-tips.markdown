@@ -471,7 +471,50 @@ struct ContentView: View {
 .animation(.interpolatingSpring(stiffness: 50, damping: 1), value: animationAmount)
 ```
 
-## 为 Binding 属性变化添加动画
+此外，`.animation()` 只影响在这之前的 modifier, 比如下面的代码中，`.clipShape()` 因为写在了 `.animation()` 后面，因此不会有动画效果。这一点很容易理解，因为 modifier 是对原有结构的一种包装，那么 `.animation()` 当然只能原有结构生效，无法对新加入的 `.clipShape()` 生效。
+
+```swift
+struct ContentView: View {
+    @State private var enabled = false
+    
+    var body: some View {
+        Button("Tap me") {
+            enabled.toggle()
+        }
+        .frame(width: 200, height: 200)
+        .background(enabled ? .blue : .red)
+        .foregroundColor(.white)
+        .animation(.default, value: enabled)
+        // 必须放在 .animation() 前面，才会有动画效果。
+        .clipShape(RoundedRectangle(cornerRadius: enabled ? 60 : 0))
+    }
+}
+```
+
+如果添加了多个 `.animation()` modifier，这些 animation 会 **同时执行**，但每个 `.animation()` 只对之前的 modifier 生效，这类似于把属性修改分了段落，具体可以看看下列代码，注意第一个 animation 只影响 `.background()`, 第二个 animation 只影响 `.clipShape()`，**就像把属性变化分成了不同的组一样**。
+
+```swift
+struct ContentView: View {
+    @State private var enabled = false
+    
+    var body: some View {
+        Button("Tap me") {
+            enabled.toggle()
+        }
+        .frame(width: 200, height: 200)
+        .background(enabled ? .blue : .red)
+        // 背景颜色切换的动画执行 5 遍
+        .animation(.easeInOut(duration: 0.2).repeatCount(5, autoreverses: true), value: enabled)
+        .foregroundColor(.white)
+        .clipShape(RoundedRectangle(cornerRadius: enabled ? 60 : 0))
+        // 形状裁剪的动画执行 1 遍
+        .animation(.easeInOut(duration: 1), value: enabled)
+    }
+}
+```
+
+
+### 为 Binding 属性变化添加动画
 
 这种方式下，动画的作用目标是 binding 属性，而不是 View。当 binding 属性发生变化时，动画效果会作用在绑定了这个属性的 view 上面。比如下面的例子，Stepper 修改了 `$animationAmount` 的值之后，Button 会按照指定的动画效果进行缩放。
 
@@ -501,7 +544,7 @@ struct ContentView: View {
 }
 ```
 
-## 为普通属性变化添加动画
+### 为普通属性变化添加动画
 
 为 View 添加 `.animation()` modifier, 可以让 View 的所有变化以动画的方式呈现。为 Binding 属性添加 `.animation()` modifier，可以让该属性的变化以动画方式呈现。还有一种方法是使用 `withAnimation()` closure 来让普通属性的变化以动画方式呈现:
 
@@ -521,6 +564,157 @@ struct ContentView: View {
         .foregroundColor(.white)
         .clipShape(Circle())
         .rotation3DEffect(.degrees(animationAmount), axis: (x: 0, y: 1, z: 0))
+    }
+}
+```
+
+
+## Bundle
+
+SwiftUI 项目中的 Assets 主要是用来存放图片的。把图片拖进 Assets, 然后起个名字，就可以直接在 Image 控件中引用它:
+
+```swift
+Image("Germany")
+```
+
+如果希望将文本文件等内容放到项目里，就需要使用到 Bundle.
+
+首先把文件拖动到项目里，然后使用以下代码读取文件内容：
+
+```swift
+guard let fileURL = Bundle.main.url(forResource: "start", withExtension: "txt") else { return }
+
+guard let fileContents = try? String(contentsOf: fileURL) else { return }
+
+// 操作 fileContents ...
+```
+
+
+
+## View 加载时执行指定操作
+
+使用 `onAppear()` modifer 就可以指定在视图加载时需要指定的方法:
+
+```swift
+struct ContentView: View {
+    @State private var newWord = ""
+    
+    var body: some View {
+        TextField("Enter your word", text: $newWord)
+            .autocapitalization(.none)
+            .onSubmit { text in
+                // onSubmit 将在按下回车键后被调用
+                print(text)
+            }
+            .onAppear {
+                // onAppear 将在 View 被加载时调用
+                // ...
+            }
+    }
+}
+```
+
+
+## .transition() modifier
+
+`.transition()` modifier 用于控制 View 在显示和隐藏时候的切换效果。比如下面的代码:
+
+```swift
+struct ContentView: View {
+    
+    @State private var isShowingRed = false
+    
+    var body: some View {
+        VStack {
+            Button("Tap Me") {
+                withAnimation {
+                    isShowingRed.toggle()
+                }
+            }
+            
+            if isShowingRed {
+                Rectangle()
+                    .fill(.red)
+                    .frame(width: 200, height: 200)
+                    // 默认情况下，View 会以透明度变化来完成显示和隐藏状态的切换，
+                    // 但通过 `.transition(.scale)` modifier，可以将显示和隐藏过程更改为缩放效果
+                    .transition(.scale)
+            }
+        }
+    }
+}
+```
+
+默认情况:
+
+![]( {{site.url}}/asset/swiftui-transition-default.gif )
+
+修改后的效果:
+
+![]( {{site.url}}/asset/swiftui-transition-scale.gif )
+
+你还可以通过 `.asymmetric()` 为显示和隐藏分别指定不同的切换效果:
+
+```swift
+.transition(.asymmetric(insertion: .scale, removal: .opacity))
+```
+
+
+## 手势
+
+### DragGesture
+
+DragGesture 可以使用 `.gesture()` modifier 添加到 View 上，以下代码利用 DragGesture 实现了拖动 View 的效果:
+
+```swift
+struct ContentView: View {
+    
+    @State private var dragAmount = CGSize.zero
+    
+    var body: some View {
+        LinearGradient(gradient: Gradient(colors: [.yellow, .red]),
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+            .frame(width: 300, height: 200)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .offset(dragAmount)
+            .gesture(DragGesture()
+                        // 每当手指位置变化，onChanged 事件就会触发
+                        .onChanged() { dragAmount = $0.translation }
+                        // 每当手指离开屏幕，onEnded 事件就会触发                        
+                        .onEnded() { _ in dragAmount = .zero })
+            // 使用动画效果让拖动过程更平滑
+            .animation(.spring(), value: dragAmount)
+    }
+}
+```
+
+### TapGesture
+
+TapGesture 可以使用 `.onTapGesture()` modifier 添加到 View 上，使 View 能够相应点击事件:
+
+```swift
+struct ContentView: View {
+    
+    @State private var isShowingRed = false
+    
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.blue)
+                .frame(width: 200, height: 200)
+            
+            if isShowingRed {
+                Rectangle()
+                    .fill(.red)
+                    .frame(width: 200, height: 200)
+                    .transition(.scale)
+            }
+        }
+        .onTapGesture {
+            withAnimation {
+                isShowingRed.toggle()
+            }
+        }
     }
 }
 ```
