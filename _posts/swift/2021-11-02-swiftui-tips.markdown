@@ -589,6 +589,8 @@ guard let fileContents = try? String(contentsOf: fileURL) else { return }
 // 操作 fileContents ...
 ```
 
+这里需要注意，不论你把文件放到了哪个文件夹，xcode 在编译的时候都会把这些文件放在同一个文件夹下。这意味着你没法导入两个同名文件到 xcode 里面，同时在使用上述代码访问这些文件的时候，也就不需要提供目录名，只需要填入文件名就可以了。
+
 
 
 ## View 加载时执行指定操作
