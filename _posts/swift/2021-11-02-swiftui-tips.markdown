@@ -127,6 +127,55 @@ struct ContentView: View {
 }
 ```
 
+## 结构体数组中元素属性的双向绑定
+
+类似于以下代码的情况，有个结构体数组，使用这个结构体数组构建了一个 View 列表，每个 View 需要去双向绑定结构体数组元素的一个属性:
+
+```swift
+struct Question : Identifiable {
+    var question: String
+    var possibleAnswers : [UInt]
+    var correctAnswer: UInt
+    var userAnswer: UInt
+    
+    // 如果不想在 List() 里面声明 id 参数，就可以实现 Identifiable 协议，然后把某个属性定义成 id，这也是个小技巧
+    var id: String {
+        question
+    }
+}
+
+struct ContentView: View {
+    @State private var questions = [
+        Question(question: "1 x 1 =", possibleAnswers: [1, 2, 3], correctAnswer: 1, userAnswer: 0),
+        Question(question: "1 x 2 =", possibleAnswers: [2, 3, 4], correctAnswer: 2, userAnswer: 0),
+        Question(question: "1 x 3 =", possibleAnswers: [3, 4, 5], correctAnswer: 3, userAnswer: 0),
+        Question(question: "1 x 4 =", possibleAnswers: [4, 5, 6], correctAnswer: 4, userAnswer: 0)
+    ]
+    
+    var body: some View {
+        VStack {
+            // 注意这里的语法，为了能够双向绑定数组元素的某个属性，需要在数组、元素上都加上 $ 符号
+            List($questions) { $question in
+                HStack {
+                    Text("\(question.question)")
+
+                    // 注意这里的语法，这样就可以双向绑定元素的某个属性
+                    Picker("", selection: $question.userAnswer) {
+                        ForEach(question.possibleAnswers, id: \.self) { answer in
+                            Text("\(answer)")
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    
+                    Spacer()
+                    Text(question.self.userAnswer == 0 ? "?" : question.self.userAnswer == question.self.correctAnswer ? "√" : "X")
+                }
+            }
+        }
+    }
+}
+```
+
 
 ## Modifier 的顺序
 
@@ -802,6 +851,24 @@ HStack {
 ```
 
 ![]({{site.url}}/asset/swiftui-foreach-hstack.jpg)
+
+在 ForEach 中访问数组需要指定 id:
+
+```swift
+struct ContentView: View {
+    let colors: [Color] = [.red, .green, .blue]
+
+    var body: some View {
+        VStack {
+            ForEach(colors, id: \.self) { color in
+                Text(color.description.capitalized)
+                    .padding()
+                    .background(color)
+            }
+        }
+    }
+}
+```
 
 
 ## Picker

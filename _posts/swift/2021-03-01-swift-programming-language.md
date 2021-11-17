@@ -308,6 +308,30 @@ occupations["Jayne"] = "Public Relations"
 print(occupations)
 ```
 
+## 集合
+
+```swift
+// 初始化 Set
+let actors = Set(["Denzel Washington", "Tom Cruise", "Nicolas Cage", "Samuel L Jackson"])
+print(actors)
+
+
+// 显式指定 Set 中元素的类型
+var names = Set<String>()
+names.insert("Dongdada")
+names.insert("Jhann")
+
+
+// 使用 contains() 方法判断元素是否存在
+print(names.contains("Dongdada"))
+print(names.contains("PangPang"))
+
+
+// 使用 sorted() 方法返回一个经过排序的数组
+// 输出: ["Dongdada", "Jhann"]
+print(names.sorted())
+```
+
 ## 元组
 
 创建和访问元组(tuple)，使用 `()` 方式，注意 tuple 中元素类型可以不同:
