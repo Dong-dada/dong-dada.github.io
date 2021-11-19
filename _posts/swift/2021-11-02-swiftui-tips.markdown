@@ -839,6 +839,125 @@ struct ContentView: View {
 ```
 
 
+## JSONEncoder, JSONDecoder
+
+顾名思义用于 JSON 编解码:
+
+```swift
+// 结构体需要实现 Codable 协议，才能被 JSONEncoder, JSONDecoder 处理
+struct GroceryProduct: Codable {
+    var name: String
+    var points: Int
+    var description: String?
+}
+
+let pear = GroceryProduct(name: "Pear", points: 250, description: "A ripe pear.")
+
+let encoder = JSONEncoder()
+encoder.outputFormatting = .prettyPrinted
+
+// encode 会返回一个 Data 类型的对象，而不是字符串，需要进行一次装换
+let data = try encoder.encode(pear)
+print(String(data: data, encoding: .utf8)!)
+
+/* Prints:
+ {
+   "name" : "Pear",
+   "points" : 250,
+   "description" : "A ripe pear."
+ }
+*/
+
+
+
+// 传给 decode 的对象，不是字符串，而是 Data 类型，需要进行一次转换
+let json = """
+{
+    "name": "Durian",
+    "points": 600,
+    "description": "A fruit with a distinctive scent."
+}
+""".data(using: .utf8)!
+
+let decoder = JSONDecoder()
+let product = try decoder.decode(GroceryProduct.self, from: json)
+
+print(product.name) // Prints "Durian"
+```
+
+
+## UserDefaults
+
+UserDefaults 用于持久化数据，适合于存储用户配置之类的少量数据，以 KV 形式提供访问:
+
+```swift
+struct ContentView: View {
+    // 从 UserDefaults 获取数据
+    @State private var tapCount = UserDefaults.standard.integer(forKey: "Tap")
+    
+    var body: some View {
+        Button("Tap count: \(tapCount)") {
+            tapCount += 1
+
+            // 将数据保存到 UserDefaults
+            UserDefaults.standard.set(self.tapCount, forKey: "Tap")
+        }
+    }
+}
+```
+
+SwiftUI 提供了一个包装器 `@AppStorage`, 被包装的属性会自动保存到 UserDefaults:
+
+```swift
+struct ContentView: View {
+    @AppStorage("tapCount") private var tapCount = 0
+    
+    var body: some View {
+        Button("Tap count: \(tapCount)") {
+            tapCount += 1
+        }
+    }
+}
+```
+
+默认情况下 UserDefaults 只能保存基本类型，如果想保存结构体，可以通过 JSONEncoder 把对象转换成 `Data`:
+
+```swift
+struct User: Codable {
+    var firstName: String
+    var lastName: String
+}
+
+struct ContentView: View {
+    @State private var user = User(firstName: "Taylor", lastName: "Swift")
+    
+    var body: some View {
+        VStack {
+            TextField("FirstName", text: $user.firstName)
+            TextField("LastName", text: $user.lastName)
+            
+            Button("Save User") {
+                // 编码后保存到 UserDefaults
+                let encoder = JSONEncoder()
+                if let data = try? encoder.encode(user) {
+                    UserDefaults.standard.set(data, forKey: "User")
+                }
+            }
+        }
+        .onAppear {
+            // 从 UseDefaults 里获取 Data, 解码结构体对象
+            if let data = UserDefaults.standard.data(forKey: "User") {
+                let decoder = JSONDecoder()
+                if let user = try? decoder.decode(User.self, from: data) {
+                    self.user = user
+                }
+            }
+        }
+    }
+}
+```
+
+
 # 常见控件
 
 ## Section
@@ -937,6 +1056,44 @@ struct ContentView: View {
     }
 }
 ```
+
+以下代码展示了如何通过 `onDelete()` modifier 为 ForEach 增加删除功能，你只需要实现 `onDelete()` 所要求的方法来删除数据，SwiftUI 会帮你实现左滑删除的界面效果。
+
+```swift
+struct ContentView: View {
+    @State private var numbers = [Int]()
+    @State private var currentNumber = 1
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                List {
+                    ForEach(numbers, id: \.self) {
+                        Text("Row \($0)")
+                    }
+                    .onDelete(perform: removeRows)
+                }
+                
+                Button("Add Number") {
+                    numbers.append(currentNumber)
+                    currentNumber += 1
+                }
+            }
+            .toolbar {
+                // 添加一个编辑按钮，这样就可以批量删除
+                EditButton()
+            }
+        }
+    }
+    
+    func removeRows(at offsets: IndexSet) {
+        // 删除实际数据
+        numbers.remove(atOffsets: offsets)
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-foreach-ondelete.png )
 
 
 ## Picker
@@ -1154,6 +1311,47 @@ struct ContentView: View {
 ```
 
 ![]( {{site.url}}/asset/swiftui-alert.png )
+
+
+## Sheet
+
+Sheet 也是显示对话框，但长得跟 Alert 不一样:
+
+```swift
+struct SecondView: View {
+    let name: String
+
+    // @Environment 里包含了许多有用的工具，`.dismiss` 的作用是告诉 SwiftUI 将当前视图关闭
+    @Environment(\.dismiss) var dismiss
+    
+    var body: some View {
+        VStack {
+            Text("Helllo, \(name)")
+            Button("Dismiss") {
+                dismiss()
+            }
+        }
+    }
+}
+
+struct ContentView: View {
+    @State private var showingSheet = false
+    
+    var body: some View {
+        Button("Show Sheet") {
+            showingSheet.toggle()
+        }
+        .sheet(isPresented: $showingSheet) {
+            // 自定义对话框里的内容
+            SecondView(name: "DongDada")
+        }
+    }
+}
+```
+
+用户可以通过向下滑动的方式把 sheet 关闭，以上代码借助 `@Environment(.\dismiss)` 在 sheet 上提供了一个关闭按钮。
+
+![]( {{site.url}}/asset/swiftui-sheet.png )
 
 
 ## Stepper

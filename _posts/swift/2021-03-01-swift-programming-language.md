@@ -262,20 +262,73 @@ print(jsonStr)
 创建和访问数组元素，使用 `[]` 方式：
 
 ```swift
-// 创建空数组
-let emptyArray = [String]()
+// 直接初始化 array
+var beatles = ["John", "Paul", "George", "Ringo"]
+let numbers = [4, 8, 15, 16, 23, 42]
+let temperatures = [25.3, 28.2, 26.4]
 
-// 也可以简写为以下形式，数组的类型会根据后续添加的元素类型推导出来
-var intArray = []
-intArray.append(42)
 
-// 创建数组并初始化
-var shoppingList = ["catfish", "water", "tulips"]
+// 使用下标访问数组元素
+print(beatles[0])
+print(numbers[1])
+print(temperatures[2])
 
-// 访问数组元素
-shoppingList[1] = "bottle of water"
 
-print(shoppingList)
+// 数组是可扩展的
+beatles.append("Adrian")
+
+
+// 显示声明数组内元素的类型
+var scores = Array<Int>()
+scores.append(100)
+scores.append(80)
+
+
+// 也可以写成以下语法
+var albums = [String]()
+albums.append("Folklore")
+
+
+// 使用 count 属性获取数组内元素数量
+print(beatles.count)
+
+
+// 使用 remove(at:) 方法移除指定位置的元素
+beatles.remove(at: 0)
+
+// 使用 removeAll() 方法移除所有元素
+beatles.removeAll()
+
+
+// 使用 contains() 方法判断数组是否包含某个元素
+let bondMovies = ["Casino Royale", "Spectre", "No Time To Die"]
+print(bondMovies.contains("Frozen"))
+
+
+// 使用 sorted() 方法对数组排序，该方法返回一个新的数组
+let cities = ["London", "Tokyo", "Rome", "Budapest"]
+let sortedCities = cities.sorted()
+print(type(of: sortedCities))       // Array<String>
+
+
+// 使用 reversed() 方法将元素逆序排列，注意这时候返回的并不是一个新的数组，而是数组的一个视图
+let reversedCities = cities.reversed()
+print(type(of: reversedCities))     // ReversedCollection<Array<String>>
+
+
+// 使用 filter() 方法来过滤数组中的元素，将返回一个新的数组
+let team = ["Gloria", "Suzanne", "Piper", "Tiffany", "Tasha"]
+print(team.filter{ $0.hasPrefix("T") })
+
+
+// 使用 map() 方法来对数组中的每个元素做转换，将返回一个新的数组
+print(team.map{ $0.uppercased() })
+
+
+// 将 filter(), sorted(), map() 等方法连在一起使用
+let luckyNumbers = [7, 4, 38, 21, 16, 15, 12, 33, 31, 49]
+let lines = luckyNumbers.filter{ $0 % 2 == 1 }.sorted().map{ "\($0) is a lucky number" }
+lines.forEach{print($0)}
 ```
 
 数组是支持自动扩容的，而不是固定长度：
