@@ -84,6 +84,74 @@ struct ContentView: View {
 }
 ```
 
+`@State` 修饰的属性只能是基本类型或者是结构体，对 class 无效。比如以下代码使用 `@State` 修饰了 User 类，当 User 的属性发生变化，Text View 并不会被更新。只有将 User 类型改为结构体 `@State` 才能生效。对于结构体而言，每当 TextField 修改了结构体中的一个字段，Swift 都会创建一个新的结构体实例，然后赋值给 user 属性。换句话说，虽然 TextField 修改的是结构体内部的字段，但实际上整个结构体都被重建了，user 属性也发生了变化，所以 `@State` 才能监听到这种变化。而如果 User 是 class 类型，那么 Swift 不会重建它，而是直接修改了它的字段，此时 user 属性本身在 `@State` 看来是没有发生变化的，因此界面不会被更新。
+
+```swift
+class User {
+    var firstName = "Bilbo"
+    var lastName = "Baggins"
+}
+
+struct ContentView: View {
+    @State private var user = User()
+
+    var body: some View {
+        VStack {
+            Text("Your name is \(user.firstName) \(user.lastName)")
+            
+            TextField("First name", text: $user.firstName)
+            TextField("Last name", text: $user.lastName)
+        }
+    }
+}
+```
+
+
+## @StateObject
+
+使用 struct 作为 View 的属性有个问题，就是数据没法在多个 View 之间共享。如果有需要共享的数据，那么应该用 class 来描述，并且使用 `@StateObject` 来包装：
+
+```swift
+// 希望 User 存储的数据能够在多个 View 间共享，那么需要对这个 class 做两件事：
+// 1. 实现 ObservableObject 协议
+// 2. 按需要使用 '@Published' 包装属性，被包装的属性发生变化时，将通知外部(也就是 @StateObject 或 @ObservedObject)
+class User: ObservableObject {
+    @Published var firstName = "Bilbo"
+    @Published var lastName = "Baggins"
+}
+
+struct ContentView: View {
+    // 创建 User 实例
+    // 如果是创建实例，那么用 @StateObject 包装，这样就可以监听实例的属性变化
+    @StateObject var user = User()
+
+    var body: some View {
+        VStack {
+            Text("Your name is \(user.firstName) \(user.lastName)")
+            
+            // 把实例传给其它 View
+            UserNameTextField(user: user)
+        }
+    }
+}
+
+struct UserNameTextField: View {
+    // 使用已有实例
+    // 如果是使用已有实例，那么用 @ObservedObject 包装，这样就可以监听实例的属性变化
+    @ObservedObject var user: User
+    
+    var body: some View {
+        VStack {
+            TextField("First name", text: $user.firstName)
+            TextField("Last name", text: $user.lastName)
+        }
+    }
+}
+```
+
+总的来说，`@Publish` 承担了原先 `@State` 的一半功能：发送变化事件给监听者；`@StateObject`, `@ObservedObject` 承担了 `@State` 的另一半功能：监听事件，随后更新界面。
+
+`@StateObject` 和 `@ObservedObject` 功能差不多，区别只在于前者用于创建实例的时候，后者用于接收已有实例的时候。
 
 
 ## 双向绑定
