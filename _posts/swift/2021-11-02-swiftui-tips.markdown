@@ -885,6 +885,33 @@ let product = try decoder.decode(GroceryProduct.self, from: json)
 print(product.name) // Prints "Durian"
 ```
 
+利用泛型可以编写出直接从 bundle 中加载 json 的方法:
+
+```swift
+extension Bundle {
+    func decodeJson<T: Codable>(_ file: String) -> T {
+        guard let url = self.url(forResource: file, withExtension: nil) else {
+            fatalError("Failed to locate \(file) in bundle.")
+        }
+
+        guard let data = try? Data(contentsOf: url) else {
+            fatalError("Failed to load \(file) from bundle.")
+        }
+
+        let decoder = JSONDecoder()
+        
+        guard let loaded = try? decoder.decode(T.self, from: data) else {
+            fatalError("Failed to decode \(file) from bundle.")
+        }
+
+        return loaded
+    }
+}
+
+
+let astronauts: [Astronaut] = Bundle.main.decodeJson("astronauts.json")
+```
+
 
 ## UserDefaults
 
@@ -1442,3 +1469,180 @@ struct ContentView: View {
     }
 }
 ```
+
+
+## Image
+
+顾名思义，Image 用于加载图片。把你的素材拖进 Assets.xcassets 当中，随后就可以使用 Image 将其显示出来:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ZStack {
+            Color.gray
+            
+            Image("Sleeping")
+                // frame() 只是设置了 view 本身的大小，图片的尺寸是不会被改变的。
+                // 如果希望图片大小与 frame() 的尺寸一致，需要设置 resiable() modifier
+                .resizable()
+                .frame(width: 200, height: 300)
+                .background(.red)
+        }
+        .ignoresSafeArea()
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-image-resizable.png )
+
+可以看到图片本身是正方形，但 View 的尺寸设置成了长方形，所以图片被拉伸了。
+
+为了避免图片被拉伸，可以使用 `scaledToFit()` modifier, 他会在图片不会拉伸的情况下，让图片尽量填充满 View 的空间。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ZStack {
+            Color.gray
+            
+            Image("Sleeping")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 200, height: 300)
+                .background(.red)
+        }
+        .ignoresSafeArea()
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-image-scaletofit.png )
+
+
+也可以使用 `scaleToFill` modifier，它会在图片不被拉伸的情况下，让自己填满整个 View 空间，即使这样做会让图片超出 View 空间限制。
+
+![]( {{site.url}}/asset/swiftui-image-scalltofill.png )
+
+
+## GeometryReader
+
+GeometryReader (几何读取器) 也是个 View，它能够让你获取一些关于尺寸大小的之类的信息，比如容器大小多大，当前 view 的位置在哪里，是否有 safe are 等等。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ZStack {
+            Color.gray
+            
+            GeometryReader { geo in
+                Image("Sleeping")
+                    .resizable()
+                    .scaledToFit()
+                    // 把 Image View 的宽度设置为容器的 80%，高度设置为 300
+                    .frame(width: geo.size.width * 0.8, height: 300)
+                .background(.red)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-geometryreader-default.png )
+
+可以看到 Image View 按照我们的要求设置了合适的尺寸，但显示在了屏幕的左上角。这是因为 GeometryReader 会自动把内部的 View 放到左上角。
+
+
+## ScrollView
+
+ScrollView 可以为元素添加滚动效果。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ScrollView {
+            // 注意这里使用了 LazyVStack
+            // LazyVStack 与普通 VStack 区别在于会按需创建 View 实例
+            LazyVStack(spacing: 10) {
+                ForEach(0..<100) {
+                    Text("Item \($0)")
+                        .font(.title)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swifui-scrollview.gif )
+
+
+## NavigationView
+
+NavigationView 可以在 iOS 的左上角显示一个标题。此外，当它和 NavigationLink 一起使用的时候，可以实现页面跳转的效果：
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        NavigationView {
+            List(0..<100) { row in
+                NavigationLink {
+                    // 跳转后的页面内容
+                    Text("Detail \(row)")
+                } label: {
+                    // 每一行的标题
+                    Text("Row \(row)")
+                }
+            }
+            .navigationTitle("SwiftUI")
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-navigation-view.gif )
+
+
+## LazyVGrid, LazyHGrid
+
+顾名思义，这两个 view 用于显示表格:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ScrollView {
+            // 创建一个有 3 列的表格
+            LazyVGrid(columns: [
+                GridItem(.fixed(80)),
+                GridItem(.fixed(80)),
+                GridItem(.fixed(80))
+            ]) {
+                ForEach(0..<1000) {
+                    Text("Item \($0)")
+                }
+            }
+        }
+    }
+}
+```
+
+此外还可以为表格的列数指定为自定义数量，这样 SwiftUI 会按照屏幕大小展示合适的列数：
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ScrollView {
+            LazyVGrid(columns: [
+                GridItem(.adaptive(minimum: 80, maximum: 120))
+            ]) {
+                ForEach(0..<1000) {
+                    Text("Item \($0)")
+                }
+            }
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-lazyvgrid.png )
