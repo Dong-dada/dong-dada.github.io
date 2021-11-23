@@ -1646,3 +1646,98 @@ struct ContentView: View {
 ```
 
 ![]( {{site.url}}/asset/swiftui-lazyvgrid.png )
+
+
+
+# 绘图
+
+## Path
+
+Path 也是一种 View，有点特别的是它的构造函数，它的构造函数中需要传入一个 closure, 这个 closure 只有一个参数，也是 Path 类型。SwiftUI 会创建一个空的 Path 实例作为这个参数，你只需要修改这个 path 参数就可以进行绘制了。
+
+```swift
+struct ContentView: View {
+
+    var body: some View {
+        Path { path in
+            path.move(to: CGPoint(x: 200, y: 100))
+            path.addLine(to: CGPoint(x: 100, y: 300))
+            path.addLine(to: CGPoint(x: 300, y: 300))
+            path.addLine(to: CGPoint(x: 200, y: 100))
+        }
+        // 指定线条的风格
+        // - lineCap 表示如果线条端点没有与其它线条连接起来，应该如何绘制
+        // - lineJoin 表示线条与线条之间发生连接时，应该如何绘制
+        .stroke(.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-path.png )
+
+## 通过实现 Shape 协议来自定义形状
+
+通过 Path 可以自定义出你要的形状，Shape 的作用在于它可以为 Path 提供相对坐标，原点在 **左上角**。
+
+```swift
+struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+        
+        return path
+    }
+}
+
+struct ContentView: View {
+
+    var body: some View {
+        Triangle()
+            .stroke(.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+            .frame(width: 200, height: 200)
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-shape.png )
+
+Path 不止可以画直线，也可以画圆弧:
+
+```swift
+// 圆弧
+struct Arc: Shape {
+    var startAngle: Angle
+    var endAngle: Angle
+    var clockwise: Bool
+    
+    func path(in rect: CGRect) -> Path {
+        // SwiftUI 里面，0 度的位置不是在正上方，而是在正右侧，看起来有点反人类，所以这里做了转换，把 0 度位置调整到了正上方
+        let rotationAdjustment = Angle.degrees(90)
+        let modifiedStart = startAngle - rotationAdjustment
+        let modifiedEnd = endAngle - rotationAdjustment
+        
+        var path = Path()
+        path.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: rect.width / 2,
+                    startAngle: modifiedStart, endAngle: modifiedEnd, 
+                    // SwiftUI 里的顺逆时针是反的，所以这里做了调整
+                    clockwise: !clockwise)
+        
+        return path
+    }
+}
+
+struct ContentView: View {
+
+    var body: some View {
+        Arc(startAngle: .degrees(0), endAngle: .degrees(110), clockwise: true)
+            .stroke(.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+            .frame(width: 200, height: 200)
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-shape-arc.png )
