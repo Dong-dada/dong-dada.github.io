@@ -1705,6 +1705,9 @@ struct ContentView: View {
 
 ![]( {{site.url}}/asset/swiftui-shape.png )
 
+
+## InsettableShape 内缩的形状
+
 Path 不止可以画直线，也可以画圆弧:
 
 ```swift
@@ -1736,8 +1739,52 @@ struct ContentView: View {
         Arc(startAngle: .degrees(0), endAngle: .degrees(110), clockwise: true)
             .stroke(.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
             .frame(width: 200, height: 200)
+            .background(.gray)
     }
 }
 ```
 
 ![]( {{site.url}}/asset/swiftui-shape-arc.png )
+
+可以看到上图中圆弧的一部分超过了边界。这是 `.stroke()` modifier 的正常表现。如果希望圆弧内缩到矩形内，需要让 Arc 实现 InsettableShape 协议，这里的 insettable 是可嵌入的意思。实现这个协议后，SwiftUI 会把需要内缩的尺寸告诉我们，我们可以在绘制图形的时候把内缩也考虑进去：
+
+```swift
+struct Arc: InsettableShape {
+    var startAngle: Angle
+    var endAngle: Angle
+    var clockwise: Bool
+    var insetAmount = 0.0
+    
+    // InsettableShape 需要实现一个 inset 方法，SwiftUI 会调用这个方法，把需要内缩的尺寸告诉我们
+    func inset(by amount: CGFloat) -> some InsettableShape {
+        var arc = self
+        arc.insetAmount += amount
+        return arc
+    }
+    
+    func path(in rect: CGRect) -> Path {
+        let rotationAdjustment = Angle.degrees(90)
+        let modifiedStart = startAngle - rotationAdjustment
+        let modifiedEnd = endAngle - rotationAdjustment
+        
+        var path = Path()
+
+        // 在绘制的时候需要考虑到内缩尺寸，对于这个例子来说，需要把半径减去内缩尺寸
+        path.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: rect.width / 2 - insetAmount,
+                    startAngle: modifiedStart, endAngle: modifiedEnd, clockwise: !clockwise)
+        
+        return path
+    }
+}
+
+struct ContentView: View {
+
+    var body: some View {
+        Arc(startAngle: .degrees(0), endAngle: .degrees(110), clockwise: true)
+            // 对于 InsettableShape, 可以使用 `.strokeBorder()` modifier, 此时绘制的边界将不会超出矩形框
+            .strokeBorder(.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+            .frame(width: 200, height: 200)
+            .background(.gray)
+    }
+}
+```
