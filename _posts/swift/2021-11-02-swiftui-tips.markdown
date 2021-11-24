@@ -1788,3 +1788,59 @@ struct ContentView: View {
     }
 }
 ```
+
+
+## CGAffineTransform
+
+CGAffineTransform 可以对 Path 施加位移，旋转等效果:
+
+```swift
+struct Flower: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        for number in stride(from: 0, to: Double.pi * 2, by: Double.pi / 8) {
+            // 现在左上角创建一个 Path
+            let originalPetal = Path(ellipseIn: CGRect(x: petalOffset, y: 0, width: petalWidth, height: rect.width / 2))
+            
+            // 将这个 Path 旋转一定角度
+            let rotation = CGAffineTransform(rotationAngle: number)
+            // 将这个 Path 移动到矩形框的中心
+            let position = CGAffineTransform(translationX: rect.width / 2, y: rect.height / 2)
+            // 将 CGAffineTransform 应用到 Path 上面，注意这里使用了 concatenating() 方法来合并两个 CGAffineTransform
+            let rotatedPetal = originalPetal.applying(rotation.concatenating(position))
+            
+            // 保存移动过的 Path
+            path.addPath(rotatedPetal)
+        }
+        
+        return path
+    }
+    
+    var petalOffset: Double = -20
+    var petalWidth: Double = 100
+}
+
+struct ContentView: View {
+    @State private var petalOffset = -20.0
+    @State private var petalWidth = 100.0
+
+    var body: some View {
+        VStack {
+            Flower(petalOffset: petalOffset, petalWidth: petalWidth)
+                // 这里通过 FillStyle 为颜色填充设置了奇偶规则: 奇数个图形叠加会显示颜色，偶数个图形叠加的话不显示颜色
+                .fill(.red, style: FillStyle(eoFill: true, antialiased: false))
+            
+            Text("Offset")
+            Slider(value: $petalOffset, in: -40...40)
+                .padding([.horizontal, .bottom])
+            
+            Text("Width")
+            Slider(value: $petalWidth, in: 0...100)
+                .padding([.horizontal, .bottom])
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-CGAffineTransform.png )
