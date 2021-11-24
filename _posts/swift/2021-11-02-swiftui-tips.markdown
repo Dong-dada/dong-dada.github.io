@@ -1648,6 +1648,50 @@ struct ContentView: View {
 ![]( {{site.url}}/asset/swiftui-lazyvgrid.png )
 
 
+## ImagePaint
+
+ImagePaint 不是空间，是一种 ShapeStyle. 它能够用图片来填充一块区域:
+
+```swift
+struct ContentView: View {
+    
+    var body: some View {
+        VStack {
+            Text("Lena")
+                .frame(width: 128, height: 128, alignment: .topLeading)
+                .foregroundColor(.white)
+                // Image 可以直接设置到 background 上，不过没法控制缩放、位置参数
+                .background(Image("Example"))
+                .clipped()
+            
+            Text("Lena")
+                .frame(width: 128, height: 128, alignment: .topLeading)
+                .foregroundColor(.white)
+                // ImagePaint 做背景的话，可以控制缩放比例
+                .background(ImagePaint(image: Image("Example"), scale: 0.25))
+            
+            Capsule()
+                // ImagePaint 还可以填充边, Image 是做不到的
+                .strokeBorder(ImagePaint(image: Image("Example"), scale: 0.1), lineWidth: 30)
+                .frame(width: 200, height: 100)
+            
+            Text("Lena")
+                .frame(width: 128, height: 128, alignment: .topLeading)
+                .foregroundColor(.white)
+                .background(
+                    // 使用 sourceRect 参数，可以裁剪出图片的一部分用来做填充
+                    ImagePaint(image: Image("Example"),
+                               sourceRect: CGRect(x: 0, y: 0, width: 0.5, height: 0.5),
+                               scale: 0.5)
+                )
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-imagepaint.png )
+
+
 
 # 绘图
 
@@ -1844,3 +1888,178 @@ struct ContentView: View {
 ```
 
 ![]( {{site.url}}/asset/swiftui-CGAffineTransform.png )
+
+
+## 使用 drawGroup() modifier 启用 Metal 渲染
+
+以下代码绘制了 100 个圆环，每个圆环都施加了 LinearGradient 变换，随后使用一个 slider 来切换圆环的颜色。
+
+如果不使用 `.drawingGroup()` modifier 的话，slider 的推动会比较卡。
+
+使用了 `.drawingGroup()` modifier 之后，SwiftUI 会利用 GPU 进行离屏渲染，也就是渲染完一整张图片后再把图片刷新到屏幕上，而不是每渲染一个 View 就做一次刷新，通过这种方式可以提高渲染效率。
+
+不过 `.drawingGroup()` modifier 不是每次都要用的，它在 View 比较少的情况下反而更慢，所以只有在发现渲染效率比较低的情况下才推荐使用 `.drawingGroup()`.
+
+```swift
+struct ColorCyclingCircle: View {
+    var amount = 0.0
+    var steps = 100
+    
+    var body: some View {
+        ZStack {
+            // 绘制 100 个圆环，每个圆环的颜色不同
+            ForEach(0..<steps) { value in
+                Circle()
+                    // inset() modifier 会把原有图形向内缩指定的尺寸
+                    .inset(by: Double(value))
+                    .strokeBorder(
+                        // 给每个圆环都施加线性渐变效果
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                color(for: value, brightness: 1),
+                                color(for: value, brightness: 0.5)
+                            ]), startPoint: .top, endPoint: .bottom),
+                        lineWidth: 2
+                    )
+            }
+        }
+        // 如果不使用 .drawingGroup() modifier, 做切换会比较卡
+        .drawingGroup()
+    }
+    
+    func color(for value: Int, brightness: Double) -> Color {
+        var targetHue = Double(value) / Double(steps) + amount
+        if targetHue > 1 {
+            targetHue -= 1
+        }
+        
+        return Color(hue: targetHue, saturation: 1, brightness: brightness)
+    }
+}
+
+
+struct ContentView: View {
+    @State private var colorCycle = 0.0
+    
+    var body: some View {
+        VStack {
+            ColorCyclingCircle(amount: colorCycle)
+                .frame(width: 300, height: 300)
+            
+            Slider(value: $colorCycle)
+        }
+    }
+}
+```
+
+
+## blend, blue, saturation 效果:
+
+```swift
+struct ContentView: View {
+    @State private var amount = 0.0
+    
+    var body: some View {
+        VStack {
+            VStack {
+                ZStack {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 100 * amount)
+                        .offset(x: -20, y: -30)
+                        // blend 用于控制一个 View 叠加到另一个 View 上面之后，应该如何混合颜色
+                        .blendMode(.screen)
+
+                    Circle()
+                        .fill(.green)
+                        .frame(width: 100 * amount)
+                        .offset(x: 20, y: -30)
+                        .blendMode(.screen)
+
+                    Circle()
+                        .fill(.blue)
+                        .frame(width: 100 * amount)
+                        .blendMode(.screen)
+                }
+                .frame(width: 200, height: 200)
+                .background(.black)
+                
+                Text("颜色叠加效果")
+            }
+            .frame(maxWidth: .infinity)
+            .border(.black, width: 1)
+            
+            VStack {
+                Image("Example")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 200, height: 200)
+                    // 饱和度，表示色彩的鲜艳程度，饱和度越低，颜色看起来越灰暗
+                    // 如果饱和度为 0, 颜色就彻底变成灰色了
+                    .saturation(amount)
+                    // 模糊效果
+                    .blur(radius: (1 - amount) * 20)
+                Text("饱和度和模糊效果")
+            }
+            .frame(maxWidth: .infinity)
+            .border(.black, width: 1)
+            
+            Slider(value: $amount)
+                .padding()
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-blend.gif )
+
+
+
+## 使用 animatableData 属性来为 Shape 变化添加动画
+
+Shape 协议继承了 Animatable 协议，后者定义了一个 animatableData 属性。如果希望 Shape 的变化能够被施加动画效果，就需要实现这个属性的代码:
+
+```swift
+struct Trapezoid: Shape {
+    var insetAmount: Double
+    
+    // 实现 animatableData 属性
+    // 在施加动画的时候，animatableData 属性会被一点点修改，对于这个例子来说，也就是 insetAmount 属性会被一点点修改
+    var animatableData: Double {
+        get { insetAmount }
+        set { insetAmount = newValue }
+    }
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        
+        path.move(to: CGPoint(x: 0, y: rect.maxY))
+        path.addLine(to: CGPoint(x: insetAmount, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - insetAmount, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: 0, y: rect.maxY))
+        
+        return path
+    }
+}
+
+struct ContentView: View {
+    @State private var amount = 50.0
+    
+    var body: some View {
+        VStack {
+            Trapezoid(insetAmount: amount)
+                .frame(width: 200, height: 100)
+                .onTapGesture {
+                    withAnimation {
+                        amount = Double.random(in: 10...90)
+                    }
+                }
+        }
+    }
+}
+```
+
+对于 Trapezoid 的 insetAmount 属性来说，它会立刻被设置为新的值。但是 SwiftUI 随后会在绘制动画的时候逐渐修改这个值来实现动画效果，但这种渐变式的修改对于我们的代码是不可见的。
+
+如果影响动画的参数超过了 1 个，可以使用 `AnimatablePair<Double, Double>` 作为 animatableData 的类型，具体可以参考 [这篇文章](https://www.hackingwithswift.com/books/ios-swiftui/animating-complex-shapes-with-animatablepair)
