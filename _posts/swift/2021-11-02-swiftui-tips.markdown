@@ -912,6 +912,122 @@ extension Bundle {
 let astronauts: [Astronaut] = Bundle.main.decodeJson("astronauts.json")
 ```
 
+如果 class 内所有属性都实现了 Codable 协议，那么这个 class 就可以直接自动实现 Codable 协议。否则的话就需要自己实现协议了。
+
+如果 class 内有使用 `@Published` 包装的属性，那就需要自己来实现 Codable 协议:
+
+```swift
+class User: ObservableObject, Codable {
+    @Published var name = "Dong Dada"
+    
+    // 实现 CodingKey 协议的枚举，描述有哪些字段需要被序列化
+    enum CodingKeys: CodingKey {
+        case name
+    }
+    
+    // 新增构造函数，支持反序列化
+    // required 表示如果继承当前类，则必须覆写该方法
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+    }
+    
+    // 覆写 encode 方法，支持序列化
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+    }
+}
+```
+
+
+## URLSession
+
+使用 URLSession 方法可以发起 HTTP 请求。不过这是一个异步方法，需要使用 `await` 关键字来发起调用:
+
+```swift
+struct Response: Codable {
+    var results: [Result]
+}
+
+struct Result: Codable {
+    var trackId: Int
+    var trackName: String
+    var collectionName: String
+}
+
+struct ContentView: View {
+    @State private var results = [Result]()
+
+    var body: some View {
+        List(results, id: \.trackId) { item in
+            Button("刷新") {
+                // 不能直接调用 async 方法，需要包装到 Task 里面
+                Task {
+                    await loadData()
+                }
+            }
+            .padding()
+
+            VStack(alignment: .leading) {
+                Text(item.trackName)
+                    .font(.headline)
+                Text(item.collectionName)
+            }
+        }
+        // 无法在 .onAppear() modifier 里调用 async 方法，SwiftUI 提供了 .task() modifier 用于执行 async 任务
+        .task {
+            await loadData()
+        }
+    }
+
+    // 由于内部需要访问异步方法，所以需要将 loadData() 声明为 async 方法
+    func loadData() async {
+        guard let url = URL(string: "https://itunes.apple.com/search?term=taylor+swift&entity=song") else {
+            print("Invalid URL")
+            return
+        }
+
+        do {
+            // 使用 try await 关键字发起异步调用
+            let (data, _) = try await URLSession.shared.data(from: url)
+
+            if let decodedResponse = try? JSONDecoder().decode(Response.self, from: data) {
+                results = decodedResponse.results
+            }
+        } catch {
+            print("Invalid data")
+        }
+    }
+}
+```
+
+也可以构造 URLRequest 发送 POST 请求：
+
+```swift
+func placeOrder() async {
+    guard let encoded = try? JSONEncoder().encode(order) else {
+        print("Failed to encode order")
+        return
+    }
+    
+    let url = URL(string: "https://reqres.in/api/cupcakes")!
+    var request = URLRequest(url: url)
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.httpMethod = "POST"
+    
+    do {
+        let (data, _) = try await URLSession.shared.upload(for: request, from: encoded)
+        
+        let decodedOrder = try JSONDecoder().decode(Order.self, from: data)
+
+        // ...
+    } catch {
+        print("Checkout failed.")
+    }
+}
+```
+
 
 ## UserDefaults
 
@@ -1671,7 +1787,7 @@ struct ContentView: View {
                 .background(ImagePaint(image: Image("Example"), scale: 0.25))
             
             Capsule()
-                // ImagePaint 还可以填充边, Image 是做不到的
+                // ImagePaint 还可以填充边 (stroke 是笔画的意思), Image 是做不到的
                 .strokeBorder(ImagePaint(image: Image("Example"), scale: 0.1), lineWidth: 30)
                 .frame(width: 200, height: 100)
             
@@ -1692,6 +1808,37 @@ struct ContentView: View {
 ![]( {{site.url}}/asset/swiftui-imagepaint.png )
 
 
+## AsyncImage
+
+AsyncImage 能够自动下载并显示图片:
+
+```swift
+struct ContentView: View {
+
+    var body: some View {
+        VStack {
+            AsyncImage(url: URL(string: "https://hws.dev/img/logo.png")) { phase in
+                if let image = phase.image {
+                    // 如果下载成功，则显示图片
+                    image
+                        .resizable()
+                        .scaledToFit()
+                } else if phase.error != nil {
+                    // 如果下载失败，则显示错误信息
+                    Text("There was an error loading the image.")
+                } else {
+                    // 下载过程中显示 loading 界面
+                    ProgressView()
+                }
+            }
+            .frame(width: 200, height: 200)
+            .border(.red, width: 1)
+        }
+    }
+}
+```
+
+
 
 # 绘图
 
@@ -1709,7 +1856,7 @@ struct ContentView: View {
             path.addLine(to: CGPoint(x: 300, y: 300))
             path.addLine(to: CGPoint(x: 200, y: 100))
         }
-        // 指定线条的风格
+        // 指定线条的风格 (stroke 是笔画的意思)
         // - lineCap 表示如果线条端点没有与其它线条连接起来，应该如何绘制
         // - lineJoin 表示线条与线条之间发生连接时，应该如何绘制
         .stroke(.blue, style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
