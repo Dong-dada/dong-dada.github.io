@@ -245,6 +245,47 @@ struct ContentView: View {
 ```
 
 
+## @Binding
+
+之前提到过双向绑定，`@Binding` 的作用就是将某个属性包装为双向绑定属性：这个属性所发生的变化可以被其他值所绑定
+
+```swift
+struct PushButton: View {
+    let title: String
+    // 将 isOn 包装为双向绑定属性
+    @Binding var isOn: Bool
+    
+    var onColors = [Color.red, Color.yellow]
+    var offColors = [Color(white: 0.6), Color(white: 0.4)]
+    
+    var body: some View {
+        Button(title) {
+            // 修改 isOn 属性，与 isOn 所绑定的值会同时被修改
+            isOn.toggle()
+        }
+        .padding()
+        .background(LinearGradient(gradient: Gradient(colors: isOn ? onColors : offColors),
+                                   startPoint: .top, endPoint: .bottom))
+        .foregroundColor(.white)
+        .clipShape(Capsule())
+        .shadow(radius: isOn ? 0 : 5)
+    }
+}
+
+struct ContentView: View {
+    @State private var rememberMe = false
+    
+    var body: some View {
+        VStack {
+            // PushButton 的 isOn 属性发生变化后，ContentView 的 rememberMe 属性也会发生变化
+            PushButton(title: "Remember Me", isOn: $rememberMe)
+            Text(rememberMe ? "On" : "Off")
+        }
+    }
+}
+```
+
+
 ## Modifier 的顺序
 
 Modifier 的顺序先后对最后的显示效果是有影响的，每个 modifier 都将在之前的基础上创建一个新的 struct，而不是直接修改原有 struct 的属性。比如下面的例子先将 button 的背景设置为红色，随后将 button 的大小设置为 200*200:
@@ -1100,8 +1141,128 @@ struct ContentView: View {
 }
 ```
 
+## Core Data
+
+Core Data 是个类似于数据库的东西，相比于 UserDefaults 更加强大和灵活。
+
+使用 CoreData 首先需要需要创建 entity, 类似于定义表结构：
+
+![]( {{site.url}}/asset/swiftui-coredata.gif )
+
+上图中第一步创建了一个后缀为 `xcdatamodeld` 的 DataModel 文件，存储的就是我们定义的结构，可以在其中新增 entity, 或者为 entity 增加属性。
+
+创建完 DataModel 之后，需要将其加到程序中:
+
+```swift
+class DataController: ObservableObject {
+    // 定义一个 container, 通过这个 container 来访问 DataModel
+    let container = NSPersistentContainer(name: "Bookworm")
+    
+    init() {
+        // 调用 loadPersistentStores 加载 DataModel
+        container.loadPersistentStores { description, error in
+            if let error = error {
+                print("Core Data failed to load: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+```
+
+为了方便使用，一般会将 NSPersistentContainer 保存到 Enviroment 当中:
+
+```swift
+@main
+struct BookwormApp: App {
+    // 创建 DataController 实例，将自动加载 DataModel
+    @StateObject private var dataController = DataController()
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                // 将 DataModel 加载到 managed object context 当中
+                // 并不是直接加载了 container, 而是将 container.viewContext 设置到了 environment.managedObjectContext 上
+                // viewContext 会让你现在内存中处理数据，直到有需要时才将内存中的数据持久化到磁盘
+                .environment(\.managedObjectContext, dataController.container.viewContext)
+        }
+    }
+}
+```
+
+接着就可以在需要的地方，通过 `@Enviroment` 包装器，获取到 DataModel 了:
+
+```swift
+struct ContentView: View {
+    // 获取 Environment.managedObjectContext, 也就是之前传入的 context.viewContext
+    @Environment(\.managedObjectContext) var moc
+
+    // @FetchRequest 用于从数据库中获取数据
+    @FetchRequest(sortDescriptors: []) var students: FetchedResults<Student>
+    
+    var body: some View {
+        VStack {
+            List {
+                ForEach(students) { student in
+                    Text(student.name ?? "Unknown")
+                }
+                .onDelete(perform: deleteStudents)
+            }
+            
+            Button("Add") {
+                let firstNames = ["Ginny", "Harry", "Hermione", "Luna", "Ron"]
+                let lastNames = ["Granger", "Lovegood", "Potter", "Weasley"]
+                
+                let chosenFirstName = firstNames.randomElement()!
+                let chosenLastName = lastNames.randomElement()!
+                
+                // 在 managedObjectContext 中创建一个 Student 对象，此时对象保存在内存里面
+                let student = Student(context: moc)
+                student.id = UUID()
+                student.name = "\(chosenFirstName) \(chosenLastName)"
+                
+                // 把内存中的数据持久化到磁盘
+                try? moc.save()
+            }
+        }
+    }
+
+    func deleteStudents(at offsets: IndexSet) {
+        for offset in offsets {
+            let student = students[student]
+
+            // 从 managedObjectContext 中删除对象
+            moc.delete(student)
+        }
+
+        try? moc.save()
+    }
+}
+```
+
+注意上述代码中的 Student, 它是由 Core Data 根据 DataModel 自动生成的一个 class 类型，继承于 NSManagedObject，表示这种类型被 Core Data 所管理。
+
 
 # 常见控件
+
+
+## TextEditor
+
+普通的 TextField 控件只能显示单行文字，如果需要编辑多行文字，可以使用 TextEditor 控件:
+
+```swift
+struct ContentView: View {
+    @AppStorage("notes") private var notes = ""
+    
+    var body: some View {
+        NavigationView {
+            TextEditor(text: $notes)
+                .navigationTitle("Notes")
+                .padding()
+        }
+    }
+}
+```
+
 
 ## Section
 
