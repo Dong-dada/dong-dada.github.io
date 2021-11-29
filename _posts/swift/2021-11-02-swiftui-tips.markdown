@@ -1221,7 +1221,11 @@ struct ContentView: View {
                 student.name = "\(chosenFirstName) \(chosenLastName)"
                 
                 // 把内存中的数据持久化到磁盘
-                try? moc.save()
+                // hasChanges 能够检查 moc 内是否有对象发生了改变
+                // student 这种 ManagedObject 也有个 hasChanges 属性，可以检查单个对象是否发生了改变
+                if moc.hasChanges {
+                    try? moc.save()
+                }
             }
         }
     }
@@ -1240,6 +1244,239 @@ struct ContentView: View {
 ```
 
 注意上述代码中的 Student, 它是由 Core Data 根据 DataModel 自动生成的一个 class 类型，继承于 NSManagedObject，表示这种类型被 Core Data 所管理。
+
+
+### 手动生成 Entity 类
+
+首先通过菜单栏打开 Data Model Inspector: View -> Inspectors -> Data Model。打开后会在 XCode 的右侧看到一个窗口。
+
+接着选中创建好的 Entity，在 Data Model Inspector 里将 Codegen 选项切换为 `Manual/None`。这样 XCode 就不会为我们自动生成 Entity 类了。
+
+接着需要手动创建出 Entity 类，这需要通过菜单栏完成: Editor -> "Create NSManagedObject Subclass"。点击后会出现一些对话框，按照对话框提示就可以创建出我们需要的 Entity 类。
+
+通过菜单栏会创建出两个文件，分别为 `{Entity名}+CoreDataClass.swift`, `{Entity名}+CoreDataProperties.swift`。你可以在其中增加一些代码来方便 Core Data 的访问：
+
+```swift
+import Foundation
+import CoreData
+
+
+extension Movie {
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<Movie> {
+        return NSFetchRequest<Movie>(entityName: "Movie")
+    }
+
+    @NSManaged public var title: String?
+    @NSManaged public var director: String?
+    @NSManaged public var year: Int16
+
+    // 增加一个 computed property, 这样调用方就不需要处理 optional 了
+    public var wrappedTitle: String {
+        title ?? "Unknown Title"
+    }
+}
+
+extension Movie : Identifiable {
+
+}
+```
+
+
+### 为 attribute 添加约束
+
+为 attribute 添加约束，有点像给数据库建唯一索引，添加约束之后，CoreData 会保证这个 attribute 在所有 entity 对象中唯一。
+
+添加方法是：
+1. 在 DataModel 中选中特定 Entity
+2. 通过菜单栏 View -> Inspectors -> Data Model 打开 Data Model Inspector。
+3. 在 Data Model Inspector 的 Constraints 栏点击 "+" 按钮，XCode 会生成一个默认的样例。
+4. 在样例上按下 Enter 键，输入你要添加约束的 attribute
+5. Cmd + S
+
+添加完成后，CoreData 就会为这个属性设置唯一约束。这个位移约束需要在 `save()` 动作执行的时候才会被校验。
+
+比如下面的代码，多次按下 Add 按钮后，由于还没有执行 `save()` 操作，约束还没生效，所以 wizards 会不断增加。当按下 Save 按钮，执行 `moc.save()` 操作的时候，会执行失败。
+
+```swift
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    @FetchRequest(sortDescriptors: []) var wizards: FetchedResults<Wizard>
+
+    var body: some View {
+        VStack {
+            List(wizards, id: \.self) { wizard in
+                Text(wizard.name ?? "Unknown")
+            }
+            
+            Button("Add") {
+                let wizard = Wizard(context: moc)
+                wizard.name = "Harry Potter"
+            }
+            
+            Button("Save") {
+                do {
+                    try moc.save()
+                } catch {
+                    // 多次 Add 将导致这里报错
+                    // The operation couldn’t be completed. (Cocoa error 133021.)
+                    print(error.localizedDescription)
+                }
+            }
+        }
+    }
+}
+```
+
+如果希望 `save()` 时不要报错，而是将对象合并，可以在 DataController 中指定合并策略。在按下 Save 按钮之后，之前添加的多个 Wizard 对象会被合并为 1 个，然后保存到数据库里。
+
+```swift
+class DataController {
+    static let shared = DataController()
+    
+    let container = NSPersistentContainer(name: "PhoneDemo")
+    
+    init() {
+        container.loadPersistentStores { description, error in
+            if let error = error {
+                print("Core Data failed to load: \(error.localizedDescription)")
+            }
+            
+            // 使用内存中的对象覆盖磁盘中的对象
+            self.container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+        }
+    }
+}
+
+```
+
+### NSPredicate 过滤查询结果
+
+`@FetchRequest` 包装器支持一个 predicate 参数，通过这个参数可以过滤查询结果:
+
+```swift
+// 使用 NSPredicate 过滤查询结果
+// NSPredicate(format: "universe == %@", "Star Wars")
+// NSPredicate(format: "name < %@", "F"))
+// NSPredicate(format: "universe IN %@", ["Aliens", "Firefly", "Star Trek"])
+// NSPredicate(format: "name BEGINSWITH %@", "E"))
+// NSPredicate(format: "name BEGINSWITH[c] %@", "e"))
+// NSPredicate(format: "NOT name BEGINSWITH[c] %@", "e"))
+@FetchRequest(sortDescriptors: [],
+              predicate: NSPredicate(format: "universe == %@", "Star Wars")) var ships: FetchedResults<Ship>
+```
+
+以上代码中的 `%@` 是个占位符，他会自动给 value 加上单引号，比如 `NSPredicate(format: "universe == %@", "Star Wars")` 内的字符串会被替换为 `"universe == 'Star Wars'`。
+
+还有一种占位符是 `%K`，它用在 key 上面，比如 `NSPredicate(format: "%K BEGINSWITH %@", "universe", "Star Wars")` 会被替换为 `"universe == 'Star Wars'`。
+
+如果没有特殊指定，过滤过程是大小写敏感的，通过以上代码中提到的 `[c]` 可以进行忽略大小写的匹配。
+
+
+## 动态改变 @FetchRequest 的过滤条件
+
+思路是创建一个新的 View 切换不同的 NSPredicate:
+
+```swift
+struct FilteredList: View {
+    @FetchRequest var results: FetchedResults<Singer>
+    
+    init(filter: String) {
+        // 注意这里赋值给了 '_results' 而非 'results'
+        // @FetchRequest 实际上会创建一个 _results 属性，这个属性需要被覆写掉
+        _results = FetchRequest<Singer>(sortDescriptors: [],
+                                        predicate: NSPredicate(format: "lastName BEGINSWITH %@", filter))
+    }
+    
+    var body: some View {
+        List(results, id: \.self) { singer in
+            Text("\(singer.wrappedFirstName) \(singer.wrappedLastName)")
+        }
+    }
+}
+
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    
+    @State private var lastNameFilter = "A"
+
+    var body: some View {
+        VStack {
+            FilteredList(filter: lastNameFilter)
+
+            Button("Add Examples") {
+                let taylor = Singer(context: moc)
+                taylor.firstName = "Taylor"
+                taylor.lastName = "Swift"
+
+                let ed = Singer(context: moc)
+                ed.firstName = "Ed"
+                ed.lastName = "Sheeran"
+
+                let adele = Singer(context: moc)
+                adele.firstName = "Adele"
+                adele.lastName = "Adkins"
+
+                try? moc.save()
+            }
+
+            Button("Show A") {
+                lastNameFilter = "A"
+            }
+
+            Button("Show S") {
+                lastNameFilter = "S"
+            }
+        }
+    }
+}
+```
+
+结合泛型，可以把上述 FilteredList 改造为可以接收任意 Entity 的列表:
+
+```swift
+struct FilteredList<T: NSManagedObject, Content: View>: View {
+    @FetchRequest var results: FetchedResults<T>
+    
+    let content: (T) -> Content
+    
+    // content 参数的 @ViewBuilder 包装器，用于支持多个子 View
+    // content 参数的 @escaping 表示 closure 将被保存起来以后再用，SwiftUI 对于这种 closure 的内存会特殊处理
+    init(filterKey: String, filterValue: String, @ViewBuilder content: @escaping (T) -> Content) {
+        let predicate = NSPredicate(format: "%K BEGINSWITH %@", filterKey, filterValue)
+        _results = FetchRequest<T>(sortDescriptors: [], predicate: predicate)
+        
+        self.content = content
+    }
+    
+    var body: some View {
+        List(results, id: \.self) { result in
+            self.content(result)
+        }
+    }
+}
+
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    
+    @State private var lastNameFilter = "A"
+
+    var body: some View {
+        VStack {
+            FilteredList(filterKey: "lastName", filterValue: lastNameFilter) { (singer: Singer) in
+                Text("\(singer.wrappedFirstName) \(singer.wrappedLastName)")
+            }
+
+            // ...
+        }
+    }
+}
+```
+
+
+## \.self 的工作原理
+
+简单来说，`\.self` 会使用整个对象的 hash 值来唯一标识这个对象。这要求类型本身实现了 `Hashable` 协议。
 
 
 # 常见控件
