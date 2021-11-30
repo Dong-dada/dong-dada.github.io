@@ -1373,7 +1373,7 @@ class DataController {
 如果没有特殊指定，过滤过程是大小写敏感的，通过以上代码中提到的 `[c]` 可以进行忽略大小写的匹配。
 
 
-## 动态改变 @FetchRequest 的过滤条件
+### 动态改变 @FetchRequest 的过滤条件
 
 思路是创建一个新的 View 切换不同的 NSPredicate:
 
@@ -1472,6 +1472,110 @@ struct ContentView: View {
     }
 }
 ```
+
+### 通过 relationship 关联 entities
+
+CoreData 支持称为 relationship 的功能，可以把 Entity 关联起来。
+
+![]( {{site.url}}/asset/swiftui-core-data-relationships-country.png )
+
+![]( {{site.url}}/asset/swiftui-core-data-relationships-candy.png )
+
+以上两图展示了建立 Country 和 Candy 两者之间一对多关系的过程：
+
+首先在 Country Entity 里新增了一条名为 candy 的 relationship, 其目标为 Candy，类型为 'To Many'。这会让 Core Data 帮我们生成如下代码：
+
+```swift
+extension Country {
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<Country> {
+        return NSFetchRequest<Country>(entityName: "Country")
+    }
+
+    @NSManaged public var fullName: String?
+    @NSManaged public var shortName: String?
+
+    // 这个多出来的 candy 属性，就是我们新增的 relationship, 可以看到它是一个集合类型
+    @NSManaged public var candy: NSSet?
+    
+    // 这个是手动增加的一个 computed property, 用于将 candy 转换成对 SwiftUI 友好的数组类型
+    public var candyArray: [Candy] {
+        let set = candy as? Set<Candy> ?? []
+        return set.sorted {
+            $0.wrappedName < $1.wrappedName
+        }
+    }
+}
+
+// CoreData 还为我们访问 candy 属性生成了一些方法
+extension Country {
+
+    @objc(addCandyObject:)
+    @NSManaged public func addToCandy(_ value: Candy)
+
+    @objc(removeCandyObject:)
+    @NSManaged public func removeFromCandy(_ value: Candy)
+
+    @objc(addCandy:)
+    @NSManaged public func addToCandy(_ values: NSSet)
+
+    @objc(removeCandy:)
+    @NSManaged public func removeFromCandy(_ values: NSSet)
+
+}
+
+extension Country : Identifiable {
+
+}
+```
+
+接着在 Candy Entity 里新增了一条名为 origin 的 relationship, 表示这种糖果来自哪个国家。其目标为 Country, 类型为 'To One'。这会让 Core Data 帮我们生成如下代码：
+
+```swift
+extension Candy {
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<Candy> {
+        return NSFetchRequest<Candy>(entityName: "Candy")
+    }
+
+    @NSManaged public var name: String?
+    @NSManaged public var origin: Country?
+
+    public var wrappedName: String {
+        name ?? "Unknown Candy"
+    }
+}
+
+extension Candy : Identifiable {
+
+}
+```
+
+值得注意的是，在添加 relationship 的时候，还有个 inverse 选项，它表明了两个 relationship 间的双向绑定关系。Country 对 Candy 是一对多，反之 Candy 对 Country 就是一对一，因此需要设置其 inverse 选项。
+
+
+### 批量删除表中的数据
+
+```swift
+// 从 NSFetchRequest 创建出一个 NSBatchDeleteRequest
+let deleteRequest = NSBatchDeleteRequest(fetchRequest: NSFetchRequest(entityName: "User"))
+deleteRequest.resultType = .resultTypeObjectIDs
+
+// 执行批量删除动作
+let deleteResult = try moc.execute(deleteRequest) as? NSBatchDeleteResult
+
+// 获取到删除的 id
+if let deletedIds = deleteResult?.result as? [NSManagedObjectID] {
+let deletedObjects = [NSDeletedObjectsKey: deletedIds]
+
+// 将改变合并到 ManagedObjectContext
+NSManagedObjectContext.mergeChanges(
+    fromRemoteContextSave: deletedObjects, 
+    into: [moc]
+)
+```
+
+[这篇文章](https://www.advancedswift.com/batch-delete-everything-core-data-swift) 还提到了其他几种批量删除的场景。
 
 
 ## \.self 的工作原理
