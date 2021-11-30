@@ -2237,6 +2237,91 @@ struct ContentView: View {
 ```
 
 
+## AnyView
+
+以下代码会编译出错，因为 tossResult 的返回值类型是个不透明类型 `some View`, 不透明类型要求返回值类型是固定的，多次调用应该始终返回相同的类型:
+
+```swift
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    
+    // 报错: Function declares an opaque return type, but has no return statements in its body from which to infer an underlying type
+    var tossResult: some View {
+        if Bool.random() {
+            Image(systemName: "star")
+        } else {
+            Text("Better luck next time")
+        }
+    }
+
+    var body: some View {
+        tossResult
+    }
+}
+```
+
+一种解决方法是使用 `@ViewBuilder` 包装 tossResult 属性。`@ViewBuilder` 会把不同类型的 View 包装到单个 View 类型中。
+
+```swift
+@ViewBuilder var tossResult: some View {
+    if Bool.random() {
+        Image(systemName: "star")
+    } else {
+        Text("Better luck next time")
+    }
+}
+```
+
+View 的 body 属性已经经过了 `@ViewBuilder` 的包装，所以你也可以直接把 tossResult 直接拆分成一个自定义 View:
+
+```swift
+struct TossResult: View {
+    var body: some View {
+        if Bool.random() {
+            Image("laser-show")
+                .resizable()
+                .scaledToFit()
+        } else {
+            Text("Better luck next time")
+                .font(.title)
+        }
+    }
+}
+```
+
+另一种解决方法是使用 `Group` 把不同类型放在一起，使得 tossResult 的类型固定为 Group:
+
+```swift
+var tossResult: some View {
+    Group {
+        if Bool.random() {
+            Image("laser-show")
+                .resizable()
+                .scaledToFit()
+        } else {
+            Text("Better luck next time")
+                .font(.title)
+        }
+    }
+    .frame(width: 400, height: 300)
+}
+```
+
+还有一种解决方法是使用 `AnyView` 来包装 View:
+
+```swift
+var tossResult: some View {
+    if Bool.random() {
+        return AnyView(Image(systemName: "star").resizable().scaledToFit())
+    } else {
+        return AnyView(Text("Better luck next time").font(.title))
+    }
+}
+```
+
+`AnyView` 和 `Group` 都能解决问题，不过 `AnyView` 是专门为解决这个问题设计的，语义更清晰一些。
+
+
 
 # 绘图
 
