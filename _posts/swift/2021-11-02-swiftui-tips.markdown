@@ -106,6 +106,77 @@ struct ContentView: View {
 }
 ```
 
+### @State 的原理
+
+上文提到 `@State` 实际上会把属性包装到另外一个地方，所以我们才能修改它。不过这也引起了一些问题，比如下面的代码:
+
+```swift
+struct ContentView: View {
+    @State private var blurAmount = 0.0 {
+        didSet {
+            // 这行代码不会被执行到
+            print("new value is \(blurAmount)")
+        }
+    }
+    
+    var body: some View {
+        VStack {
+            Text("Hello, world!")
+                .blur(radius: blurAmount)
+            
+            Slider(value: $blurAmount, in: 0...20)
+        }
+    }
+}
+```
+
+上述问题需要了解 `@State` 才能搞明白。Property wrapper 实际上会把我们的属性包装到一个 struct 里面，比如上述例子中，blurAmount 会被包装到 `State<Double>` 类型的结构体中。你可以通过 Cmd+Shift+O 打开 quick open 工具栏，然后输入 State 来查看这个 State 结构体的定义：
+
+```swift
+@@propertyWrapper public struct State<Value> : DynamicProperty {
+    // ...
+
+    public var wrappedValue: Value { get nonmutating set }
+
+    // ...
+}
+```
+
+`State` 结构体中的 `wrappedValue` 是个 compute property，真实的值并不是保存在 `wrappedValue` 里面，而是保存在其他地方。注意它的 set 被修改为 `nonmutating`，这表示设置 wrappedValue 的时候，不会改变结构体内的任何属性，实际上被改变的是保存在其它地方的一个可以自由修改的值。也就是说，在我们对 `@State` 属性做修改的时候，不仅 `blurAmount` 属性不会变化，`State<Double>` 结构体也不会变化，变化的是保存在其它地方的一个值。
+
+回到开始的问题，以下代码中 `print()` 不被执行，是因为 `@State` 将 blurAmount 包装成了 `State<Double>` 结构体，只有 `State<Double>` 结构体发生变化，`didSet` 才会被触发，但根据上面的描述，`State<Double>` 是不会发生变化的。
+
+要解决这一问题，可以通过自定义 Binding 的方式:
+
+```swift
+struct ContentView: View {
+    @State private var blurAmount: CGFloat = 0
+
+    var body: some View {
+        // 引入一个自定义 Binding 对象，作为中间人，把 getter, setter 转发给原本的 Binding
+        let blur = Binding<CGFloat>(
+            get: {
+                self.blurAmount
+            },
+            set: {
+                self.blurAmount = $0
+                print("New value is \(self.blurAmount)")
+            }
+        )
+
+        return VStack {
+            Text("Hello, World!")
+                .blur(radius: blurAmount)
+
+            // 传入自定义 Binding 而非原本的 Binding
+            Slider(value: blur, in: 0...20)
+        }
+    }
+}
+```
+
+可以看到，通过引入一个自定义 Binding 对象作为中间人，就能观察到 binding 值被修改的过程了。你可以在这里打日志、保存数据到 UserDefaults 之类的。
+
 
 ## @StateObject
 
