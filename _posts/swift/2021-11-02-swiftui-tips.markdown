@@ -1212,446 +1212,107 @@ struct ContentView: View {
 }
 ```
 
-## Core Data
-
-Core Data 是个类似于数据库的东西，相比于 UserDefaults 更加强大和灵活。
-
-使用 CoreData 首先需要需要创建 entity, 类似于定义表结构：
-
-![]( {{site.url}}/asset/swiftui-coredata.gif )
-
-上图中第一步创建了一个后缀为 `xcdatamodeld` 的 DataModel 文件，存储的就是我们定义的结构，可以在其中新增 entity, 或者为 entity 增加属性。
-
-创建完 DataModel 之后，需要将其加到程序中:
-
-```swift
-class DataController: ObservableObject {
-    // 定义一个 container, 通过这个 container 来访问 DataModel
-    let container = NSPersistentContainer(name: "Bookworm")
-    
-    init() {
-        // 调用 loadPersistentStores 加载 DataModel
-        container.loadPersistentStores { description, error in
-            if let error = error {
-                print("Core Data failed to load: \(error.localizedDescription)")
-            }
-        }
-    }
-}
-```
-
-为了方便使用，一般会将 NSPersistentContainer 保存到 Enviroment 当中:
-
-```swift
-@main
-struct BookwormApp: App {
-    // 创建 DataController 实例，将自动加载 DataModel
-    @StateObject private var dataController = DataController()
-    
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-                // 将 DataModel 加载到 managed object context 当中
-                // 并不是直接加载了 container, 而是将 container.viewContext 设置到了 environment.managedObjectContext 上
-                // viewContext 会让你现在内存中处理数据，直到有需要时才将内存中的数据持久化到磁盘
-                .environment(\.managedObjectContext, dataController.container.viewContext)
-        }
-    }
-}
-```
-
-接着就可以在需要的地方，通过 `@Enviroment` 包装器，获取到 DataModel 了:
-
-```swift
-struct ContentView: View {
-    // 获取 Environment.managedObjectContext, 也就是之前传入的 context.viewContext
-    @Environment(\.managedObjectContext) var moc
-
-    // @FetchRequest 用于从数据库中获取数据
-    @FetchRequest(sortDescriptors: []) var students: FetchedResults<Student>
-    
-    var body: some View {
-        VStack {
-            List {
-                ForEach(students) { student in
-                    Text(student.name ?? "Unknown")
-                }
-                .onDelete(perform: deleteStudents)
-            }
-            
-            Button("Add") {
-                let firstNames = ["Ginny", "Harry", "Hermione", "Luna", "Ron"]
-                let lastNames = ["Granger", "Lovegood", "Potter", "Weasley"]
-                
-                let chosenFirstName = firstNames.randomElement()!
-                let chosenLastName = lastNames.randomElement()!
-                
-                // 在 managedObjectContext 中创建一个 Student 对象，此时对象保存在内存里面
-                let student = Student(context: moc)
-                student.id = UUID()
-                student.name = "\(chosenFirstName) \(chosenLastName)"
-                
-                // 把内存中的数据持久化到磁盘
-                // hasChanges 能够检查 moc 内是否有对象发生了改变
-                // student 这种 ManagedObject 也有个 hasChanges 属性，可以检查单个对象是否发生了改变
-                if moc.hasChanges {
-                    try? moc.save()
-                }
-            }
-        }
-    }
-
-    func deleteStudents(at offsets: IndexSet) {
-        for offset in offsets {
-            let student = students[student]
-
-            // 从 managedObjectContext 中删除对象
-            moc.delete(student)
-        }
-
-        try? moc.save()
-    }
-}
-```
-
-注意上述代码中的 Student, 它是由 Core Data 根据 DataModel 自动生成的一个 class 类型，继承于 NSManagedObject，表示这种类型被 Core Data 所管理。
-
-
-### 手动生成 Entity 类
-
-首先通过菜单栏打开 Data Model Inspector: View -> Inspectors -> Data Model。打开后会在 XCode 的右侧看到一个窗口。
-
-接着选中创建好的 Entity，在 Data Model Inspector 里将 Codegen 选项切换为 `Manual/None`。这样 XCode 就不会为我们自动生成 Entity 类了。
-
-接着需要手动创建出 Entity 类，这需要通过菜单栏完成: Editor -> "Create NSManagedObject Subclass"。点击后会出现一些对话框，按照对话框提示就可以创建出我们需要的 Entity 类。
-
-通过菜单栏会创建出两个文件，分别为 `{Entity名}+CoreDataClass.swift`, `{Entity名}+CoreDataProperties.swift`。你可以在其中增加一些代码来方便 Core Data 的访问：
-
-```swift
-import Foundation
-import CoreData
-
-
-extension Movie {
-
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<Movie> {
-        return NSFetchRequest<Movie>(entityName: "Movie")
-    }
-
-    @NSManaged public var title: String?
-    @NSManaged public var director: String?
-    @NSManaged public var year: Int16
-
-    // 增加一个 computed property, 这样调用方就不需要处理 optional 了
-    public var wrappedTitle: String {
-        title ?? "Unknown Title"
-    }
-}
-
-extension Movie : Identifiable {
-
-}
-```
-
-
-### 为 attribute 添加约束
-
-为 attribute 添加约束，有点像给数据库建唯一索引，添加约束之后，CoreData 会保证这个 attribute 在所有 entity 对象中唯一。
-
-添加方法是：
-1. 在 DataModel 中选中特定 Entity
-2. 通过菜单栏 View -> Inspectors -> Data Model 打开 Data Model Inspector。
-3. 在 Data Model Inspector 的 Constraints 栏点击 "+" 按钮，XCode 会生成一个默认的样例。
-4. 在样例上按下 Enter 键，输入你要添加约束的 attribute
-5. Cmd + S
-
-添加完成后，CoreData 就会为这个属性设置唯一约束。这个位移约束需要在 `save()` 动作执行的时候才会被校验。
-
-比如下面的代码，多次按下 Add 按钮后，由于还没有执行 `save()` 操作，约束还没生效，所以 wizards 会不断增加。当按下 Save 按钮，执行 `moc.save()` 操作的时候，会执行失败。
-
-```swift
-struct ContentView: View {
-    @Environment(\.managedObjectContext) var moc
-    @FetchRequest(sortDescriptors: []) var wizards: FetchedResults<Wizard>
-
-    var body: some View {
-        VStack {
-            List(wizards, id: \.self) { wizard in
-                Text(wizard.name ?? "Unknown")
-            }
-            
-            Button("Add") {
-                let wizard = Wizard(context: moc)
-                wizard.name = "Harry Potter"
-            }
-            
-            Button("Save") {
-                do {
-                    try moc.save()
-                } catch {
-                    // 多次 Add 将导致这里报错
-                    // The operation couldn’t be completed. (Cocoa error 133021.)
-                    print(error.localizedDescription)
-                }
-            }
-        }
-    }
-}
-```
-
-如果希望 `save()` 时不要报错，而是将对象合并，可以在 DataController 中指定合并策略。在按下 Save 按钮之后，之前添加的多个 Wizard 对象会被合并为 1 个，然后保存到数据库里。
-
-```swift
-class DataController {
-    static let shared = DataController()
-    
-    let container = NSPersistentContainer(name: "PhoneDemo")
-    
-    init() {
-        container.loadPersistentStores { description, error in
-            if let error = error {
-                print("Core Data failed to load: \(error.localizedDescription)")
-            }
-            
-            // 使用内存中的对象覆盖磁盘中的对象
-            self.container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
-        }
-    }
-}
-
-```
-
-### NSPredicate 过滤查询结果
-
-`@FetchRequest` 包装器支持一个 predicate 参数，通过这个参数可以过滤查询结果:
-
-```swift
-// 使用 NSPredicate 过滤查询结果
-// NSPredicate(format: "universe == %@", "Star Wars")
-// NSPredicate(format: "name < %@", "F"))
-// NSPredicate(format: "universe IN %@", ["Aliens", "Firefly", "Star Trek"])
-// NSPredicate(format: "name BEGINSWITH %@", "E"))
-// NSPredicate(format: "name BEGINSWITH[c] %@", "e"))
-// NSPredicate(format: "NOT name BEGINSWITH[c] %@", "e"))
-@FetchRequest(sortDescriptors: [],
-              predicate: NSPredicate(format: "universe == %@", "Star Wars")) var ships: FetchedResults<Ship>
-```
-
-以上代码中的 `%@` 是个占位符，他会自动给 value 加上单引号，比如 `NSPredicate(format: "universe == %@", "Star Wars")` 内的字符串会被替换为 `"universe == 'Star Wars'`。
-
-还有一种占位符是 `%K`，它用在 key 上面，比如 `NSPredicate(format: "%K BEGINSWITH %@", "universe", "Star Wars")` 会被替换为 `"universe == 'Star Wars'`。
-
-如果没有特殊指定，过滤过程是大小写敏感的，通过以上代码中提到的 `[c]` 可以进行忽略大小写的匹配。
-
-
-### 动态改变 @FetchRequest 的过滤条件
-
-思路是创建一个新的 View 切换不同的 NSPredicate:
-
-```swift
-struct FilteredList: View {
-    @FetchRequest var results: FetchedResults<Singer>
-    
-    init(filter: String) {
-        // 注意这里赋值给了 '_results' 而非 'results'
-        // @FetchRequest 实际上会创建一个 _results 属性，这个属性需要被覆写掉
-        _results = FetchRequest<Singer>(sortDescriptors: [],
-                                        predicate: NSPredicate(format: "lastName BEGINSWITH %@", filter))
-    }
-    
-    var body: some View {
-        List(results, id: \.self) { singer in
-            Text("\(singer.wrappedFirstName) \(singer.wrappedLastName)")
-        }
-    }
-}
-
-struct ContentView: View {
-    @Environment(\.managedObjectContext) var moc
-    
-    @State private var lastNameFilter = "A"
-
-    var body: some View {
-        VStack {
-            FilteredList(filter: lastNameFilter)
-
-            Button("Add Examples") {
-                let taylor = Singer(context: moc)
-                taylor.firstName = "Taylor"
-                taylor.lastName = "Swift"
-
-                let ed = Singer(context: moc)
-                ed.firstName = "Ed"
-                ed.lastName = "Sheeran"
-
-                let adele = Singer(context: moc)
-                adele.firstName = "Adele"
-                adele.lastName = "Adkins"
-
-                try? moc.save()
-            }
-
-            Button("Show A") {
-                lastNameFilter = "A"
-            }
-
-            Button("Show S") {
-                lastNameFilter = "S"
-            }
-        }
-    }
-}
-```
-
-结合泛型，可以把上述 FilteredList 改造为可以接收任意 Entity 的列表:
-
-```swift
-struct FilteredList<T: NSManagedObject, Content: View>: View {
-    @FetchRequest var results: FetchedResults<T>
-    
-    let content: (T) -> Content
-    
-    // content 参数的 @ViewBuilder 包装器，用于支持多个子 View
-    // content 参数的 @escaping 表示 closure 将被保存起来以后再用，SwiftUI 对于这种 closure 的内存会特殊处理
-    init(filterKey: String, filterValue: String, @ViewBuilder content: @escaping (T) -> Content) {
-        let predicate = NSPredicate(format: "%K BEGINSWITH %@", filterKey, filterValue)
-        _results = FetchRequest<T>(sortDescriptors: [], predicate: predicate)
-        
-        self.content = content
-    }
-    
-    var body: some View {
-        List(results, id: \.self) { result in
-            self.content(result)
-        }
-    }
-}
-
-struct ContentView: View {
-    @Environment(\.managedObjectContext) var moc
-    
-    @State private var lastNameFilter = "A"
-
-    var body: some View {
-        VStack {
-            FilteredList(filterKey: "lastName", filterValue: lastNameFilter) { (singer: Singer) in
-                Text("\(singer.wrappedFirstName) \(singer.wrappedLastName)")
-            }
-
-            // ...
-        }
-    }
-}
-```
-
-### 通过 relationship 关联 entities
-
-CoreData 支持称为 relationship 的功能，可以把 Entity 关联起来。
-
-![]( {{site.url}}/asset/swiftui-core-data-relationships-country.png )
-
-![]( {{site.url}}/asset/swiftui-core-data-relationships-candy.png )
-
-以上两图展示了建立 Country 和 Candy 两者之间一对多关系的过程：
-
-首先在 Country Entity 里新增了一条名为 candy 的 relationship, 其目标为 Candy，类型为 'To Many'。这会让 Core Data 帮我们生成如下代码：
-
-```swift
-extension Country {
-
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<Country> {
-        return NSFetchRequest<Country>(entityName: "Country")
-    }
-
-    @NSManaged public var fullName: String?
-    @NSManaged public var shortName: String?
-
-    // 这个多出来的 candy 属性，就是我们新增的 relationship, 可以看到它是一个集合类型
-    @NSManaged public var candy: NSSet?
-    
-    // 这个是手动增加的一个 computed property, 用于将 candy 转换成对 SwiftUI 友好的数组类型
-    public var candyArray: [Candy] {
-        let set = candy as? Set<Candy> ?? []
-        return set.sorted {
-            $0.wrappedName < $1.wrappedName
-        }
-    }
-}
-
-// CoreData 还为我们访问 candy 属性生成了一些方法
-extension Country {
-
-    @objc(addCandyObject:)
-    @NSManaged public func addToCandy(_ value: Candy)
-
-    @objc(removeCandyObject:)
-    @NSManaged public func removeFromCandy(_ value: Candy)
-
-    @objc(addCandy:)
-    @NSManaged public func addToCandy(_ values: NSSet)
-
-    @objc(removeCandy:)
-    @NSManaged public func removeFromCandy(_ values: NSSet)
-
-}
-
-extension Country : Identifiable {
-
-}
-```
-
-接着在 Candy Entity 里新增了一条名为 origin 的 relationship, 表示这种糖果来自哪个国家。其目标为 Country, 类型为 'To One'。这会让 Core Data 帮我们生成如下代码：
-
-```swift
-extension Candy {
-
-    @nonobjc public class func fetchRequest() -> NSFetchRequest<Candy> {
-        return NSFetchRequest<Candy>(entityName: "Candy")
-    }
-
-    @NSManaged public var name: String?
-    @NSManaged public var origin: Country?
-
-    public var wrappedName: String {
-        name ?? "Unknown Candy"
-    }
-}
-
-extension Candy : Identifiable {
-
-}
-```
-
-值得注意的是，在添加 relationship 的时候，还有个 inverse 选项，它表明了两个 relationship 间的双向绑定关系。Country 对 Candy 是一对多，反之 Candy 对 Country 就是一对一，因此需要设置其 inverse 选项。
-
-
-### 批量删除表中的数据
-
-```swift
-// 从 NSFetchRequest 创建出一个 NSBatchDeleteRequest
-let deleteRequest = NSBatchDeleteRequest(fetchRequest: NSFetchRequest(entityName: "User"))
-deleteRequest.resultType = .resultTypeObjectIDs
-
-// 执行批量删除动作
-let deleteResult = try moc.execute(deleteRequest) as? NSBatchDeleteResult
-
-// 获取到删除的 id
-if let deletedIds = deleteResult?.result as? [NSManagedObjectID] {
-let deletedObjects = [NSDeletedObjectsKey: deletedIds]
-
-// 将改变合并到 ManagedObjectContext
-NSManagedObjectContext.mergeChanges(
-    fromRemoteContextSave: deletedObjects, 
-    into: [moc]
-)
-```
-
-[这篇文章](https://www.advancedswift.com/batch-delete-everything-core-data-swift) 还提到了其他几种批量删除的场景。
-
 
 ## \.self 的工作原理
 
 简单来说，`\.self` 会使用整个对象的 hash 值来唯一标识这个对象。这要求类型本身实现了 `Hashable` 协议。
+
+
+
+## 包装 UIViewController 到 SwiftUI View 当中
+
+UIView, UIViewController 是 UIKit 当中的概念，有一些功能因为还没有在 SwiftUI 上实现，所以需要桥接一下才能使用。
+
+这里以 UIImagePickerController 为例展示桥接过程。
+
+首先定义一个 ImagePicker 结构体，在其中完成 UIViewController 的包装。可以看到它主要利用了一个 Coordinator(中间人) 类来完成工作。这个类会处理 UIImagePickerController 发来的事件，最终将用户选择的图片保存到属性中。
+
+值得注意的是: ImagePicker 结构体实现了 UIViewControllerRepresentable 协议，这个协议继承自 View，也就是说我们包装出的 ImagePicker 也是一个 View。
+
+```swift
+import Foundation
+import SwiftUI
+
+struct ImagePicker: UIViewControllerRepresentable {
+    // 通过双向绑定，让调用方拿到用户选择的图片
+    @Binding var image: UIImage?
+    @Environment(\.presentationMode) var presentationMode
+    
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        
+        // 将 picker controller 的事件委托给 Coordinator 处理
+        picker.delegate = context.coordinator
+        return picker
+    }
+    
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {
+    }
+    
+    // NSObject 是 UIKit 中所有对象的父类
+    // UIImagePickerControllerDelegate 实现这个协议表示 Coordinator 可以处理来自 UIImagePickerController 的事件
+    // UINavigationControllerDelegate 实现这个协议表示 Coordinator 可以处理导航相关的委托
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        var parent: ImagePicker
+        
+        init(_ parent: ImagePicker) {
+            // 保存 ImagePicker 到属性中，以便访问 ImagePicker 的属性
+            self.parent = parent
+        }
+        
+        // 实现子 UIImagePickerControllerDelegate 的接口，用于处理图片被选中的事件
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            // 将选中的图片传给 ImagePicker 的 image 属性
+            if let uiImage = info[.originalImage] as? UIImage {
+                parent.image = uiImage
+            }
+            
+            // 关闭 sheet
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+}
+```
+
+包装好之后就可以在界面中使用了:
+
+```swift
+struct ContentView: View {
+    @State private var image: Image?
+    @State private var showingImagePicker = false
+    @State private var inputImage: UIImage?
+    
+    var body: some View {
+        VStack {
+            image?
+                .resizable()
+                .scaledToFit()
+            
+            Button("Select Image") {
+                self.showingImagePicker = true
+            }
+        }
+        .sheet(isPresented: $showingImagePicker, onDismiss: loadImage) {
+            // ImagePicker 将会把用户选择的图片保存到 inputImage 属性中
+            ImagePicker(image: $inputImage)
+        }
+    }
+    
+    func loadImage() {
+        // 将 inputImage 转换为 image
+        guard let inputImage = inputImage else {
+            return
+        }
+        
+        image = Image(uiImage: inputImage)
+    }
+}
+```
+
 
 
 # 常见控件
@@ -2068,6 +1729,45 @@ struct ContentView: View {
 用户可以通过向下滑动的方式把 sheet 关闭，以上代码借助 `@Environment(.\dismiss)` 在 sheet 上提供了一个关闭按钮。
 
 ![]( {{site.url}}/asset/swiftui-sheet.png )
+
+
+## ActionSheet
+
+ActionSheet 跟 Sheet 有点像，只是可以显示许多按钮：
+
+```swift
+struct ContentView: View {
+    @State private var showingActionSheet = false
+    @State private var backgroundColor = Color.white
+    
+    var body: some View {
+        Text("Hello, world!")
+            .frame(width: 300, height: 300)
+            .background(backgroundColor)
+            .onTapGesture {
+                self.showingActionSheet = true
+            }
+            .actionSheet(isPresented: $showingActionSheet) {
+                ActionSheet(title: Text("Change background"),
+                            message: Text("Select a new color"),
+                            buttons: [
+                                .default(Text("Red")) {
+                                    self.backgroundColor = .red
+                                },
+                                .default(Text("Green")) {
+                                    self.backgroundColor = .green
+                                },
+                                .default(Text("Blue")) {
+                                    self.backgroundColor = .blue
+                                },
+                                .cancel()
+                            ])
+            }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-action-sheet.png )
 
 
 ## Stepper
@@ -2868,3 +2568,517 @@ struct ContentView: View {
 对于 Trapezoid 的 insetAmount 属性来说，它会立刻被设置为新的值。但是 SwiftUI 随后会在绘制动画的时候逐渐修改这个值来实现动画效果，但这种渐变式的修改对于我们的代码是不可见的。
 
 如果影响动画的参数超过了 1 个，可以使用 `AnimatablePair<Double, Double>` 作为 animatableData 的类型，具体可以参考 [这篇文章](https://www.hackingwithswift.com/books/ios-swiftui/animating-complex-shapes-with-animatablepair)
+
+
+
+# Core Data
+
+Core Data 是个类似于数据库的东西，相比于 UserDefaults 更加强大和灵活。
+
+使用 CoreData 首先需要需要创建 entity, 类似于定义表结构：
+
+![]( {{site.url}}/asset/swiftui-coredata.gif )
+
+上图中第一步创建了一个后缀为 `xcdatamodeld` 的 DataModel 文件，存储的就是我们定义的结构，可以在其中新增 entity, 或者为 entity 增加属性。
+
+创建完 DataModel 之后，需要将其加到程序中:
+
+```swift
+class DataController: ObservableObject {
+    // 定义一个 container, 通过这个 container 来访问 DataModel
+    let container = NSPersistentContainer(name: "Bookworm")
+    
+    init() {
+        // 调用 loadPersistentStores 加载 DataModel
+        container.loadPersistentStores { description, error in
+            if let error = error {
+                print("Core Data failed to load: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+```
+
+为了方便使用，一般会将 NSPersistentContainer 保存到 Enviroment 当中:
+
+```swift
+@main
+struct BookwormApp: App {
+    // 创建 DataController 实例，将自动加载 DataModel
+    @StateObject private var dataController = DataController()
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                // 将 DataModel 加载到 managed object context 当中
+                // 并不是直接加载了 container, 而是将 container.viewContext 设置到了 environment.managedObjectContext 上
+                // viewContext 会让你现在内存中处理数据，直到有需要时才将内存中的数据持久化到磁盘
+                .environment(\.managedObjectContext, dataController.container.viewContext)
+        }
+    }
+}
+```
+
+接着就可以在需要的地方，通过 `@Enviroment` 包装器，获取到 DataModel 了:
+
+```swift
+struct ContentView: View {
+    // 获取 Environment.managedObjectContext, 也就是之前传入的 context.viewContext
+    @Environment(\.managedObjectContext) var moc
+
+    // @FetchRequest 用于从数据库中获取数据
+    @FetchRequest(sortDescriptors: []) var students: FetchedResults<Student>
+    
+    var body: some View {
+        VStack {
+            List {
+                ForEach(students) { student in
+                    Text(student.name ?? "Unknown")
+                }
+                .onDelete(perform: deleteStudents)
+            }
+            
+            Button("Add") {
+                let firstNames = ["Ginny", "Harry", "Hermione", "Luna", "Ron"]
+                let lastNames = ["Granger", "Lovegood", "Potter", "Weasley"]
+                
+                let chosenFirstName = firstNames.randomElement()!
+                let chosenLastName = lastNames.randomElement()!
+                
+                // 在 managedObjectContext 中创建一个 Student 对象，此时对象保存在内存里面
+                let student = Student(context: moc)
+                student.id = UUID()
+                student.name = "\(chosenFirstName) \(chosenLastName)"
+                
+                // 把内存中的数据持久化到磁盘
+                // hasChanges 能够检查 moc 内是否有对象发生了改变
+                // student 这种 ManagedObject 也有个 hasChanges 属性，可以检查单个对象是否发生了改变
+                if moc.hasChanges {
+                    try? moc.save()
+                }
+            }
+        }
+    }
+
+    func deleteStudents(at offsets: IndexSet) {
+        for offset in offsets {
+            let student = students[student]
+
+            // 从 managedObjectContext 中删除对象
+            moc.delete(student)
+        }
+
+        try? moc.save()
+    }
+}
+```
+
+注意上述代码中的 Student, 它是由 Core Data 根据 DataModel 自动生成的一个 class 类型，继承于 NSManagedObject，表示这种类型被 Core Data 所管理。
+
+
+## 手动生成 Entity 类
+
+首先通过菜单栏打开 Data Model Inspector: View -> Inspectors -> Data Model。打开后会在 XCode 的右侧看到一个窗口。
+
+接着选中创建好的 Entity，在 Data Model Inspector 里将 Codegen 选项切换为 `Manual/None`。这样 XCode 就不会为我们自动生成 Entity 类了。
+
+接着需要手动创建出 Entity 类，这需要通过菜单栏完成: Editor -> "Create NSManagedObject Subclass"。点击后会出现一些对话框，按照对话框提示就可以创建出我们需要的 Entity 类。
+
+通过菜单栏会创建出两个文件，分别为 `{Entity名}+CoreDataClass.swift`, `{Entity名}+CoreDataProperties.swift`。你可以在其中增加一些代码来方便 Core Data 的访问：
+
+```swift
+import Foundation
+import CoreData
+
+
+extension Movie {
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<Movie> {
+        return NSFetchRequest<Movie>(entityName: "Movie")
+    }
+
+    @NSManaged public var title: String?
+    @NSManaged public var director: String?
+    @NSManaged public var year: Int16
+
+    // 增加一个 computed property, 这样调用方就不需要处理 optional 了
+    public var wrappedTitle: String {
+        title ?? "Unknown Title"
+    }
+}
+
+extension Movie : Identifiable {
+
+}
+```
+
+
+## 为 attribute 添加约束
+
+为 attribute 添加约束，有点像给数据库建唯一索引，添加约束之后，CoreData 会保证这个 attribute 在所有 entity 对象中唯一。
+
+添加方法是：
+1. 在 DataModel 中选中特定 Entity
+2. 通过菜单栏 View -> Inspectors -> Data Model 打开 Data Model Inspector。
+3. 在 Data Model Inspector 的 Constraints 栏点击 "+" 按钮，XCode 会生成一个默认的样例。
+4. 在样例上按下 Enter 键，输入你要添加约束的 attribute
+5. Cmd + S
+
+添加完成后，CoreData 就会为这个属性设置唯一约束。这个位移约束需要在 `save()` 动作执行的时候才会被校验。
+
+比如下面的代码，多次按下 Add 按钮后，由于还没有执行 `save()` 操作，约束还没生效，所以 wizards 会不断增加。当按下 Save 按钮，执行 `moc.save()` 操作的时候，会执行失败。
+
+```swift
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    @FetchRequest(sortDescriptors: []) var wizards: FetchedResults<Wizard>
+
+    var body: some View {
+        VStack {
+            List(wizards, id: \.self) { wizard in
+                Text(wizard.name ?? "Unknown")
+            }
+            
+            Button("Add") {
+                let wizard = Wizard(context: moc)
+                wizard.name = "Harry Potter"
+            }
+            
+            Button("Save") {
+                do {
+                    try moc.save()
+                } catch {
+                    // 多次 Add 将导致这里报错
+                    // The operation couldn’t be completed. (Cocoa error 133021.)
+                    print(error.localizedDescription)
+                }
+            }
+        }
+    }
+}
+```
+
+如果希望 `save()` 时不要报错，而是将对象合并，可以在 DataController 中指定合并策略。在按下 Save 按钮之后，之前添加的多个 Wizard 对象会被合并为 1 个，然后保存到数据库里。
+
+```swift
+class DataController {
+    static let shared = DataController()
+    
+    let container = NSPersistentContainer(name: "PhoneDemo")
+    
+    init() {
+        container.loadPersistentStores { description, error in
+            if let error = error {
+                print("Core Data failed to load: \(error.localizedDescription)")
+            }
+            
+            // 使用内存中的对象覆盖磁盘中的对象
+            self.container.viewContext.mergePolicy = NSMergePolicy.mergeByPropertyObjectTrump
+        }
+    }
+}
+
+```
+
+## NSPredicate 过滤查询结果
+
+`@FetchRequest` 包装器支持一个 predicate 参数，通过这个参数可以过滤查询结果:
+
+```swift
+// 使用 NSPredicate 过滤查询结果
+// NSPredicate(format: "universe == %@", "Star Wars")
+// NSPredicate(format: "name < %@", "F"))
+// NSPredicate(format: "universe IN %@", ["Aliens", "Firefly", "Star Trek"])
+// NSPredicate(format: "name BEGINSWITH %@", "E"))
+// NSPredicate(format: "name BEGINSWITH[c] %@", "e"))
+// NSPredicate(format: "NOT name BEGINSWITH[c] %@", "e"))
+@FetchRequest(sortDescriptors: [],
+              predicate: NSPredicate(format: "universe == %@", "Star Wars")) var ships: FetchedResults<Ship>
+```
+
+以上代码中的 `%@` 是个占位符，他会自动给 value 加上单引号，比如 `NSPredicate(format: "universe == %@", "Star Wars")` 内的字符串会被替换为 `"universe == 'Star Wars'`。
+
+还有一种占位符是 `%K`，它用在 key 上面，比如 `NSPredicate(format: "%K BEGINSWITH %@", "universe", "Star Wars")` 会被替换为 `"universe == 'Star Wars'`。
+
+如果没有特殊指定，过滤过程是大小写敏感的，通过以上代码中提到的 `[c]` 可以进行忽略大小写的匹配。
+
+
+## 动态改变 @FetchRequest 的过滤条件
+
+思路是创建一个新的 View 切换不同的 NSPredicate:
+
+```swift
+struct FilteredList: View {
+    @FetchRequest var results: FetchedResults<Singer>
+    
+    init(filter: String) {
+        // 注意这里赋值给了 '_results' 而非 'results'
+        // @FetchRequest 实际上会创建一个 _results 属性，这个属性需要被覆写掉
+        _results = FetchRequest<Singer>(sortDescriptors: [],
+                                        predicate: NSPredicate(format: "lastName BEGINSWITH %@", filter))
+    }
+    
+    var body: some View {
+        List(results, id: \.self) { singer in
+            Text("\(singer.wrappedFirstName) \(singer.wrappedLastName)")
+        }
+    }
+}
+
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    
+    @State private var lastNameFilter = "A"
+
+    var body: some View {
+        VStack {
+            FilteredList(filter: lastNameFilter)
+
+            Button("Add Examples") {
+                let taylor = Singer(context: moc)
+                taylor.firstName = "Taylor"
+                taylor.lastName = "Swift"
+
+                let ed = Singer(context: moc)
+                ed.firstName = "Ed"
+                ed.lastName = "Sheeran"
+
+                let adele = Singer(context: moc)
+                adele.firstName = "Adele"
+                adele.lastName = "Adkins"
+
+                try? moc.save()
+            }
+
+            Button("Show A") {
+                lastNameFilter = "A"
+            }
+
+            Button("Show S") {
+                lastNameFilter = "S"
+            }
+        }
+    }
+}
+```
+
+结合泛型，可以把上述 FilteredList 改造为可以接收任意 Entity 的列表:
+
+```swift
+struct FilteredList<T: NSManagedObject, Content: View>: View {
+    @FetchRequest var results: FetchedResults<T>
+    
+    let content: (T) -> Content
+    
+    // content 参数的 @ViewBuilder 包装器，用于支持多个子 View
+    // content 参数的 @escaping 表示 closure 将被保存起来以后再用，SwiftUI 对于这种 closure 的内存会特殊处理
+    init(filterKey: String, filterValue: String, @ViewBuilder content: @escaping (T) -> Content) {
+        let predicate = NSPredicate(format: "%K BEGINSWITH %@", filterKey, filterValue)
+        _results = FetchRequest<T>(sortDescriptors: [], predicate: predicate)
+        
+        self.content = content
+    }
+    
+    var body: some View {
+        List(results, id: \.self) { result in
+            self.content(result)
+        }
+    }
+}
+
+struct ContentView: View {
+    @Environment(\.managedObjectContext) var moc
+    
+    @State private var lastNameFilter = "A"
+
+    var body: some View {
+        VStack {
+            FilteredList(filterKey: "lastName", filterValue: lastNameFilter) { (singer: Singer) in
+                Text("\(singer.wrappedFirstName) \(singer.wrappedLastName)")
+            }
+
+            // ...
+        }
+    }
+}
+```
+
+## 通过 relationship 关联 entities
+
+CoreData 支持称为 relationship 的功能，可以把 Entity 关联起来。
+
+![]( {{site.url}}/asset/swiftui-core-data-relationships-country.png )
+
+![]( {{site.url}}/asset/swiftui-core-data-relationships-candy.png )
+
+以上两图展示了建立 Country 和 Candy 两者之间一对多关系的过程：
+
+首先在 Country Entity 里新增了一条名为 candy 的 relationship, 其目标为 Candy，类型为 'To Many'。这会让 Core Data 帮我们生成如下代码：
+
+```swift
+extension Country {
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<Country> {
+        return NSFetchRequest<Country>(entityName: "Country")
+    }
+
+    @NSManaged public var fullName: String?
+    @NSManaged public var shortName: String?
+
+    // 这个多出来的 candy 属性，就是我们新增的 relationship, 可以看到它是一个集合类型
+    @NSManaged public var candy: NSSet?
+    
+    // 这个是手动增加的一个 computed property, 用于将 candy 转换成对 SwiftUI 友好的数组类型
+    public var candyArray: [Candy] {
+        let set = candy as? Set<Candy> ?? []
+        return set.sorted {
+            $0.wrappedName < $1.wrappedName
+        }
+    }
+}
+
+// CoreData 还为我们访问 candy 属性生成了一些方法
+extension Country {
+
+    @objc(addCandyObject:)
+    @NSManaged public func addToCandy(_ value: Candy)
+
+    @objc(removeCandyObject:)
+    @NSManaged public func removeFromCandy(_ value: Candy)
+
+    @objc(addCandy:)
+    @NSManaged public func addToCandy(_ values: NSSet)
+
+    @objc(removeCandy:)
+    @NSManaged public func removeFromCandy(_ values: NSSet)
+
+}
+
+extension Country : Identifiable {
+
+}
+```
+
+接着在 Candy Entity 里新增了一条名为 origin 的 relationship, 表示这种糖果来自哪个国家。其目标为 Country, 类型为 'To One'。这会让 Core Data 帮我们生成如下代码：
+
+```swift
+extension Candy {
+
+    @nonobjc public class func fetchRequest() -> NSFetchRequest<Candy> {
+        return NSFetchRequest<Candy>(entityName: "Candy")
+    }
+
+    @NSManaged public var name: String?
+    @NSManaged public var origin: Country?
+
+    public var wrappedName: String {
+        name ?? "Unknown Candy"
+    }
+}
+
+extension Candy : Identifiable {
+
+}
+```
+
+值得注意的是，在添加 relationship 的时候，还有个 inverse 选项，它表明了两个 relationship 间的双向绑定关系。Country 对 Candy 是一对多，反之 Candy 对 Country 就是一对一，因此需要设置其 inverse 选项。
+
+
+## 批量删除表中的数据
+
+```swift
+// 从 NSFetchRequest 创建出一个 NSBatchDeleteRequest
+let deleteRequest = NSBatchDeleteRequest(fetchRequest: NSFetchRequest(entityName: "User"))
+deleteRequest.resultType = .resultTypeObjectIDs
+
+// 执行批量删除动作
+let deleteResult = try moc.execute(deleteRequest) as? NSBatchDeleteResult
+
+// 获取到删除的 id
+if let deletedIds = deleteResult?.result as? [NSManagedObjectID] {
+let deletedObjects = [NSDeletedObjectsKey: deletedIds]
+
+// 将改变合并到 ManagedObjectContext
+NSManagedObjectContext.mergeChanges(
+    fromRemoteContextSave: deletedObjects, 
+    into: [moc]
+)
+```
+
+[这篇文章](https://www.advancedswift.com/batch-delete-everything-core-data-swift) 还提到了其他几种批量删除的场景。
+
+
+
+# Core Image
+
+Core Image 是 Apple 提供的一种内置框架，用于对图片施加各种效果，类似于 锐化、模糊、晕影、像素化 之类的。Core Image 还没有很好地集成进 SwiftUI，所以需要做一些桥接工作。
+
+除了 SwiftUI 提供的 Image 类型，在 Apple 的开发框架里还存在着其他几种类型的图片类型：
+- `UIImage`, 来自于 UIKit，功能很强大，它之于 UIKit 里就类似于 Image 之于 SwiftUI。
+- `CGImage`, 来自于 Core Graphics 框架，是一种简单的图片类型，只是个包含像素数据的二维数组。
+- `CIImage`, 来自于 Core Image, 这种类型里包含了能够产生图片的所有信息，但不是图片本身，更像是图片的一个 "菜谱"。
+
+这几种类型之间的转换关系是：
+
+![]( {{site.url}}/asset/swiftui-core-image-convert-original.svg )
+
+下面的例子展示了从 UIImage 加载图片，经过 CIImage 处理之后，再转换为 Image 的过程。
+
+```swift
+import SwiftUI
+// 注意需要导入 CoreImage 的包
+import CoreImage
+import CoreImage.CIFilterBuiltins
+
+struct ContentView: View {
+    @State private var image: Image?
+    
+    var body: some View {
+        VStack {
+            image?
+                .resizable()
+                .scaledToFit()
+        }
+        .onAppear(perform: loadImage)
+    }
+    
+    func loadImage() {
+        // 使用 UIImage 加载图片
+        guard let inputImage = UIImage(named: "Example") else {
+            return
+        }
+
+        // UIImage -> CIImage
+        let beginImage = CIImage(image: inputImage)
+        
+        // 使用 CIImage 为图片施加 "结晶化" 效果
+        let context = CIContext()
+        let currentFilter = CIFilter.crystallize()
+        currentFilter.setValue(beginImage, forKey: kCIInputImageKey)
+        currentFilter.radius = 20
+        
+        guard let outputImage = currentFilter.outputImage else {
+            return
+        }
+        
+        // CIImage -> CGImage
+        if let cgImage = context.createCGImage(outputImage, from: outputImage.extent) {
+
+            // CGImage -> UIImage
+            let uiImage = UIImage(cgImage: cgImage)
+            
+            // UIImage -> Image
+            image = Image(uiImage: uiImage)
+        }
+    }
+}
+```
+
+以下是转换过程，注意由于直接把 CGImage 转换为 Image 需要写比较多参数，所以从 UIImage 绕了一圈:
+
+![]( {{site.url}}/asset/swiftui-core-image-convert.svg ) )
+
+以下是施加 "结晶化" 效果后的图片：
+
+![]( {{site.url}}/asset/swiftui-core-image-crystallize.png )
+
