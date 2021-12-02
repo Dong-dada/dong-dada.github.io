@@ -1314,6 +1314,42 @@ struct ContentView: View {
 ```
 
 
+## 保存图片到相册
+
+要保存图片，首先需要给添加权限配置。按照下图所示打开项目设置后，在 "Custom iOS Target Properties" 处右键选择 "Add Row"，然后选择 Key 为 "Privacy - Photo Library Additions Usage Description"，接着在 value 处输入你的描述内容，比如 "We want to save the filtered photo."。添加了这个属性后，iOS 就会在合适的时候向用户索要相册权限。
+
+![]( {{site.url}}/asset/swiftui-privacy-photo-library.png )
+
+接着只要调用 `UIImageWriteToSavedPhotosAlbum()` 方法，就能把 `UIImage` 类型的图片保存到用户相册了:
+
+```swift
+// 第一个参数是要保存的图片
+// 第二个参数是一个对象，用于接收处理结果，比如用户可能会拒绝保存。这个对象必须是实现了 NSObject 协议的 class 类型。
+// 第三个参数是对象中的某个方法的名字。。。，用于接收处理结果。
+// 第四个参数是个类似于上下文的东西，如果传入了这个参数，那么在接收处理结果时，可以再把这个值取出来。。。
+UIImageWriteToSavedPhotosAlbum(inputImage, nil, nil, nil)
+```
+
+上面的代码只传入了第一个参数，因此无法获取处理结果。以下是可以处理结果的例子:
+
+```swift
+class ImageSaver: NSObject {
+    func writeToPhotoAlbum(image: UIImage) {
+        UIImageWriteToSavedPhotosAlbum(image, self, #selector(saveError), nil)
+    }
+
+    @objc func saveError(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
+        print("Save finished!")
+    }
+}
+
+
+// 每次使用的时候传建一个 ImageSaver() 实例
+let imageSaver = ImageSaver()
+imageSaver.writeToPhotoAlbum(image: inputImage)
+```
+
+
 
 # 常见控件
 
