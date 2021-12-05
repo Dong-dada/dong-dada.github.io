@@ -1392,6 +1392,35 @@ imageSaver.writeToPhotoAlbum(image: inputImage)
 ```
 
 
+## Document 文件夹
+
+Document 文件夹是随应用一起创建的文件夹，也就是所说的 "文稿" 文件夹。这里的文件会被 iCloud 自动备份。
+
+```swift
+// 使用 FileManager 获取 document 文件夹的路径，第一个路径就是我们需要的路径
+let urls = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+let documentDirUrl = urls[0]
+
+let fileUrl = documentDirUrl.appendingPathComponent("message.txt")
+
+// 写入文件
+do {
+let str = "Test Message"
+try str.write(to: fileUrl, atomically: true, encoding: .utf8)
+} catch {
+print(String(describing: error))
+}
+
+// 读取文件
+do {
+let str = try String(contentsOf: fileUrl)
+print(str)
+} catch {
+print(String(describing: error))
+}
+```
+
+
 
 # 常见控件
 

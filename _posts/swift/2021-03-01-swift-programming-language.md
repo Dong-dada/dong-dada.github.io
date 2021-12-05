@@ -1327,3 +1327,18 @@ assert(age >= 0, "A person's age can't be less than zero.")
 // In the implementation of a subscript...
 precondition(index > 0, "Index must be greater than zero.")
 ```
+
+
+# 实现 Comparable 协议
+
+```swift
+struct User: Identifiable, Comparable {
+    let id = UUID()
+    let firstName: String
+    let lastName: String
+    
+    static func < (lhs: User, rhs: User) -> Bool {
+        lhs.lastName < rhs.lastName
+    }
+}
+```
