@@ -154,6 +154,7 @@ struct ContentView: View {
 
     var body: some View {
         // 引入一个自定义 Binding 对象，作为中间人，把 getter, setter 转发给原本的 Binding
+        // 注意，Swift 不允许属性之间互相引用，所以不能把这个 Binding 对象作为 ContentView 的属性，需要放到 body 这个 computed property 里面
         let blur = Binding<CGFloat>(
             get: {
                 self.blurAmount
@@ -164,6 +165,7 @@ struct ContentView: View {
             }
         )
 
+        // 因为上面有了计算逻辑，所以这里需要把 return 写上
         return VStack {
             Text("Hello, World!")
                 .blur(radius: blurAmount)
@@ -1218,6 +1220,32 @@ struct ContentView: View {
 简单来说，`\.self` 会使用整个对象的 hash 值来唯一标识这个对象。这要求类型本身实现了 `Hashable` 协议。
 
 
+## 在 View 内部使用条件判断
+
+在 View 内部，可以使用 `if else` 来进行条件判断：
+
+```swift
+struct ContentView: View {
+    @State private var image: Image?
+    
+    var body: some View {
+        VStack {
+            if image != nil {
+                image?
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Text("Tap to select a picture")
+            }
+        }
+    }
+}
+```
+
+这是因为 SwiftUI 能够将 `if else` 转换成一种特殊的名为 `ConditionalContent` 的 View。
+
+除了 `if else` 以外，其他的条件判断，比如 `if let`, `for`, `while`, `switch` 都是不能用。
+
 
 ## 包装 UIViewController 到 SwiftUI View 当中
 
@@ -1334,18 +1362,32 @@ UIImageWriteToSavedPhotosAlbum(inputImage, nil, nil, nil)
 
 ```swift
 class ImageSaver: NSObject {
+    var successHandler: (() -> Void)?
+    var errorHandler: ((Error) -> Void)?
+    
     func writeToPhotoAlbum(image: UIImage) {
         UIImageWriteToSavedPhotosAlbum(image, self, #selector(saveError), nil)
     }
-
+    
     @objc func saveError(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
-        print("Save finished!")
+        // 把结果转发到 handler 上
+        if let error = error {
+            errorHandler?(error)
+        } else {
+            successHandler?()
+        }
     }
 }
 
 
 // 每次使用的时候传建一个 ImageSaver() 实例
 let imageSaver = ImageSaver()
+imageSaver.successHandler = {
+    print("Success!")
+}
+imageSaver.errorHandler = {
+    print("Oops: \($0.localizedDescription)")
+}
 imageSaver.writeToPhotoAlbum(image: inputImage)
 ```
 
@@ -3068,6 +3110,9 @@ import CoreImage.CIFilterBuiltins
 
 struct ContentView: View {
     @State private var image: Image?
+    // CIContext 用于将 CIImage 转换为 CGImage, 也就是根据 "菜谱" 加工出图像
+    // CIContext 的创建代价比较高，所以如果要转换多张图片的话，最好只创建一次
+    let context = CIContext()
     
     var body: some View {
         VStack {
@@ -3088,7 +3133,6 @@ struct ContentView: View {
         let beginImage = CIImage(image: inputImage)
         
         // 使用 CIImage 为图片施加 "结晶化" 效果
-        let context = CIContext()
         let currentFilter = CIFilter.crystallize()
         currentFilter.setValue(beginImage, forKey: kCIInputImageKey)
         currentFilter.radius = 20
