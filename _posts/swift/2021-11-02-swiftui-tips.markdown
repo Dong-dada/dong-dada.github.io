@@ -1244,12 +1244,58 @@ struct ContentView: View {
 
 这是因为 SwiftUI 能够将 `if else` 转换成一种特殊的名为 `ConditionalContent` 的 View。
 
-除了 `if else` 以外，其他的条件判断，比如 `if let`, `for`, `while`, `switch` 都是不能用。
+除了 `if else` 以外，其他的条件判断，比如 `if let`, `for`, `while`, `switch` 都是不能使用的，因为 SwiftUI 没有提供相应的转换逻辑。
+
+这种条件式 View 很适合跟枚举结合起来，根据状态显示不同的 View:
+
+```swift
+
+enum LoadingState {
+    case loading, success, failed
+}
+
+struct LoadingView: View {
+    var body: some View {
+        Text("Loading...")
+    }
+}
+
+struct SuccessView: View {
+    var body: some View {
+        Text("Success!")
+    }
+}
+
+struct FailedView: View {
+    var body: some View {
+        Text("Failed.")
+    }
+}
+
+struct ContentView: View {
+    var loadingState = LoadingState.loading
+    
+    var body: some View {
+        Group {
+            if loadingState == .loading {
+                LoadingView()
+            } else if loadingState == .success {
+                SuccessView()
+            } else if loadingState == .failed {
+                FailedView()
+            }
+        }
+    }
+}
+```
 
 
-## 包装 UIViewController 到 SwiftUI View 当中
+
+## 包装 UIViewController 到 SwiftUI 当中
 
 UIView, UIViewController 是 UIKit 当中的概念，有一些功能因为还没有在 SwiftUI 上实现，所以需要桥接一下才能使用。
+
+Apple 在 UIKit 以及其他框架中使用一种被称为 MVC 的模式。Model 用于访问数据，View 用于对界面做布局，Controller 是 Model 和 View 之间的胶水层。这里介绍一下怎么包装 Controller 到 SwiftUI 当中。
 
 这里以 UIImagePickerController 为例展示桥接过程。
 
@@ -1300,6 +1346,7 @@ struct ImagePicker: UIViewControllerRepresentable {
         }
     }
     
+    // 覆写这个方法，返回我们实现的 Coordinator 对象
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -1340,6 +1387,81 @@ struct ContentView: View {
     }
 }
 ```
+
+
+## 包装 UIView 到 SwiftUI 中
+
+MKMapView 是 MapKit 中提供的一种 UIView，用于展示地图。这里演示一下怎么把 MKMapView 包装到 SwiftUI 当中。
+
+
+```swift
+import SwiftUI
+import MapKit
+
+// 要桥接的目标是 UIView 而非 UIViewController
+// 所以需要实现的协议是 UIViewRepresentable 而非 UIViewControllerRepresentable
+struct MapView: UIViewRepresentable {
+    func makeUIView(context: Context) -> MKMapView {
+        let mapView = MKMapView()
+        
+        // 将 MKMapView 的事件委托给 Coordinator 处理
+        mapView.delegate = context.coordinator
+        
+        // 在地图上添加个小红点
+        let annotation = MKPointAnnotation()
+        annotation.title = "London"
+        annotation.subtitle = "Capital of England"
+        annotation.coordinate  = CLLocationCoordinate2D(latitude: 51.5, longitude: -0.13)
+        mapView.addAnnotation(annotation)
+        
+        return mapView
+    }
+    
+    func updateUIView(_ uiView: MKMapView, context: Context) {
+        
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+    
+    // NSObject 是 UIKit 中所有对象的父类
+    // MKMapViewDelegate 实现这个协议表示可以接受来自 MKMapView 的委托
+    class Coordinator: NSObject, MKMapViewDelegate {
+        var parent: MapView
+        
+        init(_ parent: MapView) {
+            self.parent = parent
+        }
+        
+        // 覆写这个方法可以接收到可视区域变化事件
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            print(mapView.centerCoordinate)
+        }
+        
+        // 覆写这个方法可以修改小红点的样式
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            let view = MKPinAnnotationView(annotation: annotation, reuseIdentifier: nil)
+            view.canShowCallout = true
+            return view
+        }
+    }
+}
+```
+
+包装好后就可以在界面中使用了:
+
+```swift
+struct ContentView: View {
+    
+    var body: some View {
+        MapView()
+            .ignoresSafeArea()
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-mapview.png )
 
 
 ## 保存图片到相册
@@ -1405,18 +1527,139 @@ let fileUrl = documentDirUrl.appendingPathComponent("message.txt")
 
 // 写入文件
 do {
-let str = "Test Message"
-try str.write(to: fileUrl, atomically: true, encoding: .utf8)
+    let str = "Test Message"
+
+    // atomically 参数会让文件以原子的方式写入
+    // 在这种模式下，iOS 会先把内容写入到一个临时文件，再将文件重命名为相应的文件名，从而保证不会有读写的线程安全问题
+    try str.write(to: fileUrl, atomically: true, encoding: .utf8)
 } catch {
-print(String(describing: error))
+    print(String(describing: error))
 }
 
 // 读取文件
 do {
-let str = try String(contentsOf: fileUrl)
-print(str)
+    let str = try String(contentsOf: fileUrl)
+    print(str)
 } catch {
-print(String(describing: error))
+    print(String(describing: error))
+}
+```
+
+
+## 使用 TouchID 和 FaceID
+
+使用 TouchID 和 FaceID 可以鉴定用户是否合法，目前这部分 API 是由 Objective-C 封装的，这里演示一下怎么包装给 SwiftUI 使用。
+
+首先需要添加权限配置:
+
+![]( {{site.url}}/asset/swiftui-faceid-privacy.png )
+
+接着调用相关方法即可:
+
+```swift
+import SwiftUI
+// 导入 LocalAuthentication 包
+import LocalAuthentication
+
+struct ContentView: View {
+    @State private var canEvaluatePolicy = false
+    @State private var isUnlocked = false
+    
+    var body: some View {
+        VStack {
+            if !canEvaluatePolicy {
+                Text("Cannot evaluate policy")
+            } else {
+                if self.isUnlocked {
+                    Text("Unlocked")
+                } else {
+                    Text("Locked")
+                }
+            }
+        }
+        .onAppear(perform: authenticate)
+    }
+    
+    func authenticate() {
+        // LAContext 用于执行鉴权操作
+        let context = LAContext()
+        var error: NSError?
+        
+        // 检查设备是否支持使用 TouchID 或 FaceID 鉴权
+        if !context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            return
+        }
+        canEvaluatePolicy = true
+        
+        // 发起鉴权操作
+        let reason = "We need to unlock your data."
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics,
+                               localizedReason: reason) { success, authenticationError in
+            // 当前处于另一个线程，需要网主线程投递一个异步任务
+            DispatchQueue.main.async {
+                if success {
+                    // 鉴权成功
+                    self.isUnlocked = true
+                } else {
+                    // 鉴权失败
+                    print(String(describing: authenticationError))
+                }
+            }
+        }
+    }
+}
+```
+
+在模拟器中，需要通过菜单栏中的 Features -> FaceID -> Enrolled 来启用 FaceID 功能。
+
+
+## 使用 '+' 连接多个 TextView
+
+```swift
+List(pages, id: \.pageid) { page in
+
+    // 使用 '+' 连接多个 TextView, 可以让不同风格的文字显示在同一行
+    Text(page.title)
+        .font(.headline)
+    + Text(": ") +
+    Text("Page description here")
+        .italic()
+}
+```
+
+
+## 在实现 ObservableObject 协议的时候，让 computed property 主动发出事件
+
+有时候需要为已有的类型包装 computed property, 并为其实现 ObservableObject 协议，这时候需要考虑怎么让 computed property 发出事件:
+
+```swift
+// 扩展 MKPointAnnotation, 使其支持 ObservableObject 协议
+extension MKPointAnnotation: ObservableObject {
+
+    // 因为原本的 title, subtitle 属性是 Optional 类型，无法绑定到 SwiftUI 上面
+    // 为 MKPointAnnotation 添加两个 computed property, 便于做绑定
+    public var wrappedTitle: String {
+        get {
+            self.title ?? "Unknown value"
+        }
+        
+        set {
+            // 通过 objectWillChange 来主动发出属性变化事件
+            objectWillChange.send()
+            title = newValue
+        }
+    }
+    
+    public var wrappedSubtitle: String {
+        get {
+            self.subtitle ?? "Unknown value"
+        }
+        
+        set {
+            objectWillChange.send()
+            subtitle = newValue
+        }
+    }
 }
 ```
 
