@@ -1664,6 +1664,56 @@ extension MKPointAnnotation: ObservableObject {
 ```
 
 
+## 自定义属性包装器
+
+之前介绍 `@State` 的时候提过，property wrapper 其实会把属性包装成一个结构体实例。下面演示一下如何自定义 property wrapper:
+
+```swift
+// 通过 @propertyWrapper 自定义属性包装器
+// 它能将原本的属性包装成一个结构体
+@propertyWrapper
+struct NonNegative<Value: BinaryInteger> {
+    var value: Value
+    
+    // 构造函数需要传入属性的原始值
+    init(wrappedValue: Value) {
+        if wrappedValue < 0 {
+            self.value = 0
+        } else {
+            self.value = wrappedValue
+        }
+    }
+    
+    // 另外需要提供一个名为 wrappedValue 的 computed property
+    // 每次访问属性，都是通过访问 wrappedValue 来实现
+    var wrappedValue: Value {
+        get {
+            value
+        }
+        
+        set {
+            if newValue < 0 {
+                value = 0
+            } else {
+                value = newValue
+            }
+        }
+    }
+}
+
+struct User {
+    @NonNegative var score = 0
+}
+
+var user = User()
+user.score += 10
+print(user.score)       // 10
+
+user.score -= 20
+print(user.score)       // 0
+```
+
+
 
 # 常见控件
 
@@ -3434,3 +3484,68 @@ struct ContentView: View {
 
 ![]( {{site.url}}/asset/swiftui-core-image-crystallize.png )
 
+
+# 无障碍支持
+
+下面列出一些为界面元素提供无障碍支持的方法:
+
+```swift
+struct ContentView: View {
+    let pictures = [
+        "ales-krivec-15949",
+        "galina-n-189483",
+        "kevin-horstmann-141705",
+        "nicolas-tissot-335096"
+    ]
+    let labels = [
+        "Tulips",
+        "Frozen tree buds",
+        "Sunflowers",
+        "Fireworks"
+    ]
+    let hints = [
+        "Tulips in the forest",
+        "Frozen tree buds",
+        "Sunflowers",
+        "Fireworks"
+    ]
+    @State private var selectedPicture = Int.random(in: 0...3)
+    
+    var body: some View {
+        Image(pictures[selectedPicture])
+            .resizable()
+            .scaledToFit()
+            .onTapGesture {
+                self.selectedPicture = Int.random(in: 0...3)
+            }
+            // label 提供一个简短的描述
+            .accessibility(label: Text(labels[selectedPicture]))
+            // hint 提供更长的描述
+            .accessibility(hint: Text(hints[selectedPicture]))
+            // 默认情况下会将这个 View 视为一张图片，通过 addTraits 可以将其描述为是一个按钮
+            .accessibility(addTraits: .isButton)
+            .accessibility(removeTraits: .isImage)
+    }
+}
+```
+
+除了为界面元素提供友好的提示，另外一点是尽可能减少界面元素，因为视障人士在使用 app 时会在屏幕上滑动来查看听取 VoiceOver 提供的信息，太多界面元素会产生干扰。
+
+```swift
+// decorative 参数可以告知 SwiftUI，这个界面元素只是装饰性的，对于这个元素 VoiceOver 只会展示非常少量的信息
+Image(decorative: "character")
+    // accessibility(hidden:) 可以彻底将这个元素从无障碍系统中移除
+    .accessibility(hidden: true)
+```
+
+另外一种技巧是把多个界面元素归到一个组里，比如下面的例子把两段文本合并了起来，这样会连贯地读出文本内容。
+
+```swift
+VStack {
+    Text("Your score is")
+    Text("1000")
+        .font(.title)
+}
+.accessibilityElement(children: .ignore)
+.accessibility(label: Text("Your score is 1000"))
+```
