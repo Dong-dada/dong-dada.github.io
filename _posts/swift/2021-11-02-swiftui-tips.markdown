@@ -1759,6 +1759,88 @@ print(user.score)       // 0
 ```
 
 
+## Result 类型
+
+使用 Result 类型可以表示 “要么成功要么失败” 的意思。比如下面的代码，当 data 不为空表示成功，当 error 不为 nil 的时候表示失败，但是其它情况不知道怎么处理。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        Text("Hello, World!")
+            .onAppear {
+                let url = URL(string: "https://www.apple.com")!
+                URLSession.shared.dataTask(with: url) { data, response, error in
+                    if data != nil {
+                        print("We got data!")
+                    } else if let error = error {
+                        print(error.localizedDescription)
+                    }
+                }
+                .resume()
+            }
+    }
+}
+```
+
+可以使用 Result 类型来包装一下:
+
+```swift
+enum NetworkError: Error {
+    case badURL, requestFailed, unknown
+}
+
+struct ContentView: View {
+    var body: some View {
+        Text("Hello, World!")
+            .onAppear {
+                fetchData(from: "https://www.apple.com") { result in
+                    switch result {
+                    case .success(let str):
+                        print(str)
+                    case .failure(let error):
+                        switch error {
+                        case .badURL:
+                            print("Bad URL")
+                        case .requestFailed:
+                            print("Network problems")
+                        case .unknown:
+                            print("Unknown error")
+                        }
+                    }
+                }
+            }
+    }
+    
+    // 注意 completion 参数的类型使用了 @escaping 修饰，这表示这个参数可能会在这个方法的作用域以外被使用
+    func fetchData(from urlString: String,
+                   completion: @escaping (Result<String, NetworkError>) -> Void) {
+        // 成功和失败的情况将分别使用 .success(), .failed() 来包装
+
+        guard let url = URL(string: urlString) else {
+            completion(.failure(.badURL))
+            return
+        }
+        
+        URLSession.shared.dataTask(with: url) { data, response, error in
+            // 将执行结果抛到主线程
+            DispatchQueue.main.async {
+                if let data = data {
+                    // 执行成功
+                    let stringData = String(decoding: data, as: UTF8.self)
+                    completion(.success(stringData))
+                } else if error != nil {
+                    // 执行失败
+                    completion(.failure(.requestFailed))
+                } else {
+                    // 其它情况则认为是未知错误
+                    completion(.failure(.unknown))
+                }
+            }
+        }.resume()
+    }
+}
+```
+
 
 # 常见控件
 
@@ -2641,6 +2723,85 @@ var tossResult: some View {
 
 `AnyView` 和 `Group` 都能解决问题，不过 `AnyView` 是专门为解决这个问题设计的，语义更清晰一些。
 
+
+## TapView
+
+TabView 可以在屏幕底部放置 tab 按钮，如以下代码所示，你需要把各个 tab 的子视图放到 TabView 里面，然后使用 `.tabItem()` modifier 来设置这个子视图的 tab 按钮风格。按钮风格只支持图片和文字。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        TabView {
+            ZStack {
+                Color.red
+                Text("Tap1")
+                    .foregroundColor(.white)
+            }
+            .tabItem {
+                Image(systemName: "star")
+                Text("One")
+            }
+            
+            ZStack {
+                Color.green
+                Text("Tab2")
+                    .foregroundColor(.white)
+            }
+            .tabItem {
+                Image(systemName: "star.fill")
+                Text("Two")
+            }
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-tabview.png )
+
+如果希望通过属性来控制 tab 的切换，则可以参考以下代码：
+
+```swift
+struct ContentView: View {
+    // 追踪当前正在显示的 tab
+    @State private var selectedTab = 0
+    
+    var body: some View {
+        TabView(selection: $selectedTab) {
+            ZStack {
+                Color.red
+                Text("Tap1")
+                    .foregroundColor(.white)
+            }
+            .onTapGesture {
+                // 切换到 Tab2
+                self.selectedTab = 1
+            }
+            .tabItem {
+                Image(systemName: "star")
+                Text("One")
+            }
+            // 给这个子视图加上标签 0
+            .tag(0)
+            
+            ZStack {
+                Color.green
+                Text("Tab2")
+                    .foregroundColor(.white)
+            }
+            .tabItem {
+                Image(systemName: "star.fill")
+                Text("Two")
+            }
+            .onTapGesture {
+                // 切换到 Tab1
+                self.selectedTab = 0
+            }
+            // 给这个子视图加上标签 1
+            .tag(1)
+        }
+    }
+}
+```
 
 
 # 绘图
