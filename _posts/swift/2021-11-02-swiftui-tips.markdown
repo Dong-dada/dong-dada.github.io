@@ -227,6 +227,51 @@ struct UserNameTextField: View {
 `@StateObject` 和 `@ObservedObject` 功能差不多，区别只在于前者用于创建实例的时候，后者用于接收已有实例的时候。
 
 
+## @EnvironmentObject
+
+`@EnvironmentObject` 的作用是从 "environment" 里获取相应类型的对象。利用这一功能，我们可以把对象传递给所有子视图:
+
+```swift
+// 被获取的对象可以是实现了 ObservableObject 协议的对象
+// 这样任何一个子视图修改了对象，其它视图都能收到事件做出反映
+class User: ObservableObject {
+    @Published var name = "Taylor Swift"
+}
+
+struct EditView: View {
+    // 子视图可以从 environment 中根据类型获取到对象
+    @EnvironmentObject var user: User
+    
+    var body: some View {
+        // 在 EditView 里修改了 user.name 之后，DisplayView 将被更新
+        TextField("Name", text: $user.name)
+    }
+}
+
+struct DisplayView: View {
+    // 子视图可以从 environment 中根据类型获取到对象
+    @EnvironmentObject var user: User
+    
+    var body: some View {
+        Text(user.name)
+    }
+}
+
+struct ContentView: View {
+    let user = User()
+    
+    var body: some View {
+        VStack {
+            EditView()
+            DisplayView()
+        }
+        // 给 VStack 设置上 environment object
+        .environmentObject(user)
+    }
+}
+```
+
+
 ## 双向绑定
 
 除了根据属性显示内容，也可以反过来根据用户输入修改属性，这就被称为 "双向绑定"。
