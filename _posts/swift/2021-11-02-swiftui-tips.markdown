@@ -271,6 +271,10 @@ struct ContentView: View {
 }
 ```
 
+`@EnvironmentObject` 还兼具类似 `@ObservedObject` 的功能，当对象的内容发生变化时，View 可以感知到变化并自动更新。
+
+注意，你必须确保在 `@EnvironmentObject` 生效时，对象已经通过 `.environmentObject()` 被设置到了环境里，否则会导致程序崩溃。
+
 
 ## 双向绑定
 
@@ -1690,6 +1694,7 @@ extension MKPointAnnotation: ObservableObject {
         
         set {
             // 通过 objectWillChange 来主动发出属性变化事件
+            // 注意 objectWillChange.send() 必须在真正改变值之前调用，这样 SwiftUI 有机会执行动画
             objectWillChange.send()
             title = newValue
         }
@@ -1703,6 +1708,86 @@ extension MKPointAnnotation: ObservableObject {
         set {
             objectWillChange.send()
             subtitle = newValue
+        }
+    }
+}
+```
+
+对于普通 property，也可以使用 `objectWillChange.send()` 来手动发送事件，即使这个 property 没有被 `@Published` 所修饰：
+
+```swift
+class DelayedUpdater: ObservableObject {
+    // 注意 value 属性没有被 `@Published` 修饰，而是手动触发了事件
+    var value = 0 {
+        willSet {
+            objectWillChange.send()
+        }
+    }
+    
+    init() {
+        for i in 1...10 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i)) {
+                self.value += 1
+            }
+        }
+    }
+}
+
+struct ContentView: View {
+    @StateObject var updater = DelayedUpdater()
+    
+    var body: some View {
+        Text("value: \(updater.value)")
+    }
+}
+```
+
+还有一种常见的情况是，你有一个容器类型实现了 ObservableObject，这个容器类型中包含一个数组，并且为这个数组设置了 `@Published` 包装器。此时向数组里塞东西，UI 会自动刷新，但修改数组内的元素时，UI 不会自动刷新。此时就可以使用 `objectWillChange.send()` 方法来主动触发 UI 的刷新。
+
+```swift
+class Student: Identifiable {
+    let id = UUID()
+    var name: String
+    var age: Int
+    
+    init(name: String, age: Int) {
+        self.name = name
+        self.age = age
+    }
+}
+
+class Students: ObservableObject {
+    @Published var all = [Student]()
+}
+
+struct ContentView: View {
+    @StateObject var students = Students()
+    
+    var body: some View {
+        VStack {
+            List(students.all) { student in
+                Text("\(student.name) (\(student.age))")
+            }
+        }
+        
+        HStack {
+            Button("Add") {
+                // 往数组里塞东西，因为数组设置了 @Published, 因此 UI 会自动刷新
+                students.all.append(
+                    Student(name: "Dongdada\(Int.random(in: 1...100))",
+                            age: Int.random(in: 1...100))
+                )
+            }
+            .padding()
+            Spacer()
+            
+            Button("Modify") {
+                // 如果直接设置数组中元素的属性，UI 不会被刷新
+                // 需要手动调用以下 objectWillChange.send(), 触发 UI 刷新
+                // students.objectWillChange.send()
+                students.all.randomElement()?.name = "Jhann\(Int.random(in: 1...100))"
+            }
+            .padding()
         }
     }
 }
@@ -2440,6 +2525,32 @@ struct ContentView: View {
 ![]( {{site.url}}/asset/swiftui-image-scalltofill.png )
 
 
+### 调整图片的 插值 方式
+
+如果把尺寸很小的图片放大到很大，SwiftUI 默认的插值方式会让像素边缘看起来比较模糊:
+
+![]( {{site.url}}/asset/swiftui-interpolation-default.png )
+
+只需使用 `.interpolation()` modifier 就可以修改图片放大时所采用的的插值方式。比如下面代码将插值方式设置为 `.none`，这样像素就会清晰地展示了：
+
+```swift
+struct ContentView: View {
+    
+    var body: some View {
+        Image("example")
+            .interpolation(.none)
+            .resizable()
+            .scaledToFit()
+            .frame(maxHeight: .infinity)
+            .background(.black)
+            .ignoresSafeArea()
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-interpolation-none.png )
+
+
 ## GeometryReader
 
 GeometryReader (几何读取器) 也是个 View，它能够让你获取一些关于尺寸大小的之类的信息，比如容器大小多大，当前 view 的位置在哪里，是否有 safe are 等等。
@@ -2724,7 +2835,7 @@ var tossResult: some View {
 `AnyView` 和 `Group` 都能解决问题，不过 `AnyView` 是专门为解决这个问题设计的，语义更清晰一些。
 
 
-## TapView
+## TabView
 
 TabView 可以在屏幕底部放置 tab 按钮，如以下代码所示，你需要把各个 tab 的子视图放到 TabView 里面，然后使用 `.tabItem()` modifier 来设置这个子视图的 tab 按钮风格。按钮风格只支持图片和文字。
 
@@ -2802,6 +2913,47 @@ struct ContentView: View {
     }
 }
 ```
+
+## ContextMenu 上下文菜单
+
+使用 `.contextMenu()` modifier 可以为 View 添加上下文菜单:
+
+```swift
+struct ContentView: View {
+    @State private var backgroundColor = Color.red
+    
+    var body: some View {
+        VStack {
+            Text("Hello, World!")
+                .padding()
+                .background(backgroundColor)
+            
+            Text("Change Color")
+                .padding()
+                .contextMenu {
+                    Button(role: .destructive) {
+                        backgroundColor = .red
+                    } label: {
+                        // 只能使用 systemImage 为上下文菜单显示图片
+                        // 并且图片的颜色无法修改
+                        // 只能通过设置 .destructive 来标识这个选项是危险操作
+                        Label("Red", systemImage: "trash")
+                    }
+                    
+                    Button("Green") {
+                        backgroundColor = .green
+                    }
+                    
+                    Button("Blue") {
+                        backgroundColor = .blue
+                    }
+                }
+        }
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-context-menu.png )
 
 
 # 绘图
@@ -3691,6 +3843,28 @@ struct ContentView: View {
 ![]( {{site.url}}/asset/swiftui-core-image-crystallize.png )
 
 
+## 生成二维码
+
+Core Image 内置了一个 filter，可以将文本转换为二维码:
+
+```swift
+import CoreImage.CIFilterBuiltins
+
+func generateQRCode(from string: String) -> UIImage {
+    let data = Data(string.utf8)
+    filter.setValue(data, forKey: "inputMessage")
+    
+    if let outputImage = filter.outputImage {
+        if let cgImage = context.createCGImage(outputImage, from: outputImage.extent) {
+            return UIImage(cgImage: cgImage)
+        }
+    }
+    
+    return UIImage(systemName: "xmark.circle") ?? UIImage()
+}
+```
+
+
 # 无障碍支持
 
 下面列出一些为界面元素提供无障碍支持的方法:
@@ -3755,3 +3929,64 @@ VStack {
 .accessibilityElement(children: .ignore)
 .accessibility(label: Text("Your score is 1000"))
 ```
+
+
+# 其他
+
+## UserNotifications
+
+UserNotifications 框架用于向用户推送通知。有两种通知方式，一种是 remote notification, 顾名思义你需要向苹果的服务器 (Apple's push notification service, APNS) 推送消息，然后转发给用户；另一种是 local notification, 它是由 App 按计划发送的通知，不需要服务端的参与。
+
+下面演示 local notification 的用法:
+
+```swift
+import SwiftUI
+// 需要导入这个包
+import UserNotifications
+
+struct ContentView: View {
+    
+    var body: some View {
+        VStack {
+            Button("Request Permission") {
+                // 请求通知权限
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { success, error in
+                    if success {
+                        print("All set!")
+                    } else if let error = error {
+                        print(error.localizedDescription)
+                    }
+                }
+            }
+            .padding()
+            
+            Button("Schedule Notification") {
+                // 添加通知发送计划
+                
+                // 设置内容
+                let content = UNMutableNotificationContent()
+                content.title = "Feed the cat"
+                content.subtitle = "It looks hungry"
+                content.sound = UNNotificationSound.default
+                
+                // 设置触发事件(5 秒后)
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+                
+                // 组装一个请求出来，注意需要设置一个 identifier
+                let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+                
+                // 把请求放提交到 NotificationCenter
+                UNUserNotificationCenter.current().add(request)
+            }
+            .padding()
+        }
+    }
+}
+```
+
+
+## 在 Xcode 里添加包依赖
+
+通过菜单栏 File -> Add Package... 进入以下界面，然后在右上角的搜索框输入你要添加的包的地址。随后就可以添加了：
+
+![]( {{site.url}}/asset/swiftui-add-package.png )
