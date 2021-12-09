@@ -229,7 +229,7 @@ struct UserNameTextField: View {
 
 ## @EnvironmentObject
 
-`@EnvironmentObject` 的作用是从 "environment" 里获取相应类型的对象。利用这一功能，我们可以把对象传递给所有子视图:
+`@EnvironmentObject` 的作用是从 "environment" 里获取相应类型的 ObservableObject 对象，并接收它发来的事件，更新视图。我们可以利用它把对象传递给所有子视图:
 
 ```swift
 // 被获取的对象可以是实现了 ObservableObject 协议的对象
@@ -4267,3 +4267,113 @@ struct ContentView: View {
 }
 ```
 
+
+## .allowsHitTesting() modifier
+
+SwiftUI 的 hit test 算法不仅作用于 View 的框架，也作用于它的内容，比如下面的例子，虽然矩形和圆形的边界一样，但是点击圆形外的矩形是可以命中，SwiftUI 忽略了圆形外部的一些透明区域。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.blue)
+                .frame(width: 300, height: 300)
+                .onTapGesture {
+                    print("Rectangle tapped!")
+                }
+            
+            Circle()
+                .fill(Color.red)
+                .frame(width: 300, height: 300)
+                .onTapGesture {
+                    print("Circle tapped!")
+                }
+        }
+    }
+}
+```
+
+`.allowsHitTesting()` modifier 用于表示 hit test 是否作用于这个 View，如果设置为 false，那么 hit test 就不会命中这个 View，比如修改上面的代码，使用 `.allowsHitTesting(false)` 来包装圆形，那么圆形将不会参与到 hit test 当中，即使你点击了圆形内部，hit test 也会直接忽略这个圆形，然后命中矩形。
+
+另外还有一种情况是希望空白区域也能被 hit test 命中，比如下面 VSTack 中两个 Test 之间的 Spacer 默认是不会被命中的，但你可以使用 `.contentShape()` 来修改命中区域，这样 Spacer 也能被命中到:
+
+```swift
+VStack {
+    Text("Hello")
+    Spacer().frame(height: 100)
+    Text("World")
+}
+.contentShape(Rectangle())
+.onTapGesture {
+    print("VStack tapped!")
+}
+```
+
+
+## Timer
+
+Timer 是 Swift Combine 框架里提供的东西。其实之前提到的 `ObservableObject`, `@Publisher` 也都是 Combine 框架里的东西。以下代码演示了 Timer 的发布、监听、取消过程:
+
+```swift
+struct ContentView: View {
+    // Timer.publish() 方法将创建一个 Timer.Publisher
+    // - 第一个参数表示每秒发送一次事件
+    // - 第二个参数表示将事件抛到主线程
+    // - 第三个参数表示应该把事件抛到 common run loop 里面
+    // 使用 .autoconnect() 方法来立刻触发 Timer.Publisher 工作
+    // - autoconnect() 返回的东西是个 auto connected publisher, 跟之前用 @Published 修饰的属性是类似的
+    // - autoconnect() 返回的 Publisher 可以被 View 的 .onReceive() modifier 接收
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var counter = 0
+    
+    var body: some View {
+        Text("Hello, World!")
+            .onReceive(timer) { time in
+                if self.counter == 5 {
+                    // 计时达到 5 次，关闭 timer
+                    self.timer.upstream.connect().cancel()
+                } else {
+                    // time 是当前时间
+                    print("The time is now \(time)")
+                }
+                
+                self.counter += 1
+            }
+    }
+}
+```
+
+另外 Timer 的 `publish()` 方法还有个 `tolerance` 参数，是 "公差" 的意思，在对精度要求不高的情况下设置这个参数，可以让 SwiftUI 把多个 Timer 的事件合并起来一起发送，节省系统资源。
+
+```swift
+let timer = Timer.publish(every: 1, tolerance: 0.5, on: .main, in: .common).autoconnect()
+```
+
+
+## 检测 App 切换
+
+Apple 有个叫做 Notification Center 的框架，会基于 Combine 来向 App 发布各种系统相关的事件，下面展示了一些例子:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        Text("Hello, World!")
+            // App 即将被切走
+            .onReceive(NotificationCenter.default.publisher(
+                for: UIApplication.willResignActiveNotification)) { _ in
+                print("Moving to the background!")
+            }
+            // App 即将被切回来
+            .onReceive(NotificationCenter.default.publisher(
+                for: UIApplication.willEnterForegroundNotification)) { _ in
+                print("Moving back to the foreground!")
+            }
+            // 用户在 App 界面进行了截图
+            .onReceive(NotificationCenter.default.publisher(
+                for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+                print("User took a screenshot!")
+            }
+    }
+}
+```
