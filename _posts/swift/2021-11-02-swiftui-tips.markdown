@@ -944,6 +944,80 @@ struct ContentView: View {
 
 ## 手势
 
+
+### onTapGesture
+
+TapGesture 可以使用 `.onTapGesture()` modifier 添加到 View 上，使 View 能够响应点击事件:
+
+```swift
+struct ContentView: View {
+    
+    @State private var isShowingRed = false
+    
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.blue)
+                .frame(width: 200, height: 200)
+            
+            if isShowingRed {
+                Rectangle()
+                    .fill(.red)
+                    .frame(width: 200, height: 200)
+                    .transition(.scale)
+            }
+        }
+        .onTapGesture {
+            withAnimation {
+                isShowingRed.toggle()
+            }
+        }
+    }
+}
+```
+
+通过添加参数，可以让 `.onTapGesture()` 处理双击事件:
+
+```swift
+Text("Hello, World!")
+    .onTapGesture(count: 2) {
+        print("Double tapped!")
+    }
+```
+
+### onLongPressGesture
+
+`.onLongPressGesture()` 可以让 View 响应长按事件:
+
+```swift
+Text("Hello, World!")
+    .onLongPressGesture {
+        print("Long pressed!")
+    }
+```
+
+通过添加参数，可以设置长按的时长:
+
+```swift
+Text("Hello, World!")
+    .onLongPressGesture(minimumDuration: 2) {
+        print("Long pressed!")
+    }
+```
+
+通过添加参数，可以接收到 "处理中" 事件:
+- 如果长按的时间不够长，比如没到 1 秒，那么以下代码中的 `inProgress` 参数会设置为 false
+- 如果长按的时间足够长，那么首先 `inProgress` 会被设置为 false，随后将收到完成事件。
+
+```
+Text("Hello, world!")
+    .onLongPressGesture(minimumDuration: 1, pressing: { inProgress in
+        print("In progress: \(inProgress)!")
+    }) {
+        print("Long pressed!")
+    }
+```
+
 ### DragGesture
 
 DragGesture 可以使用 `.gesture()` modifier 添加到 View 上，以下代码利用 DragGesture 实现了拖动 View 的效果:
@@ -970,33 +1044,157 @@ struct ContentView: View {
 }
 ```
 
-### TapGesture
+### MagnificationGesture
 
-TapGesture 可以使用 `.onTapGesture()` modifier 添加到 View 上，使 View 能够相应点击事件:
+MagnificationGesture 表示放大手势，需要使用 `.gesture()` modifier 来添加:
 
 ```swift
 struct ContentView: View {
-    
-    @State private var isShowingRed = false
+    @State private var currentAmount: CGFloat = 0
+    @State private var finalAmount: CGFloat = 1
     
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.blue)
-                .frame(width: 200, height: 200)
-            
-            if isShowingRed {
-                Rectangle()
-                    .fill(.red)
-                    .frame(width: 200, height: 200)
-                    .transition(.scale)
-            }
+        Text("Hello, world!")
+            .scaleEffect(finalAmount + currentAmount)
+            .gesture(
+                MagnificationGesture()
+                    .onChanged{ amount in
+                        self.currentAmount = amount - 1
+                    }
+                    .onEnded{ amount in
+                        self.finalAmount += self.currentAmount
+                        self.currentAmount = 0
+                    })
+    }
+}
+```
+
+### RotationGesture
+
+RotationGesture 表示旋转手势，需要使用 `.gesture()` modifier 来添加:
+
+```swift
+struct ContentView: View {
+    @State private var currentAmount: Angle = .degrees(0)
+    @State private var finalAmount: Angle = .degrees(0)
+    
+    var body: some View {
+        Text("Hello, world!")
+            .rotationEffect(finalAmount + currentAmount)
+            .gesture(
+                RotationGesture()
+                    .onChanged{ angle in
+                        self.currentAmount = angle
+                    }
+                    .onEnded{ angle in
+                        self.finalAmount += self.currentAmount
+                        self.currentAmount = .degrees(0)
+                    })
+    }
+}
+```
+
+### 手势的优先级
+
+在下面这种内外 View 都有 gesture 的情况下，child view 的优先级更高:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            Text("Hello, World!")
+                .onTapGesture {
+                    print("Text tapped")
+                }
         }
         .onTapGesture {
-            withAnimation {
-                isShowingRed.toggle()
-            }
+            print("VStack tapped")
         }
+    }
+}
+```
+
+可以使用 `.highPriorityGesture()` modifier 为外层 view 设置更高的优先级:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            Text("Hello, World!")
+                .onTapGesture {
+                    print("Text tapped")
+                }
+        }
+        .highPriorityGesture(
+            TapGesture()
+                .onEnded { _ in
+                    print("VStack tapped")
+                }
+        )
+    }
+}
+```
+
+可以使用 `.simultaneousGesture()` modifier 为内外两层设置相同的优先级，这样两个手势都会被触发。
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack {
+            Text("Hello, World!")
+                .onTapGesture {
+                    print("Text tapped")
+                }
+        }
+        .simultaneousGesture(
+            TapGesture()
+                .onEnded { _ in
+                    print("VStack tapped")
+                }
+        )
+    }
+}
+```
+
+
+### 手势序列
+
+通过合并多个手势，可以组成手势序列，必须先完成前面的手势，才能继续捕获后面的手势:
+
+```swift
+struct ContentView: View {
+    @State private var offset = CGSize.zero
+    @State private var isDraging = false
+    
+    var body: some View {
+        let pressGesture = LongPressGesture()
+            .onEnded { value in
+                withAnimation {
+                    // 改变 isDraging 状态，以便观察到长按生效
+                    self.isDraging = true
+                }
+            }
+        
+        let dragGesture = DragGesture()
+            .onChanged { value in
+                self.offset = value.translation
+            }
+            .onEnded { _ in
+                withAnimation {
+                    self.offset = .zero
+                    self.isDraging = false
+                }
+            }
+        
+        // 要求先捕获到长按手势，才能捕获到拖动手势
+        let combinedGesture = pressGesture.sequenced(before: dragGesture)
+        
+        return Circle()
+            .fill(Color.red)
+            .frame(width: 64, height: 64)
+            .scaleEffect(isDraging ? 1.5 : 1)
+            .offset(offset)
+            .gesture(combinedGesture)
     }
 }
 ```
@@ -3990,3 +4188,82 @@ struct ContentView: View {
 通过菜单栏 File -> Add Package... 进入以下界面，然后在右上角的搜索框输入你要添加的包的地址。随后就可以添加了：
 
 ![]( {{site.url}}/asset/swiftui-add-package.png )
+
+
+## 触觉反馈
+
+UIKit 中提供了简单的方法来触发触觉反馈:
+
+```swift
+func simpleSuccess() {
+    // 生成一个表示执行成功的触觉反馈
+    let generator = UINotificationFeedbackGenerator()
+    generator.notificationOccurred(.success)
+}
+```
+
+此外，Apple 提供了 CoreHaptics 框架来支持更复杂的触觉反馈功能:
+
+```swift
+import SwiftUI
+import CoreHaptics
+
+
+struct ContentView: View {
+    @State private var engine: CHHapticEngine?
+    
+    var body: some View {
+        Text("Hello, World!")
+            .onAppear(perform: prepareHaptics)
+            .onTapGesture(perform: complexSuccess)
+    }
+    
+    func prepareHaptics() {
+        // 如果设备支持触觉反馈，则初始化 CHHapticEngine
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+
+        do {
+            self.engine = try CHHapticEngine()
+            try engine?.start()
+        } catch {
+            print("There was an error creating the engine: \(error.localizedDescription)")
+        }
+    }
+    
+    func complexSuccess() {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
+        var events = [CHHapticEvent]()
+
+        // 创建一个强烈而尖锐的敲击事件
+        let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1)
+        let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1)
+        let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensity, sharpness], relativeTime: 0)
+        events.append(event)
+        
+        // 敲击强度从小到大，再从大到小
+//        for i in stride(from: 0, to: 1, by: 0.1) {
+//            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(i))
+//            let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: Float(i))
+//            let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensity, sharpness], relativeTime: i)
+//            events.append(event)
+//        }
+//
+//        for i in stride(from: 0, to: 1, by: 0.1) {
+//            let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(1 - i))
+//            let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: Float(1 - i))
+//            let event = CHHapticEvent(eventType: .hapticTransient, parameters: [intensity, sharpness], relativeTime: 1 + i)
+//            events.append(event)
+//        }
+
+        // 把敲击事件转换为 CHHapticPattern, 随后播放这个 pattern
+        do {
+            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let player = try engine?.makePlayer(with: pattern)
+            try player?.start(atTime: 0)
+        } catch {
+            print("Failed to play pattern: \(error.localizedDescription).")
+        }
+    }
+}
+```
+
