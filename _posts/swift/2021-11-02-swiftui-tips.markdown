@@ -3154,6 +3154,146 @@ struct ContentView: View {
 ![]( {{site.url}}/asset/swiftui-context-menu.png )
 
 
+
+# 布局
+
+## 布局规则
+
+SwiftUI 的布局过程分为三个简单的步骤：
+1. Parent View 给 Child View 一个建议的尺寸。
+2. Child View 参考 Parent View 提供的尺寸，选择一个合适于自己的尺寸，对于这个尺寸，Parent View 必须接受。
+3. 根据 Child View 给出的尺寸，Parent View 将其放到合适的位置。
+
+来看一个简单的例子:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        Text("Hello, World!")
+            .background(.red)
+    }
+}
+```
+
+由于 `.background()` modifier 实际上会产生一个新的 View，所以上述代码中涉及到了 ContentView, BackgroundView, TextView 三个 View，上述代码的布局过程是:
+
+![]( {{site.url}}/asset/swiftui-layout.svg )
+
+这个布局过程也解释了为什么 modifier 的顺序会影响布局结果，比如下面的代码:
+
+```swift
+Text("Hello, World!")
+    .background(.red)
+    .padding()
+```
+
+其布局过程中，由于 `.background()` 排在 `.padding()` 前面，因此 Background View 并没有附加 padding 带来的尺寸变化:
+
+![]( {{site.url}}/asset/swiftui-layout-order.svg )
+
+
+这里有个重要的概念叫做 *layout neutral(布局中立)*, 上述所提到的 ContentView, BackgroundView, PaddingView 都是布局中立的，它们自身对尺寸大小没有要求，因此只会询问 Child View 的意见。而 TextView 不是布局中立的，它会根据自己的文字数量、字体设置等决定自己需要多少空间。
+
+如果整个 View 树都是布局中立的，那么最终它会占用所有的可用空间，比如 Color 也是一个布局中立的 View, 因此下面代码将导致 Color 占据整个可用空间:
+
+```swift
+var body: some View {
+    Color.red
+}
+```
+
+## 对齐规则
+
+### .frame() modifier 中的 alignment 参数
+
+`.frame()` modifier 会将原有 View 包装到一个固定大小的 Frame View 里面，默认情况下把原有 View 放到中心。不过你也可以通过它的 alignment 参数来控制对齐规则:
+
+```swift
+    var body: some View {
+        Text("Hello, world!")
+            .padding()
+            .background(.red)
+            // 将 Background View 包装到 300 x 300 的 Frame View 里面，随后把 Background View 放到左上角
+            .frame(width: 300, height: 300, alignment: .topLeading)
+            .background(.gray)
+    }
+```
+
+### stack 中的 alignment 参数
+
+这个很好理解，VStack 默认会在水平方向上居中显示 Child View，你可以通过 alignment 参数来控制是否需要左对齐:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text("Hello, world!")
+            Text("This is a longer line of text")
+        }
+        .background(.red)
+        .frame(width: 400, height: 400)
+        .background(.blue)
+    }
+}
+```
+
+### .alignmentGuide() modifier
+
+每当 VStack 去对齐它的 Child View 的时候，它都会询问 Child View 需要按照那条边来对齐。默认情况下 Child View 会使用左侧的边来对齐(其实取决于语言，有一些国家的文字是从右往左的，这时候默认是使用右侧的边)。
+
+你可以为 VStack 的 Child View 提供一个`.alignmentGuide()` modifier 来自定义对齐逻辑。
+
+`.alignmentGuide()` 有两个参数，第一个参数表示你希望修改哪条边的对齐规则，第二个参数是个 closure, 它将返回修改后的对齐规则。closure 包含一个 ViewDimensions 的参数，它包含了当前 View 的宽和高，并且能够通过这个参数来获取 View 的各条边。
+
+比如我们可以将左侧的边修改为右侧的边:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        // VStack 设置了按照左侧对齐
+        VStack(alignment: .leading) {
+            Text("Hello, world!")
+            // 修改左侧边的对齐规则
+            .alignmentGuide(.leading) { d in
+                // 把右侧的边返回
+                d[.trailing]
+            }
+            Text("This is a longer line of text")
+        }
+        .background(.red)
+    }
+}
+```
+
+此时 VStack 就会将第一个 Text 的右侧边和第二个 Text 的左侧边对齐:
+
+![]( {{site.url}}/asset/swiftui-alignment-guide.png )
+
+
+你也可以忽略 ViewDimensions 参数，自己计算对齐规则:
+
+```swift
+struct ContentView: View {
+    var body: some View {
+        VStack(alignment: .leading) {
+            ForEach(0..<10) { position in
+                Text("Number \(position)")
+                    .alignmentGuide(.leading) { _ in
+                        CGFloat(position) * -10
+                    }
+            }
+        }
+        .background(.red)
+        .frame(width: 400, height: 400)
+        .background(.blue)
+    }
+}
+```
+
+![]( {{site.url}}/asset/swiftui-alignment-guide-hardcode.png )
+
+
+
 # 绘图
 
 ## Path
@@ -3630,6 +3770,19 @@ struct ContentView: View {
 ```
 
 注意上述代码中的 Student, 它是由 Core Data 根据 DataModel 自动生成的一个 class 类型，继承于 NSManagedObject，表示这种类型被 Core Data 所管理。
+
+
+## SortDescriptor
+
+`@FetchRequest()` 的 sortDescritors 参数用于排序:
+
+```swift
+// 按照 title 逆序，其次按照 author 正序
+@FetchRequest(sortDescriptors: [
+    SortDescriptor(\.title, order: .reverse),
+    SortDescriptor(\.author)
+]) var books: FetchedResults<Book>
+```
 
 
 ## 手动生成 Entity 类
@@ -4129,6 +4282,53 @@ VStack {
 ```
 
 
+### 不以颜色区分
+
+iPhone 的 设置 -> 辅助功能 -> 显示与文字大小 中有个选项叫 ”不以颜色区分“。可以帮助区分颜色有困难的人，用其他标识来区分界面元素。
+
+```swift
+struct ContentView: View {
+    // 通过环境变量可以获取到是否设置了该选项
+    @Environment(\.accessibilityDifferentiateWithoutColor) var differentiateWithoutColor;
+    
+    var body: some View {
+        HStack {
+            if differentiateWithoutColor {
+                Image(systemName: "checkmark.circle")
+            }
+            
+            Text("Success")
+        }
+        .padding()
+        .background(differentiateWithoutColor ? Color.black : Color.green)
+        .foregroundColor(Color.white)
+        .clipShape(Capsule())
+    }
+}
+```
+
+以下是该选项打开后的显示效果:
+
+![]( {{site.url}}/asset/swiftui-accessibility-differentiate-without-color.png )
+
+
+类似的，辅助功能里还有 "降低透明度" 的选项，也可以从 environment 里获取到:
+
+```swift
+struct ContentView: View {
+    @Environment(\.accessibilityReduceTransparency) var reduceTransparency
+    
+    var body: some View {
+        Text("Hello, World!")
+            .padding()
+            .background(reduceTransparency ? Color.black : Color.black.opacity(0.5))
+            .foregroundColor(Color.white)
+            .clipShape(Capsule())
+    }
+}
+```
+
+
 # 其他
 
 ## UserNotifications
@@ -4377,3 +4577,12 @@ struct ContentView: View {
     }
 }
 ```
+
+
+## 强制横屏显示
+
+![]( {{site.url}}/asset/swiftui-device-orientation.png )
+
+有时候上述设置会不生效，需要按照如下步骤删除掉不需要的 orientation:
+
+![]( {{site.url}}/asset/swiftui-device-orientation-bug.png )
